@@ -120,6 +120,11 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
 static void print_map(struct bpf_map *map)
 {
 	__u64 total_ref = 0, total_miss = 0, total_hit, hit;
@@ -166,3 +171,92 @@ static void print_map(struct bpf_map *map)
 	}
 }
 
+int main(int argc, char *argv[])
+{
+	struct bpf_link **rlinks = NULL, **mlinks = NULL;
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct llcstat_bpf *obj;
+	int err, i;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	nr_cpus = libbpf_num_possible_cpus();
+	if (nr_cpus < 0) {
+		warning("Failed to get # of possible cpus: '%s'!\n",
+			strerror(-nr_cpus));
+		return 1;
+	}
+	mlinks = calloc(nr_cpus, sizeof(*mlinks));
+	rlinks = calloc(nr_cpus, sizeof(*rlinks));
+	if (!mlinks || !rlinks) {
+		warning("Failed to alloc mlinks or rlinks\n");
+		return 1;
+	}
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n",
+			strerror(-err));
+		return 1;
+	}
+
+	obj = llcstat_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF objects\n");
+		goto cleanup;
+	}
+
+	obj->rodata->target_per_thread = env.per_thread;
+
+	err = llcstat_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	if (open_and_attach_perf_event(PERF_COUNT_HW_BRANCH_MISSES,
+				       env.sample_period,
+				       obj->progs.on_cache_miss, mlinks))
+		goto cleanup;
+	if (open_and_attach_perf_event(PERF_COUNT_HW_CACHE_REFERENCES,
+				       env.sample_period,
+				       obj->progs.on_cache_ref, rlinks))
+		goto cleanup;
+
+	printf("Running for %ld seconds or Hit Ctrl-C to end\n", env.duration);
+
+	signal(SIGINT, sig_handler);
+
+	sleep(env.duration);
+
+	printf("%-8s ", "PID");
+	if (env.per_thread)
+		printf("%-8s ", "TID");
+	printf("%-16s %-4s %12s %12s %7s\n",
+	       "NAME", "CPU", "PEFERENCE", "MISS", "HIT%");
+	print_map(obj->maps.infos);
+
+cleanup:
+	for (i = 0; i < nr_cpus; i++) {
+		bpf_link__destroy(mlinks[i]);
+		bpf_link__destroy(rlinks[i]);
+	}
+	free(mlinks);
+	free(rlinks);
+	llcstat_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
+
+	return err != 0;
+}
