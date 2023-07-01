@@ -155,3 +155,57 @@ static int errno_by_name_x86_64(const char *errno_name)
 
 }
 #endif
+
+/* Try to find the errno number using the errno(1) program */
+static int errno_by_name_dynamic(const char *errno_name)
+{
+	int i, len = strlen(errno_name);
+	int err, number = -1;
+	char buf[128];
+	char cmd[64];
+	char *end;
+	long val;
+	FILE *f;
+
+	/* sanity check to not call popen with random input */
+	for (i = 0; i < len; i++) {
+		if (errno_name[i] < 'A' || errno_name[i] > 'Z') {
+			warn("errno_name contains invalid char 0x%02x: %s\n",
+					errno_name[i], errno_name);
+			return -1;
+		}
+	}
+
+	snprintf(cmd, sizeof(cmd), "errno %s", errno_name);
+	f = popen(cmd, "r");
+	if (!f) {
+		warn("popen: %s: %s\n", cmd, strerror(errno));
+		return -1;
+	}
+
+	if (!fgets(buf, sizeof(buf), f)) {
+		goto close;
+	} else if (ferror(f)) {
+		warn("fgets: %s\n", strerror(errno));
+		goto close;
+	}
+
+	// expecting "<name> <number> <description>"
+	if (strncmp(errno_name, buf, len) || strlen(buf) < len+2) {
+		warn("expected '%s': %s\n", errno_name, buf);
+		goto close;
+	}
+	errno = 0;
+	val = strtol(buf+len+2, &end, 10);
+	if (errno || end == (buf+len+2) || number < 0 || number > INT_MAX) {
+		warn("can't parse the second column, expected int: %s\n", buf);
+		goto close;
+	}
+	number = val;
+
+close:
+	err = pclose(f);
+	if (err < 0)
+		warn("pclose: %s\n", strerror(errno));
+	return number;
+}
