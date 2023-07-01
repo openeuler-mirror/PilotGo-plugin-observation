@@ -37,3 +37,43 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	static int pos_args;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case 't':
+		env.per_thread = true;
+		break;
+	case 'c':
+		errno = 0;
+		env.sample_period = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid sample period");
+			argp_usage(state);
+		}
+		break;
+	case ARGP_KEY_ARG:
+		if (pos_args++) {
+			warning("Unrecognized positional argument: %s\n", arg);
+			argp_usage(state);
+		}
+		errno = 0;
+		env.duration = strtol(arg, NULL, 10);
+		if (errno || env.duration <= 0) {
+			warning("Invalid duration");
+			argp_usage(state);
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
