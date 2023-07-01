@@ -111,3 +111,92 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct argument argument = {};
+	struct perf_buffer *pb = NULL;
+	struct drsnoop_bpf *obj;
+	__u64 time_end = 0;
+	int err;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	obj = drsnoop_bpf__open();
+	if (!obj) {
+		warning("Faild to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_tgid = argument.pid;
+	obj->rodata->target_pid = argument.tid;
+
+	if (argument.extended) {
+		struct ksyms *ksyms = ksyms__load();
+		const struct ksym *ksym;
+
+		if (!ksyms) {
+			warning("Failed to load kallsyms\n");
+			goto cleanup;
+		}
+
+		ksym = ksyms__get_symbol(ksyms, "vm_zone_stat");
+		if (!ksym) {
+			warning("Failed to get vm_zone_stat's addr\n");
+			goto cleanup;
+		}
+
+		obj->rodata->vm_zone_stat_kaddr = ksym->addr;
+		pagesize = sysconf(_SC_PAGESIZE);
+
+		ksyms__free(ksyms);
+	}
+
+	if (probe_tp_btf("mm_vmscan_direct_reclaim_begin")) {
+		bpf_program__set_autoload(obj->progs.direct_reclaim_begin_raw, false);
+		bpf_program__set_autoload(obj->progs.direct_reclaim_end_raw, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.direct_reclaim_begin_btf, false);
+		bpf_program__set_autoload(obj->progs.direct_reclaim_end_btf, false);
+	}
+
+	err = drsnoop_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = drsnoop_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs\n");
+		goto cleanup;
+	}
+
+	printf("Tracing direct reclaim events");
+	if (argument.duration)
+		printf(" for %ld secs.\n", argument.duration);
+	else
+		printf("... Hit Ctrl-C to end.\n");
+
+	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+			      handle_event, handle_lost_events, &argument, NULL);
+	if (!pb) {
+		err = -errno;
+		warning("Failed to open perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	return err != 0;
+}
