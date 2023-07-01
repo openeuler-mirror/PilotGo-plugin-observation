@@ -43,3 +43,28 @@ dump_hash_iter(int map_fd, void *keys, __u32 key_size,
 	return 0;
 }
 
+static int
+dump_hash_batch(int map_fd, void *keys, __u32 key_size,
+		void *values, __u32 value_size, __u32 *count)
+{
+	void *in = NULL, *out;
+	__u32 n, n_read = 0;
+	int err = 0;
+
+	while (n_read < *count && !err) {
+		n = *count - n_read;
+		err = bpf_map_lookup_batch(map_fd, &in, &out,
+					   keys + n_read * key_size,
+					   values + n_read * value_size,
+					   &n, NULL);
+		if (err && errno != ENOENT) {
+			return -1;
+		}
+		n_read += n;
+		in = out;
+	}
+
+	*count = n_read;
+	return 0;
+}
+
