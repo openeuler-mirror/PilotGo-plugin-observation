@@ -217,3 +217,16 @@ close:
 #endif
 	return number;
 }
+
+int errno_by_name(const char *errno_name)
+{
+#ifdef __x86_64__
+	int err;
+
+	err = errno_by_name_x86_64(errno_name);
+	if (err >= 0)
+		return err;
+#endif
+
+	return errno_by_name_dynamic(errno_name);
+}
