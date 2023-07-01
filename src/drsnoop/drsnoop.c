@@ -37,3 +37,44 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static int pagesize;
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	struct argument *argument = state->input;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		verbose = true;
+		break;
+	case 'd':
+		errno = 0;
+		argument->duration = strtol(arg, NULL, 10);
+		if (errno || argument->duration <= 0) {
+			warning("Invalid Duration: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'e':
+		argument->extended = true;
+		break;
+	case 'p':
+		argument->pid = argp_parse_pid(key, arg, state);
+		break;
+	case 't':
+		errno = 0;
+		argument->tid = strtol(arg, NULL, 10);
+		if (errno || argument->tid <= 0) {
+			warning("Invalid TID: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
