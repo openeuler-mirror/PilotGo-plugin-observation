@@ -123,3 +123,15 @@ fexit__d_lookup(void *ctx, const struct dentry *parent,
 	submit_buf(ctx, event, sizeof(*event));
 	return 0;
 }
+
+SEC("fentry/lookup_fast")
+int BPF_PROG(lookup_fast_fentry, struct nameidata *nd, struct path *path)
+{
+	return trace_fast(ctx, nd, path);
+}
+
+SEC("kprobe/lookup_fast")
+int BPF_KPROBE(lookup_fast_kprobe, struct nameidata *nd, struct path *path)
+{
+	return trace_fast(ctx, nd, path);
+}
