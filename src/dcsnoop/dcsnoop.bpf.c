@@ -135,3 +135,25 @@ int BPF_KPROBE(lookup_fast_kprobe, struct nameidata *nd, struct path *path)
 {
 	return trace_fast(ctx, nd, path);
 }
+
+SEC("fexit/d_lookup")
+int BPF_PROG(d_lookup_fexit, const struct dentry *parent,
+	     const struct qstr *name, struct dentry *ret)
+{
+	return fexit__d_lookup(ctx, parent, name, ret);
+}
+
+SEC("kprobe/d_lookup")
+int BPF_KPROBE(d_lookup_kprobe, const struct dentry *parent,
+	       const struct qstr *name)
+{
+	return kprobe__d_lookup(ctx, parent, name);
+}
+
+SEC("kretprobe/d_lookup")
+int BPF_KRETPROBE(d_lookup_kretprobe, struct dentry *ret)
+{
+	return kretprobe__d_lookup(ctx, ret);
+}
+
+char LICENSE[] SEC("license") = "GPL";
