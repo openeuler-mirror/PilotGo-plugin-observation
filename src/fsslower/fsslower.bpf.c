@@ -176,3 +176,29 @@ int BPF_PROG(file_write_fexit, struct kiocb *iocb, struct iov_iter *io, ssize_t 
 {
 	return probe_exit(ctx, F_WRITE, ret);
 }
+
+SEC("fentry/dummy_file_open")
+int BPF_PROG(file_open_fentry, struct inode *inode, struct file *file)
+{
+	return probe_entry(file, 0, 0);
+}
+
+SEC("fexit/dummy_file_open")
+int BPF_PROG(file_open_fexit)
+{
+	return probe_exit(ctx, F_OPEN, 0);
+}
+
+SEC("fentry/dummy_file_sync")
+int BPF_PROG(file_sync_fentry, struct file *file, loff_t start, loff_t end)
+{
+	return probe_entry(file, start, end);
+}
+
+SEC("fexit/dummy_file_sync")
+int BPF_PROG(file_sync_fexit)
+{
+	return probe_exit(ctx, F_FSYNC, 0);
+}
+
+char LICENSE[] SEC("license") = "GPL";
