@@ -134,3 +134,25 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	}
 	return 0;
 }
+
+static void alias_parse(char *prog)
+{
+	char *name = basename(prog);
+
+	if (!strcmp(name, "btrfsslower"))
+		fs_type = BTRFS;
+	else if (!strcmp(name, "ext4slower"))
+		fs_type = EXT4;
+	else if (!strcmp(name, "nfsslower"))
+		fs_type = NFS;
+	else if (!strcmp(name, "xfsslower"))
+		fs_type = XFS;
+}
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
