@@ -488,3 +488,20 @@ static const char *syscall_names_x86_64[] = {
 };
 size_t syscall_names_x86_64_size = sizeof(syscall_names_x86_64)/sizeof(char*);
 #endif
+
+void syscall_name(unsigned n, char *buf, size_t size)
+{
+	const char *name = NULL;
+
+	if (n < syscall_names_size)
+		name = syscall_names[n];
+#ifdef __x86_64__
+	else if (n < syscall_names_x86_64_size)
+		name = syscall_names_x86_64[n];
+#endif
+
+	if (name)
+		strncpy(buf, name, size-1);
+	else
+		snprintf(buf, size, "[unknown: %u]", n);
+}
