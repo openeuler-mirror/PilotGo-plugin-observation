@@ -156,3 +156,26 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 		return 0;
 	return vfprintf(stderr, format, args);
 }
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static bool check_fentry()
+{
+	for (int i = 0; i < F_MAX_OP; i++) {
+		const char *fn_name = fs_configs[fs_type].op_funcs[i];
+		const char *module = fs_configs[fs_type].fs;
+
+		if (fn_name && !fentry_can_attach(fn_name, module))
+			return false;
+	}
+
+	return true;
+}
+
+static int fentry_set_attach_target(struct bpf_program *prog, enum fs_file_op op)
+{
+	return bpf_program__set_attach_target(prog, 0, fs_configs[fs_type].op_funcs[op]);
+}
