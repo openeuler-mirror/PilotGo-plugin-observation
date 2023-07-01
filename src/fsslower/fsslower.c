@@ -43,3 +43,20 @@ static struct fs_config {
 		[F_FSYNC] = "xfs_file_fsync",
 	}},
 };
+
+static char file_op[] = {
+	[F_READ] = 'R',
+	[F_WRITE] = 'W',
+	[F_OPEN] = 'O',
+	[F_FSYNC] = 'F',
+};
+
+static volatile sig_atomic_t exiting = 0;
+
+/* options */
+static enum fs_type fs_type = NONE;
+static pid_t target_pid = 0;
+static time_t duration = 0;
+static __u64 min_lat_ms = 10;
+static bool csv = false;
+static bool verbose = false;
