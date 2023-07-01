@@ -68,3 +68,37 @@ dump_hash_batch(int map_fd, void *keys, __u32 key_size,
 	return 0;
 }
 
+int dump_hash(int map_fd,
+	      void *keys, __u32 key_size,
+	      void *values, __u32 value_size,
+	      __u32 *count, void *invalid_key)
+{
+	int err;
+
+	if (!keys || !values || !count || !key_size || !value_size) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (batch_map_ops) {
+		err = dump_hash_batch(map_fd, keys, key_size,
+				      values, value_size, count);
+		if (err) {
+			if (errno != EINVAL) {
+				return -1;
+
+				/* assume that batch operations are not
+				 * supported and try non-batch mode */
+				batch_map_ops = false;
+			}
+		}
+	}
+
+	if (!invalid_key) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	return dump_hash_iter(map_fd, keys, key_size,
+			      values, value_size, count, invalid_key);
+}
