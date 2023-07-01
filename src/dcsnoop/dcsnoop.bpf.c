@@ -43,3 +43,23 @@ trace_fast(void *ctx, struct nameidata *nd, struct path *path)
 	submit_buf(ctx, event, sizeof(*event));
 	return 0;
 }
+
+static __always_inline int
+kprobe__d_lookup(void *ctx, const struct dentry *parent,
+		 const struct qstr *name)
+{
+	u64 pid_tgid = bpf_get_current_pid_tgid();
+	u32 pid = pid_tgid >> 32;
+	u32 tid = pid_tgid;
+	struct entry_t entry = {};
+
+	if (target_pid && target_pid != pid)
+		return 0;
+	if (target_tid && target_tid != tid)
+		return 0;
+
+	const unsigned char *t_name = BPF_CORE_READ(name, name);
+	bpf_probe_read_kernel_str(&entry.name, sizeof(entry.name), t_name);
+	bpf_map_update_elem(&entrys, &tid, &entry, BPF_ANY);
+	return 0;
+}
