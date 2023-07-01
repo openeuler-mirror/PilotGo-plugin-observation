@@ -505,3 +505,23 @@ void syscall_name(unsigned n, char *buf, size_t size)
 	else
 		snprintf(buf, size, "[unknown: %u]", n);
 }
+
+int list_syscalls(void)
+{
+	const char **list = syscall_names;
+	size_t i, size = syscall_names_size;
+
+#ifdef __x86_64__
+	if (!size) {
+		size = syscall_names_x86_64_size;
+		list = syscall_names_x86_64;
+	}
+#endif
+
+	for (i = 0; i < size; i++) {
+		if (list[i])
+			printf("%3zd: %s\n", i, list[i]);
+	}
+
+	return (!list || !size);
+}
