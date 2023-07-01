@@ -60,3 +60,15 @@ static time_t duration = 0;
 static __u64 min_lat_ms = 10;
 static bool csv = false;
 static bool verbose = false;
+
+const char *argp_program_version = "fsslower 0.1";
+const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char argp_program_doc[] =
+"Trace file system operations slower than a threshold.\n"
+"\n"
+"Usage: fsslower [-h] [-t FS] [-p PID] [-m MIN] [-d DURATION] [-c]\n"
+"\n"
+"EXAMPLES:\n"
+"    fsslower -t ext4             # trace ext4 operations slower than 10 ms\n"
+"    fsslower -t nfs -p 1216      # trace nfs operations with PID 1216 only\n"
+"    fsslower -t xfs -c -d 1      # trace xfs operations for 1s with csv output\n";
