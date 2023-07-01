@@ -91,3 +91,23 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+	const struct event *e = data;
+	const struct argument *argument = ctx;
+	char ts[32];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+
+	printf("%-8s %-16s %-6d %9.3f %7lld", ts, e->task, e->pid,
+	       e->delta_ns / 1000000.0, e->nr_reclaimed);
+	if (argument->extended)
+		printf(" %9llu", e->nr_free_pages * pagesize / 1024);
+	printf("\n");
+}
+
+void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
