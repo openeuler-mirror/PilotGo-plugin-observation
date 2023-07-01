@@ -211,3 +211,27 @@ static int fentry_set_attach_targets(struct fsslower_bpf *obj)
 
 	return 0;
 }
+
+static void disable_fentry(struct fsslower_bpf *obj)
+{
+	bpf_program__set_autoload(obj->progs.file_read_fentry, false);
+	bpf_program__set_autoload(obj->progs.file_read_fexit, false);
+	bpf_program__set_autoload(obj->progs.file_write_fentry, false);
+	bpf_program__set_autoload(obj->progs.file_write_fexit, false);
+	bpf_program__set_autoload(obj->progs.file_open_fentry, false);
+	bpf_program__set_autoload(obj->progs.file_open_fexit, false);
+	bpf_program__set_autoload(obj->progs.file_sync_fentry, false);
+	bpf_program__set_autoload(obj->progs.file_sync_fexit, false);
+}
+
+static void disable_kprobes(struct fsslower_bpf *obj)
+{
+	bpf_program__set_autoload(obj->progs.file_read_entry, false);
+	bpf_program__set_autoload(obj->progs.file_read_exit, false);
+	bpf_program__set_autoload(obj->progs.file_write_entry, false);
+	bpf_program__set_autoload(obj->progs.file_write_exit, false);
+	bpf_program__set_autoload(obj->progs.file_open_entry, false);
+	bpf_program__set_autoload(obj->progs.file_open_exit, false);
+	bpf_program__set_autoload(obj->progs.file_sync_entry, false);
+	bpf_program__set_autoload(obj->progs.file_sync_exit, false);
+}
