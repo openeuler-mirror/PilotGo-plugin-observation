@@ -113,3 +113,12 @@ close:
 	}
 #endif
 }
+
+void free_syscall_names(void)
+{
+	size_t i;
+
+	for (i = 0; i < syscall_names_size; i++)
+		free((void *) syscall_names[i]);
+	free(syscall_names);
+}
