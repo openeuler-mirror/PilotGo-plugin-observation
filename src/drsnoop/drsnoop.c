@@ -198,5 +198,36 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	/* setup duration */
+	if (argument.duration)
+		time_end = get_ktime_ns() + argument.duration * NSEC_PER_SEC;
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	printf("%-8s %-16s %-6s %9s %7s", "TIME", "COMM", "PID", "DELTA(ms)", "RECLAIM");
+	if (argument.extended)
+		printf(" %9s", "FREEPAGES");
+	printf("\n");
+
+	/* main poll */
+	while (!exiting) {
+		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		if (argument.duration && get_ktime_ns() > time_end)
+			goto cleanup;
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
+cleanup:
+	perf_buffer__free(pb);
+	drsnoop_bpf__destroy(obj);
 	return err != 0;
 }
