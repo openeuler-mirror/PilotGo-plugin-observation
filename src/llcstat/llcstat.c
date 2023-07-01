@@ -111,3 +111,58 @@ static int open_and_attach_perf_event(__u64 config, int period,
 	}
 	return 0;
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static void print_map(struct bpf_map *map)
+{
+	__u64 total_ref = 0, total_miss = 0, total_hit, hit;
+	__u32 pid, cpu, tid;
+	struct key_info lookup_key = { .cpu = -1 }, next_key;
+	int err, fd = bpf_map__fd(map);
+	struct value_info info;
+
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_lookup_elem(fd, &next_key, &info);
+		if (err < 0) {
+			warning("Failed to lookup infos: %d\n", err);
+			return;
+		}
+		hit = MAX((long)(info.ref - info.miss), 0);
+		cpu = next_key.cpu;
+		pid = next_key.pid;
+		tid = next_key.tid;
+		printf("%-8u ", pid);
+		if (env.per_thread) {
+			printf("%-8u ", tid);
+		}
+		printf("%-16s %-4u %12llu %12llu %6.2f%%\n",
+		       info.comm, cpu, info.ref, info.miss,
+		       info.ref > 0 ? hit * 1.0 / info.ref * 100 : 0);
+		total_miss += info.miss;
+		total_ref += info.ref;
+		lookup_key = next_key;
+	}
+
+	total_hit = MAX((long)(total_ref - total_miss), 0);
+	printf("Total References: %llu Total Misses: %llu Hit Rate: %.2f%%\n",
+	       total_ref, total_miss, total_ref > 0 ?
+	       total_hit * 1.0 / total_ref * 100 : 0);
+
+	lookup_key.cpu = -1;
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_delete_elem(fd, &next_key);
+		if (err) {
+			warning("Failed to cleanup infos: %d\n", err);
+			return;
+		}
+		lookup_key = next_key;
+	}
+}
+
