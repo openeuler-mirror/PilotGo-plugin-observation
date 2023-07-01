@@ -77,3 +77,37 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+
+static int nr_cpus;
+
+static int open_and_attach_perf_event(__u64 config, int period,
+				      struct bpf_program *prog,
+				      struct bpf_link *links[])
+{
+	struct perf_event_attr attr = {
+		.type = PERF_TYPE_HARDWARE,
+		.freq = 0,
+		.sample_period = period,
+		.config = config
+	};
+	int i, fd;
+
+	for (i = 0; i < nr_cpus; i++) {
+		fd = syscall(__NR_perf_event_open, &attr, -1, i, -1, 0);
+		if (fd < 0) {
+			/* Ignore CPU that is offline */
+			if (errno == ENODEV)
+				continue;
+			warning("Failed to init perf sampling: %s\n",
+				strerror(errno));
+			return -1;
+		}
+		links[i] = bpf_program__attach_perf_event(prog, fd);
+		if (!links[i]) {
+			warning("Failed to attach perf event on CPU: %d\n", i);
+			close(fd);
+			return -1;
+		}
+	}
+	return 0;
+}
