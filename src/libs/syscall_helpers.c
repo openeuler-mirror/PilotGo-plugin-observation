@@ -104,4 +104,12 @@ close:
 	err = pclose(f);
 	if (err < 0)
 		warn("pclose: %s\n", strerror(errno));
+#ifndef __x86_64__
+	/* Ignore the error for x86_64 where we have a table compiled in */
+	else if (err && WEXITSTATUS(err) == 127) {
+		warn("ausyscall required for syscalls number/name mapping\n");
+	} else if (err) {
+		warn("ausyscall exit status (see wait(2)): 0x%x\n", err);
+	}
+#endif
 }
