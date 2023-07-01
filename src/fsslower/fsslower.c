@@ -83,3 +83,54 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'v':
+		verbose = true;
+		break;
+	case 'c':
+		csv = true;
+		break;
+	case 'd':
+		errno = 0;
+		duration = strtol(arg, NULL, 10);
+		if (errno || duration <= 0) {
+			warning("Invalid Duration: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'm':
+		errno = 0;
+		min_lat_ms = strtol(arg, NULL, 10);
+		if (errno || min_lat_ms <= 0) {
+			warning("Invalid latency (in ms): %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 't':
+		if (!strcmp(arg, "btrfs")) {
+			fs_type = BTRFS;
+		} else if (!strcmp(arg, "ext4")) {
+			fs_type = EXT4;
+		} else if (!strcmp(arg, "nfs")) {
+			fs_type = NFS;
+		} else if (!strcmp(arg, "xfs")) {
+			fs_type = XFS;
+		} else {
+			warning("Invalid filesystem\n");
+			argp_usage(state);
+		}
+		break;
+	case 'p':
+		target_pid = argp_parse_pid(key, arg, state);
+		break;
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
