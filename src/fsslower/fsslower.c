@@ -179,3 +179,35 @@ static int fentry_set_attach_target(struct bpf_program *prog, enum fs_file_op op
 {
 	return bpf_program__set_attach_target(prog, 0, fs_configs[fs_type].op_funcs[op]);
 }
+
+static int fentry_set_attach_targets(struct fsslower_bpf *obj)
+{
+	int err = 0;
+
+	err = fentry_set_attach_target(obj->progs.file_read_fentry, F_READ);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_read_fexit, F_READ);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_write_fentry, F_WRITE);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_write_fexit, F_WRITE);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_open_fentry, F_OPEN);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_open_fexit, F_OPEN);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_sync_fentry, F_FSYNC);
+	if (err)
+		return err;
+	err = fentry_set_attach_target(obj->progs.file_sync_fexit, F_FSYNC);
+	if (err)
+		return err;
+
+	return 0;
+}
