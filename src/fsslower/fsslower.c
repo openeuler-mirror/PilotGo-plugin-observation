@@ -235,3 +235,60 @@ static void disable_kprobes(struct fsslower_bpf *obj)
 	bpf_program__set_autoload(obj->progs.file_sync_entry, false);
 	bpf_program__set_autoload(obj->progs.file_sync_exit, false);
 }
+
+static int attach_kprobes(struct fsslower_bpf *obj)
+{
+	obj->links.file_read_entry = bpf_program__attach_kprobe(obj->progs.file_read_entry,
+								false,
+								fs_configs[fs_type].op_funcs[F_READ]);
+	if (!obj->links.file_read_entry)
+		goto errout;
+
+	obj->links.file_read_exit = bpf_program__attach_kprobe(obj->progs.file_read_exit,
+							       true,
+							       fs_configs[fs_type].op_funcs[F_READ]);
+	if (!obj->links.file_read_exit)
+		goto errout;
+
+	obj->links.file_write_entry = bpf_program__attach_kprobe(obj->progs.file_write_entry,
+								 false,
+								 fs_configs[fs_type].op_funcs[F_WRITE]);
+	if (!obj->links.file_write_entry)
+		goto errout;
+
+	obj->links.file_write_exit = bpf_program__attach_kprobe(obj->progs.file_write_exit,
+								true,
+								fs_configs[fs_type].op_funcs[F_WRITE]);
+	if (!obj->links.file_write_exit)
+		goto errout;
+
+	obj->links.file_open_entry = bpf_program__attach_kprobe(obj->progs.file_open_entry,
+								false,
+								fs_configs[fs_type].op_funcs[F_OPEN]);
+	if (!obj->links.file_open_entry)
+		goto errout;
+
+	obj->links.file_open_exit = bpf_program__attach_kprobe(obj->progs.file_open_exit,
+							       true,
+							       fs_configs[fs_type].op_funcs[F_OPEN]);
+	if (!obj->links.file_open_exit)
+		goto errout;
+
+	obj->links.file_sync_entry = bpf_program__attach_kprobe(obj->progs.file_sync_entry,
+								false,
+								fs_configs[fs_type].op_funcs[F_FSYNC]);
+	if (!obj->links.file_sync_entry)
+		goto errout;
+
+	obj->links.file_sync_exit = bpf_program__attach_kprobe(obj->progs.file_sync_exit,
+							       false,
+							       fs_configs[fs_type].op_funcs[F_FSYNC]);
+	if (!obj->links.file_sync_exit)
+		goto errout;
+
+	return 0;
+
+errout:
+	warning("Failed to attach kprobe: %d\n", -errno);
+	return -errno;
+}
