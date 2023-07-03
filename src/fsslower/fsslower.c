@@ -340,3 +340,61 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 		printf("%-10ld ", e->size);
 	printf("%-8lld %7.2f %s\n", e->offset / 1024, (double)e->delta_us / 1000, e->file);
 }
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct perf_buffer *pb = NULL;
+	struct fsslower_bpf *obj;
+	__u64 time_end = 0;
+	int err;
+	bool support_fentry;
+
+	alias_parse(argv[0]);
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+	if (fs_type == NONE) {
+		warning("Filesystem must be specified using -t option.\n");
+		return 1;
+	}
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
+	obj = fsslower_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_pid = target_pid;
+	obj->rodata->min_lat_ns = min_lat_ms * 1e6;
+
+	}
+
+cleanup:
+	perf_buffer__free(pb);
+	fsslower_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
+
+	return err != 0;
+}
