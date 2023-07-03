@@ -134,5 +134,17 @@ int main(int argc, char *argv[])
 
 	obj->rodata->target_pid = target_pid;
 
+        err = slabratetop_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = slabratetop_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+	
 	return err != 0;
 }
