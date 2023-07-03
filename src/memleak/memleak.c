@@ -512,3 +512,156 @@ static int print_stack_frames(struct allocation *allocs, size_t nr_allocs, int s
 
     return 0;
 }
+
+static int alloc_size_compare(const void *a, const void *b)
+{
+    const struct allocation *x = (struct allocation *)a;
+    const struct allocation *y = (struct allocation *)b;
+
+    if (x->size > y->size)
+        return -1;
+
+    if (x->size < y->size)
+        return 1;
+
+    return 0;
+}
+
+static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
+{
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+
+    size_t nr_allocs = 0;
+
+    // for each struct alloc_info "alloc_info" in the bpf map "allocs"
+    for (uint64_t prev_key = 0, curr_key = 0;; prev_key = curr_key)
+    {
+        struct alloc_info alloc_info = {};
+
+        if (bpf_map_get_next_key(allocs_fd, &prev_key, &curr_key))
+        {
+            if (errno == ENOENT)
+                break;
+
+            perror("map get next key error");
+            return -errno;
+        }
+
+        if (bpf_map_lookup_elem(allocs_fd, &curr_key, &alloc_info))
+        {
+            if (errno == ENOENT)
+                continue;
+
+            perror("map lookup error");
+            return -errno;
+        }
+
+        // filter by age
+        if (get_ktime_ns() - env.min_age_ns < alloc_info.timestamp_ns)
+            continue;
+
+        // filter invalid stacks
+        if (alloc_info.stack_id < 0)
+            continue;
+
+        // when the stack_id exists in the allocs array,
+        // increment size with alloc_info.size
+        bool stack_exists = false;
+
+        for (size_t i = 0; !stack_exists && i < nr_allocs; i++)
+        {
+            struct allocation *alloc = &allocs[i];
+
+            if (alloc->stack_id == alloc_info.stack_id)
+            {
+                alloc->size += alloc_info.size;
+                alloc->count++;
+
+                if (env.show_allocs)
+                {
+                    struct allocation_node *node = malloc(sizeof(struct allocation_node));
+
+                    if (!node)
+                    {
+                        perror("malloc failed");
+                        return -errno;
+                    }
+                    node->address = curr_key;
+                    node->size = alloc_info.size;
+                    node->next = alloc->allocations;
+                    alloc->allocations = node;
+                }
+
+                stack_exists = true;
+                break;
+            }
+        }
+
+        if (stack_exists)
+            continue;
+
+        // when the stack_id does not exist in the allocs array,
+        // create a new entry in the array
+        struct allocation alloc = {
+            .stack_id = alloc_info.stack_id,
+            .size = alloc_info.size,
+            .count = 1,
+        };
+
+        if (env.show_allocs)
+        {
+            struct allocation_node *node = malloc(sizeof(struct allocation_node));
+
+            if (!node)
+            {
+                perror("malloc failed");
+                return -errno;
+            }
+            node->address = curr_key;
+            node->size = alloc_info.size;
+            node->next = NULL;
+            alloc.allocations = node;
+        }
+
+        memcpy(&allocs[nr_allocs], &alloc, sizeof(alloc));
+
+        if (++nr_allocs > ALLOCS_MAX_ENTRIES)
+            break;
+    }
+
+    // sort the allocs array in descending order
+    qsort(allocs, nr_allocs, sizeof(allocs[0]), alloc_size_compare);
+
+    // get min of allocs we stored vs the top N requested stacks
+    size_t nr_allocs_to_show = MIN(nr_allocs, env.top_stacks);
+
+    if (nr_allocs_to_show)
+    {
+        printf("[%d:%d:%d] Top %zu stacks with outstanding allocations:\n",
+               tm->tm_hour, tm->tm_min, tm->tm_sec, nr_allocs_to_show);
+
+        print_stack_frames(allocs, nr_allocs_to_show, stack_traces_fd);
+
+        // Reset allocs list so that we dont accidentaly reuse data the next time we call this function
+        for (size_t i = 0; i < nr_allocs; i++)
+        {
+            allocs[i].stack_id = 0;
+            if (env.show_allocs)
+            {
+                struct allocation_node *it = allocs[i].allocations;
+
+                while (!it)
+                {
+                    struct allocation_node *this = it;
+
+                    it = it->next;
+                    free(this);
+                }
+                allocs[i].allocations = NULL;
+            }
+        }
+    }
+
+    return 0;
+}
