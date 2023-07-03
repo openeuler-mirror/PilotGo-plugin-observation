@@ -100,5 +100,17 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	if (probe_tp_btf("softirq_entry")) {
+		bpf_program__set_autoload(bpf_obj->progs.softirq_entry_raw, false);
+		bpf_program__set_autoload(bpf_obj->progs.softirq_exit_raw, false);
+	} else {
+		bpf_program__set_autoload(bpf_obj->progs.softirq_entry_btf, false);
+		bpf_program__set_autoload(bpf_obj->progs.softirq_exit_btf, false);
+	}
+
+	/* initialize global data (filtering options) */
+	bpf_obj->rodata->target_dist = env.distributed;
+	bpf_obj->rodata->target_ns = env.nanoseconds;
+
 	return err != 0;
 }
