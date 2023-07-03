@@ -366,3 +366,64 @@ static pid_t fork_sync_exec(const char *command, int fd)
 
     return pid;
 }
+
+static void (*print_stack_frames_func)();
+
+#if USE_BLAZESYM
+static blazesym *symbolizer;
+static blazesym_sym_src_cfg src_cfg;
+
+static void print_stack_frame_by_blazesym(size_t frame, uint64_t addr, const blazesym_csym *sym)
+{
+    if (!sym)
+        printf("\t%5zu [<%016lx>] <%s>\n", frame, addr, "null sym");
+    else if (sym->path && strlen(sym->path))
+        printf("\t%5zu [<%016lx>] %s+0x%lx %s:%ld\n", frame, addr, sym->symbol, addr - sym->start_address, sym->path, sym->line_no);
+    else
+        printf("\t%5zu [<%016lx>] %s+0x%lx\n", frame, addr, sym->symbol, addr - sym->start_address);
+}
+
+static void print_stack_frames_by_blazesym()
+{
+    const blazesym_result *result = blazesym_symbolize(symbolizer, &src_cfg, 1, stack, env.perf_max_stack_depth);
+
+    for (size_t i = 0; i < result->size; i++)
+    {
+        const uint64_t addr = stack[i];
+
+        if (!addr)
+            break;
+
+        // no symbol found
+        if (!result || i >= result->size || result->entries[i].size == 0)
+        {
+            print_stack_frame_by_blazesym(i, addr, NULL);
+            continue;
+        }
+
+        // single symbol found
+        if (result->entries[i].size == 1)
+        {
+            const blazesym_csym *sym = &result->entries[i].syms[0];
+            print_stack_frame_by_blazesym(i, addr, sym);
+            continue;
+        }
+
+        // multi symbol found
+        printf("\t%zu [<%016lx>] (%lu entries)\n", i, addr, result->entries[i].size);
+
+        for (size_t j = 0; j < result->entries[i].size; j++)
+        {
+            const blazesym_csym *sym = &result->entries[i].syms[j];
+            if (sym->path && strlen(sym->path))
+                printf("\t\t%s@0x%lx %s:%ld\n", sym->symbol, sym->start_address, sym->path, sym->line_no);
+            else
+                printf("\t\t%s@0x%lx\n", sym->symbol, sym->start_address);
+        }
+    }
+
+    blazesym_result_free(result);
+}
+#else
+struct syms_cache *syms_cache;
+struct ksyms *ksyms;
