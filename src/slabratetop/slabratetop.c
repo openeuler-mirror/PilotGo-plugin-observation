@@ -107,6 +107,76 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int sort_column(const void *obj1, const void *obj2)
+{
+	struct slabrate_info *s1 = (struct slabrate_info *)obj1;
+	struct slabrate_info *s2 = (struct slabrate_info *)obj2;
+
+	if (sort_by == SORT_BY_CACHE_NAME) {
+		return strcasecmp(s1->name, s2->name);
+	} else if (sort_by == SORT_BY_CACHE_COUNT) {
+		return s2->count - s1->count;
+	} else {
+		return s2->size - s1->size;
+	}
+}
+
+static int print_stat(struct slabratetop_bpf *obj)
+{
+	FILE *f;
+	char *key, **prev_key = NULL;
+	static struct slabrate_info values[OUTPUT_ROWS_LIMIT];
+	int fd = bpf_map__fd(obj->maps.slab_entries);
+	int err = 0, rows = 0;
+
+	f = fopen("/proc/loadavg", "r");
+	if (f) {
+		char ts[32], buf[256];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		if (fread(buf, 1, sizeof(buf), f))
+			printf("%8s loadavg: %s\n", ts, buf);
+		fclose(f);
+	}
+
+	printf("%-32s %6s %10s\n", "CACHE", "ALLOCS", "BYTES");
+
+	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+		err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
+		if (err) {
+			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+			return err;
+		}
+		prev_key = &key;
+	}
+
+	qsort(values, rows, sizeof(struct slabrate_info), sort_column);
+	rows = MIN(rows, output_rows);
+
+	for (int i = 0; i < rows; i++)
+		printf("%-32s %6lld %10lld\n",
+		       values[i].name, values[i].count, values[i].size);
+
+	printf("\n");
+	prev_key = NULL;
+
+	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+		err = bpf_map_delete_elem(fd, &key);
+		if (err) {
+			warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
+			return err;
+		}
+		prev_key = &key;
+	}
+
+	return err;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -120,8 +190,8 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
-		
-        if (!bpf_is_root())
+
+	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
@@ -134,7 +204,7 @@ int main(int argc, char *argv[])
 
 	obj->rodata->target_pid = target_pid;
 
-        err = slabratetop_bpf__load(obj);
+	err = slabratetop_bpf__load(obj);
 	if (err) {
 		warning("Failed to load BPF object: %d\n", err);
 		goto cleanup;
@@ -145,7 +215,7 @@ int main(int argc, char *argv[])
 		warning("Failed to attach BPF programs: %d\n", err);
 		goto cleanup;
 	}
-        
+
 	if (signal(SIGINT, sig_handler) == SIG_ERR) {
 		warning("Can't set signal handler: %s\n", strerror(errno));
 		err = 1;
@@ -170,7 +240,8 @@ int main(int argc, char *argv[])
 	}
 
 cleanup:
-	slabratetop_bpf__destroy(obj);	
+	slabratetop_bpf__destroy(obj);
 
 	return err != 0;
 }
+
