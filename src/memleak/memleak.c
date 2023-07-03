@@ -170,3 +170,91 @@ static const struct argp_option opts[] = {
 static uint64_t *stack;
 static struct allocation *allocs;
 static const char default_object[] = "libc.so.6";
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+    static int pos_args = 0;
+
+    switch (key)
+    {
+    case 'p':
+        env.pid = argp_parse_pid(key, arg, state);
+        break;
+    case 't':
+        env.trace_all = true;
+        break;
+    case 'a':
+        env.show_allocs = true;
+        break;
+    case 'o':
+        env.min_age_ns = 1e6 * argp_parse_long(key, arg, state);
+        break;
+    case 'c':
+        strncpy(env.command, arg, sizeof(env.command) - 1);
+        break;
+    case 'C':
+        env.combined_only = true;
+        break;
+    case 'F':
+        env.wa_missing_free = true;
+        break;
+    case 's':
+        env.sample_rate = argp_parse_long(key, arg, state);
+        break;
+    case 'T':
+        env.top_stacks = argp_parse_long(key, arg, state);
+        break;
+    case 'z':
+        env.min_size = argp_parse_long(key, arg, state);
+        break;
+    case 'Z':
+        env.max_size = argp_parse_long(key, arg, state);
+        break;
+    case 'O':
+        strncpy(env.object, arg, sizeof(env.object) - 1);
+        break;
+    case 'P':
+        env.percpu = true;
+        break;
+    case 'v':
+        env.verbose = true;
+        break;
+    case 'h':
+        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+        break;
+    case OPT_PERF_MAX_STACK_DEPTH:
+        env.perf_max_stack_depth = argp_parse_long(key, arg, state);
+        break;
+    case OPT_STACK_MAP_MAX_ENTRIES:
+        env.stack_map_max_entries = argp_parse_long(key, arg, state);
+        break;
+    case ARGP_KEY_ARG:
+        if (pos_args == 0)
+        {
+            env.interval = argp_parse_long(key, arg, state);
+        }
+        else if (pos_args == 1)
+        {
+            env.nr_intervals = argp_parse_long(key, arg, state);
+        }
+        else
+        {
+            warning("Unrecognized positional argument: %s\n", arg);
+            argp_usage(state);
+        }
+        pos_args++;
+        break;
+    case ARGP_KEY_END:
+        if (env.min_size > env.max_size)
+        {
+            warning("min size (-z) can't greater than max size (-Z)\n");
+            argp_usage(state);
+        }
+        if (env.combined_only && env.min_age_ns != DEFAULT_MIN_AGE_NS)
+            warning("Ignore min age ns for combined allocs\n");
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
