@@ -665,3 +665,58 @@ static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
 
     return 0;
 }
+
+static int print_outstanding_combined_allocs(int combined_allocs_fd, int stack_traces_fd)
+{
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    size_t nr_allocs = 0;
+
+    // for each stack_id "curr_key" and union combined_alloc_info "alloc"
+    // in bpf_map "combined_allocs"
+    for (uint64_t prev_key = 0, curr_key = 0;; prev_key = curr_key)
+    {
+        union combined_alloc_info combined_alloc_info = {};
+
+        if (bpf_map_get_next_key(combined_allocs_fd, &prev_key, &curr_key))
+        {
+            if (errno == ENOENT)
+                break;
+            perror("Map get next key error");
+            return -errno;
+        }
+
+        if (bpf_map_lookup_elem(combined_allocs_fd, &curr_key, &combined_alloc_info))
+        {
+            if (errno == ENOENT)
+                continue;
+            perror("map lookup error");
+            return -errno;
+        }
+
+        const struct allocation alloc = {
+            .stack_id = curr_key,
+            .size = combined_alloc_info.total_size,
+            .count = combined_alloc_info.number_of_allocs,
+        };
+
+        memcpy(&allocs[nr_allocs], &alloc, sizeof(alloc));
+
+        if (++nr_allocs > COMBINED_ALLOCS_MAX_ENTRIES)
+            break;
+    }
+
+    qsort(allocs, nr_allocs, sizeof(allocs[0]), alloc_size_compare);
+
+    // get min of allocs we stored vs the top N requested stacks
+    nr_allocs = MIN(nr_allocs, env.top_stacks);
+    if (nr_allocs)
+    {
+        printf("[%d:%d:%d] Top %zd stacks with outstanding allocations:\n",
+               tm->tm_hour, tm->tm_min, tm->tm_sec, nr_allocs);
+
+        print_stack_frames(allocs, nr_allocs, stack_traces_fd);
+    }
+
+    return 0;
+}
