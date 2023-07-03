@@ -427,3 +427,88 @@ static void print_stack_frames_by_blazesym()
 #else
 struct syms_cache *syms_cache;
 struct ksyms *ksyms;
+
+static void print_stack_frames_by_ksyms()
+{
+    for (size_t i = 0; i < env.perf_max_stack_depth; i++)
+    {
+        const uint64_t addr = stack[i];
+
+        if (!addr)
+            break;
+
+        const struct ksym *ksym = ksyms__map_addr(ksyms, addr);
+        if (ksym)
+            printf("\t%zu [<%016lx>] %s+0x%lx\n", i, addr, ksym->name, addr - ksym->addr);
+        else
+            printf("\t%zu [<%016lx>] <%s>\n", i, addr, "null sym");
+    }
+}
+
+static void print_stack_frames_by_syms_cache()
+{
+    const struct syms *syms = syms_cache__get_syms(syms_cache, env.pid);
+    if (!syms)
+    {
+        warning("Failed to get syms\n");
+        return;
+    }
+
+    for (size_t i = 0; i < env.perf_max_stack_depth; i++)
+    {
+        const uint64_t addr = stack[i];
+
+        if (!addr)
+            break;
+
+        char *dso_name;
+        uint64_t dso_offset;
+        const struct sym *sym = syms__map_addr_dso(syms, addr, &dso_name, &dso_offset);
+        if (sym)
+        {
+            printf("\t%zu [<%016lx>] %s+0x%lx", i, addr, sym->name, sym->offset);
+            if (dso_name)
+                printf(" [%s]", dso_name);
+            printf("\n");
+        }
+        else
+        {
+            printf("\t%zu [<%016lx>] <%s>\n", i, addr, "null sym");
+        }
+    }
+}
+#endif
+
+static int print_stack_frames(struct allocation *allocs, size_t nr_allocs, int stack_traces_fd)
+{
+    for (size_t i = 0; i < nr_allocs; i++)
+    {
+        const struct allocation *alloc = &allocs[i];
+
+        printf("%zu bytes in %zu allocations from stack\n", alloc->size, alloc->count);
+
+        if (env.show_allocs)
+        {
+            struct allocation_node *it = alloc->allocations;
+
+            while (!it)
+            {
+                printf("\taddr = %#lx size = %zu\n", it->address, it->size);
+                it = it->next;
+            }
+        }
+
+        if (bpf_map_lookup_elem(stack_traces_fd, &alloc->stack_id, stack))
+        {
+            if (errno == ENOENT)
+                continue;
+
+            perror("Failed to lookup stack trace");
+            return -errno;
+        }
+
+        (*print_stack_frames_func)();
+    }
+
+    return 0;
+}
