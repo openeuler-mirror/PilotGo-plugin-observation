@@ -18,3 +18,24 @@ struct
     __type(key, u32);
     __type(value, struct args_t);
 } start SEC(".maps");
+
+static __always_inline bool valid_uid(uid_t uid)
+{
+    return uid != INVALID_UID;
+}
+
+static __always_inline bool trace_allowed(u32 tgid, u32 pid)
+{
+    if (target_pid && target_pid != pid)
+        return false;
+    if (target_tgid && target_tgid != tgid)
+        return false;
+    if (valid_uid(target_uid))
+    {
+        uid_t uid = (u32)bpf_get_current_uid_gid();
+
+        if (target_uid != uid)
+            return false;
+    }
+    return true;
+}
