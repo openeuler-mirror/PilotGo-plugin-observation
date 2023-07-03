@@ -88,3 +88,29 @@ cleanup:
 	bpf_map_delete_elem(&start, &pid);
 	return 0;
 }
+
+SEC("tp_btf/mm_vmscan_direct_reclaim_begin")
+int BPF_PROG(direct_reclaim_begin_btf)
+{
+	return handle_direct_reclaim_begin();
+}
+
+SEC("tp_btf/mm_vmscan_direct_reclaim_end")
+int BPF_PROG(direct_reclaim_end_btf, unsigned long nr_reclaimed)
+{
+	return handle_direct_reclaim_end(ctx, nr_reclaimed);
+}
+
+SEC("raw_tp/mm_vmscan_direct_reclaim_begin")
+int BPF_PROG(direct_reclaim_begin_raw)
+{
+	return handle_direct_reclaim_begin();
+}
+
+SEC("raw_tp/mm_vmscan_direct_reclaim_end")
+int BPF_PROG(direct_reclaim_end_raw, unsigned long nr_reclaimed)
+{
+	return handle_direct_reclaim_end(ctx, nr_reclaimed);
+}
+
+char LICENSE[] SEC("license") = "GPL";
