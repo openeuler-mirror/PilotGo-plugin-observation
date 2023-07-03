@@ -258,3 +258,55 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
     }
     return 0;
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+                           va_list args)
+{
+    if (level == LIBBPF_DEBUG && !env.verbose)
+        return 0;
+    return vfprintf(stderr, format, args);
+}
+
+static int event_init(int *fd)
+{
+    if (!fd)
+    {
+        warning("Pointer to fd is NULL\n");
+        return 1;
+    }
+
+    const int temp_fd = eventfd(0, EFD_CLOEXEC);
+    if (temp_fd < 0)
+    {
+        perror("Failed to create event fd");
+        return -errno;
+    }
+
+    *fd = temp_fd;
+    return 0;
+}
+
+static int event_wait(int fd, uint64_t expected_event)
+{
+    uint64_t event = 0;
+    const ssize_t bytes = read(fd, &event, sizeof(event));
+
+    if (bytes < 0)
+    {
+        perror("Failed to read from fd");
+        return -errno;
+    }
+    else if (bytes != sizeof(event))
+    {
+        warning("Read unexpected size\n");
+        return 1;
+    }
+
+    if (event != expected_event)
+    {
+        warning("Read event %lu, expected %lu\n", event, expected_event);
+        return 1;
+    }
+
+    return 0;
+}
