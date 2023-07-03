@@ -112,5 +112,22 @@ int main(int argc, char *argv[])
 	bpf_obj->rodata->target_dist = env.distributed;
 	bpf_obj->rodata->target_ns = env.nanoseconds;
 
+	err = softirqs_bpf__load(bpf_obj);
+	if (err) {
+		warning("failed to load BPF objects: %d\n", err);
+		goto cleanup;
+	}
+
+	if (!bpf_obj->bss) {
+		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+		goto cleanup;
+	}
+
+	err = softirqs_bpf__attach(bpf_obj);
+	if (err) {
+		warning("failed to attach BPF programs\n");
+		goto cleanup;
+	}
+
 	return err != 0;
 }
