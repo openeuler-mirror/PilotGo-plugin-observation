@@ -4,6 +4,35 @@
 #include "softirqs.skel.h"
 #include "trace_helpers.h"
 
+struct env {
+	bool distributed;
+	bool nanoseconds;
+	bool count;
+	time_t interval;
+	int times;
+	bool timestamp;
+	bool verbose;
+} env = {
+	.interval = 99999999,
+	.times = 99999999,
+	.count = false,
+};
+
+static volatile sig_atomic_t exiting;
+
+const char *argp_program_version = "softirqs 0.1";
+const char *argp_program_buf_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char argp_program_doc[] =
+"Summarize soft irq event time as histograms.\n"
+"\n"
+"USAGE: softirqs [--help] [-T] [-N] [-d] [interval] [count]\n"
+"\n"
+"EXAMPLES:\n"
+"  softirqs           # sum soft irq event time\n"
+"  softirqs -d        # show soft irq event time as histograms\n"
+"  softirqs 1 10      # print 1 second summaries, 10 times\n"
+"  softirqs -NT 1     # 1s summaries, nanoseconds, and timestamps\n";
+
 static const struct argp_option opts[] = {
 	{ "distributed", 'd', NULL, 0, "Show distributions as histograms" },
 	{ "timestamp", 'T', NULL, 0, "Include timestamp on output" },
@@ -73,6 +102,85 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+enum {
+	HI_SOFTIRQ,
+	TIMER_SOFTIRQ,
+	NET_TX_SOFTIRQ,
+	NET_RX_SOFTIRQ,
+	BLOCK_SOFTIRQ,
+	IRQ_POLL_SOFTIRQ,
+	TASKLET_SOFTIRQ,
+	SCHED_SOFTIRQ,
+	HRTIMER_SOFTIRQ,
+	RCU_SOFTIRQ,
+	NR_SOFTIRQS
+};
+
+static char *softirq_vec_names[] = {
+	[HI_SOFTIRQ] = "hi",
+	[TIMER_SOFTIRQ] = "timer",
+	[NET_TX_SOFTIRQ] = "net_tx",
+	[NET_RX_SOFTIRQ] = "next_rx",
+	[BLOCK_SOFTIRQ] = "block",
+	[IRQ_POLL_SOFTIRQ] = "irq_poll",
+	[TASKLET_SOFTIRQ] = "tasklet",
+	[SCHED_SOFTIRQ] = "sched",
+	[HRTIMER_SOFTIRQ] = "hrtimer",
+	[RCU_SOFTIRQ] = "rcu"
+};
+
+static int print_count(struct softirqs_bpf__bss *bss)
+{
+	const char *units = env.nanoseconds ? "nsecs" : "usecs";
+	__u64 count, time;
+	__u32 vec;
+
+	printf("%-16s %-6s%-5s  %-11s\n", "SOFTIRQ", "TOTAL_",
+			units, env.count ? "TOTAL_count" : "");
+
+	for (vec = 0; vec < NR_SOFTIRQS; vec++) {
+		time = __atomic_exchange_n(&bss->time[vec], 0,
+					   __ATOMIC_RELAXED);
+		count = __atomic_exchange_n(&bss->counts[vec], 0,
+					    __ATOMIC_RELAXED);
+
+		if (count > 0) {
+			printf("%-16s %11llu", softirq_vec_names[vec], time);
+			if (env.count)
+				printf("  %11llu", count);
+			printf("\n");
+		}
+	}
+
+	return 0;
+}
+
+static struct hist zero;
+static int print_hist(struct softirqs_bpf__bss *bss)
+{
+	const char *units = env.nanoseconds ? "nsecs" : "usecs";
+	__u32 vec;
+
+	for (vec = 0; vec < NR_SOFTIRQS; vec++) {
+		struct hist hist = bss->hists[vec];
+
+		bss->hists[vec] = zero;
+		if (!memcmp(&zero, &hist, sizeof(hist)))
+			continue;
+
+		printf("softirq = %s\n", softirq_vec_names[vec]);
+		print_log2_hist(hist.slots, MAX_SLOTS, units);
+		printf("\n");
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -88,12 +196,12 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
-	
+
 	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
-	
+
 	bpf_obj = softirqs_bpf__open();
 	if (!bpf_obj) {
 		warning("failed to open BPF object\n");
@@ -158,3 +266,5 @@ cleanup:
 
 	return err != 0;
 }
+
+
