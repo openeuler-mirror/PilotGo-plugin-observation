@@ -159,3 +159,37 @@ static void inline quoted_symbol(char c)
 		break;
 	}
 }
+
+static void print_args(const struct event *e, bool quote)
+{
+	int args_counter = 0;
+
+	if (env.quote)
+		putchar('"');
+
+	for (int i = 0; i < e->args_size && args_counter < e->args_count; i++) {
+		char c = e->args[i];
+
+		if (env.quote) {
+			if (c == '\0') {
+				args_counter++;
+				putchar('"');
+				putchar(' ');
+				if (args_counter < e->args_count)
+					putchar('"');
+			} else {
+				quoted_symbol(c);
+			}
+		} else {
+			if (c == '\0') {
+				args_counter++;
+				putchar(' ');
+			} else {
+				putchar(c);
+			}
+		}
+	}
+
+	if (e->args_count == env.max_args + 1)
+		fputs(" ...", stdout);
+}
