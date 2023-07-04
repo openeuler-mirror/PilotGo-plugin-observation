@@ -129,5 +129,32 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	signal(SIGINT, sig_handler);
+
+	printf("Tracing softirq event time... Hit Ctrl-C to end.\n");
+
+	for (;;) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		if (!env.distributed)
+			err = print_count(bpf_obj->bss);
+		else
+			err = print_hist(bpf_obj->bss);
+		if (err)
+			break;
+
+		if (exiting || --env.times == 0)
+			break;
+	}
+
+cleanup:
+	softirqs_bpf__destroy(bpf_obj);
+
 	return err != 0;
 }
