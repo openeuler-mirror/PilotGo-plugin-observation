@@ -97,3 +97,32 @@ int get_pid_lib_path(pid_t pid, const char *lib, char *path, size_t path_sz)
 	fclose(maps);
 	return -1;
 }
+
+/*
+ * Returns 0 on success; -1 on failure.  On success, returns via `path` the full
+ * path to the program.
+ */
+static int which_program(const char *prog, char *path, size_t path_sz)
+{
+	FILE *which;
+	char cmd[100];
+
+	if (snprintf(cmd, sizeof(cmd), "which %s", prog) >= sizeof(cmd)) {
+		warn("snprintf which prog failed");
+		return -1;
+	}
+	which = popen(cmd, "r");
+	if (!which) {
+		warn("which failed");
+		return -1;
+	}
+	if (!fgets(path, path_sz, which)) {
+		warn("fgets which failed");
+		pclose(which);
+		return -1;
+	}
+	/* which has a \n at the end of the string */
+	path[strlen(path) - 1] = '\0';
+	pclose(which);
+	return 0;
+}
