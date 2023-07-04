@@ -63,3 +63,65 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	long int uid, max_args;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'T':
+		env.time = true;
+		break;
+	case 't':
+		env.timestamp = true;
+		break;
+	case 'x':
+		env.fails = true;
+		break;
+	case 'c':
+		env.cgroupspath = arg;
+		env.cg = true;
+		break;
+	case 'u':
+		errno = 0;
+		uid = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid UID %s\n", arg);
+			argp_usage(state);
+		}
+		env.uid = uid;
+		break;
+	case 'q':
+		env.quote = true;
+		break;
+	case 'n':
+		env.name = arg;
+		break;
+	case 'l':
+		env.line = arg;
+		break;
+	case 'U':
+		env.print_uid = true;
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case MAX_ARGS_KEY:
+		errno = 0;
+		max_args = strtol(arg, NULL, 10);
+		if (errno || max_args < 1 || max_args > TOTAL_MAX_ARGS) {
+			warning("Invalid MAX_ARGS %s, should be in [1, %d] range\n",
+				arg, TOTAL_MAX_ARGS);
+			argp_usage(state);
+		}
+		env.max_args = max_args;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
