@@ -218,3 +218,9 @@ Elf *open_elf_by_fd(int fd)
 	}
 	return e;
 }
+
+void close_elf(Elf *e, int fd_close)
+{
+	elf_end(e);
+	close(fd_close);
+}
