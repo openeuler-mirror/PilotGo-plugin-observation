@@ -389,6 +389,29 @@ int main(int argc, char *argv[])
 	obj->rodata->target_pid = target_pid;
 	obj->rodata->min_lat_ns = min_lat_ms * 1e6;
 
+	/*
+	 * before load
+	 * if entry is supported, we set attach target and disable kprobes
+	 * otherwise, we disable fentry and attach kprobes after loading
+	 */
+	support_fentry = check_fentry();
+	if (support_fentry) {
+		err = fentry_set_attach_targets(obj);
+		if (err) {
+			warning("Failed to set attach target: %d\n", err);
+			goto cleanup;
+		}
+		disable_kprobes(obj);
+	} else {
+		disable_fentry(obj);
+	}
+
+	err = fsslower_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
 	}
 
 cleanup:
