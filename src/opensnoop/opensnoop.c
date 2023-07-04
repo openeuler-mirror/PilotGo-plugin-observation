@@ -254,3 +254,98 @@ static void parse_open_modes(unsigned short mode, int sps_cnt)
 
     printf("MODES: %s\n", modes_string);
 }
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+    const struct event *e = data;
+    int fd, err, sps_cnt;
+    const char *program_name = basename((char *)ctx);
+#ifdef USE_BLAZESYM
+    blazesym_sym_src_cfg src_cfg;
+    const blazesym_result *result = NULL;
+    const blazesym_csym *sym;
+
+    src_cfg.src_type = BLAZESYM_SRC_T_PROCESS;
+    src_cfg.params.process.pid = e->pid;
+#endif
+
+    /* name filtering is currently done in user space */
+    if (env.name && strstr(e->comm, env.name) == NULL)
+        return 0;
+
+    /* skip this program */
+    if (!strcmp(program_name, e->comm))
+        return 0;
+
+    /* prepare fileds */
+    if (e->ret >= 0)
+    {
+        fd = e->ret;
+        err = 0;
+    }
+    else
+    {
+        fd = -1;
+        err = -e->ret;
+    }
+
+#ifdef USE_BLAZESYM
+    if (env.callers)
+        result = blazesym_symbolize(symbolizer, &src_cfg, 1,
+                                    (const uint64_t *)&e->callers, 2);
+#endif
+
+    /* print output */
+    sps_cnt = 0;
+    if (env.timestamp)
+    {
+        char ts[32];
+
+        strftime_now(ts, sizeof(ts), "%H:%M:%S");
+        printf("%-8s ", ts);
+        sps_cnt += 9;
+    }
+
+    if (env.print_uid)
+    {
+        printf("%-7d ", e->uid);
+        sps_cnt += 8;
+    }
+
+    printf("%-6d %-16s %3d %3d ", e->pid, e->comm, fd, err);
+    sps_cnt += 7 + 17 + 4 + 4;
+
+    if (env.extended && !env.fuller_extended)
+    {
+        printf("%08o %08o ", e->flags, e->modes);
+        sps_cnt += 18;
+    }
+    printf("%s\n", e->fname);
+
+    if (env.fuller_extended)
+    {
+        parse_open_flags(e->flags, sps_cnt);
+        parse_open_modes(e->modes, sps_cnt);
+        printf("\n");
+    }
+
+#ifdef USE_BLAZESYM
+    for (int i = 0; result && i < result->size; i++)
+    {
+        if (result->entries[i].size == 0)
+            continue;
+        sym = &result->entries[i].syms[0];
+
+        for (int j = 0; j < sps_cnt; j++)
+            printf(" ");
+        if (sym->line_no)
+            printf("%s:%ld\n", sym->symbol, sym->line_no);
+        else
+            printf("%s\n", sym->symbol);
+    }
+
+    blazesym_result_free(result);
+#endif
+
+    return 0;
+}
