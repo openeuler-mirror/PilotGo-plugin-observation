@@ -44,3 +44,56 @@ int get_pid_binary_path(pid_t pid, char *path, size_t path_sz)
 
 	return 0;
 }
+
+/*
+ * Returns 0 on success; -1 on failure.  On success, returns via `path` the full
+ * path to a library matching the name `lib` that is loaded into pid's address
+ * space.
+ */
+int get_pid_lib_path(pid_t pid, const char *lib, char *path, size_t path_sz)
+{
+	FILE *maps;
+	char *p;
+	char proc_pid_maps[32];
+	char line_buf[1024];
+	char path_buf[1024];
+
+	if (snprintf(proc_pid_maps, sizeof(proc_pid_maps), "/proc/%d/maps", pid)
+	    >= sizeof(proc_pid_maps)) {
+		warn("snprintf /proc/PID/maps failed");
+		return -1;
+	}
+	maps = fopen(proc_pid_maps, "r");
+	if (!maps) {
+		warn("No such pid %d\n", pid);
+		return -1;
+	}
+	while (fgets(line_buf, sizeof(line_buf), maps)) {
+		if (sscanf(line_buf, "%*x-%*x %*s %*x %*s %*u %s", path_buf) != 1)
+			continue;
+		/* e.g. /usr/lib/x86_64-linux-gnu/libc-2.31.so */
+		p = strrchr(path_buf, '/');
+		if (!p)
+			continue;
+		if (strncmp(p, "/lib", 4))
+			continue;
+		p += 4;
+		if (strncmp(lib, p, strlen(lib)))
+			continue;
+		p += strlen(lib);
+		/* libraries can have - or . after the name */
+		if (*p != '.' && *p != '-')
+			continue;
+		if (strnlen(path_buf, 1024) >= path_sz) {
+			warn("path size too small\n");
+			return -1;
+		}
+		strcpy(path, path_buf);
+		fclose(maps);
+		return 0;
+	}
+
+	warn("Cannot find library %s\n", lib);
+	fclose(maps);
+	return -1;
+}
