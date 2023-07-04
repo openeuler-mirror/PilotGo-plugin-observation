@@ -349,3 +349,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
     return 0;
 }
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+    warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
