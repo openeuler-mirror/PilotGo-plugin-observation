@@ -116,6 +116,25 @@ int main(int argc, char *argv[])
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
-	
+
+        obj = stacksnoop_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	/* alloc space for storing a stack trace */
+	stacks = calloc(env.perf_max_stack_depth, sizeof(*stacks));
+	if (!stacks) {
+		warning("Failed to allocate stack array\n");
+		err = -ENOMEM;
+		goto cleanup;
+	}
+cleanup:
+	bpf_buffer__free(buf);
+	stacksnoop_bpf__destroy(obj);
+	ksyms__free(ksyms);
+	free(stacks);
+
 	return err != 0;
 }
