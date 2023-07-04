@@ -39,3 +39,45 @@ static __always_inline bool trace_allowed(u32 tgid, u32 pid)
     }
     return true;
 }
+
+SEC("tracepoint/syscalls/sys_enter_open")
+int tracepoint__syscalls__sys_enter_open(struct trace_event_raw_sys_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    pid_t tgid = id >> 32;
+    pid_t pid = (pid_t)id;
+
+    if (trace_allowed(tgid, pid))
+    {
+        struct args_t args = {};
+
+        args.fname = (const char *)ctx->args[0];
+        args.flags = (int)ctx->args[1];
+        args.modes = (umode_t)ctx->args[2];
+
+        bpf_map_update_elem(&start, &pid, &args, BPF_ANY);
+    }
+
+    return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_openat")
+int tracepoint__syscalls__sys_enter_openat(struct trace_event_raw_sys_enter *ctx)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    pid_t tgid = id >> 32;
+    pid_t pid = (pid_t)id;
+
+    if (trace_allowed(tgid, pid))
+    {
+        struct args_t args = {};
+
+        args.fname = (const char *)ctx->args[1];
+        args.flags = (int)ctx->args[2];
+        args.modes = (umode_t)ctx->args[3];
+
+        bpf_map_update_elem(&start, &pid, &args, BPF_ANY);
+    }
+
+    return 0;
+}
