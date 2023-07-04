@@ -106,3 +106,35 @@ static __always_inline int syscall_enter_execve(const char *filename,
 	event->args_count++;
 	return 0;
 }
+
+static __always_inline int syscall_exit_execve(void *ctx, int ret)
+{
+	pid_t pid;
+	uid_t uid;
+	struct event *event;
+
+	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return 0;
+
+	uid = (uid_t)bpf_get_current_uid_gid();
+	if (target_uid != INVALID_UID && uid != target_uid)
+		return 0;
+
+	pid = (pid_t)bpf_get_current_pid_tgid();
+	event = bpf_map_lookup_and_delete_elem(&execs, &pid);
+	if (!event)
+		return 0;
+
+	if (ignore_failed && ret < 0)
+		return 0;
+
+	event->retval = ret;
+	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+
+	/* actual len is smaller than sizeof(struct event) */
+	if (EVENT_SIZE(event) <= sizeof(struct event))
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, event,
+				      EVENT_SIZE(event));
+
+	return 0;
+}
