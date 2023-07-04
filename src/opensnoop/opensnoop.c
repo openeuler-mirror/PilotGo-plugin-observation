@@ -114,3 +114,88 @@ const char argp_program_doc[] =
     "    ./opensnoop -c        # show calling functions\n"
 #endif
     "";
+
+static const struct argp_option opts[] = {
+    {"duration", 'd', "DURATION", 0, "Duration to trace"},
+    {"extended-fields", 'e', NULL, 0, "Print extended fields"},
+    {"format-extended-fields", 'E', NULL, 0, "Print formated extended fields"},
+    {"name", 'n', "NAME", 0, "Trace process names containing this"},
+    {"pid", 'p', "PID", 0, "Process PID to trace"},
+    {"tid", 't', "TID", 0, "Thread ID to trace "},
+    {"timestamp", 'T', NULL, 0, "Print timestamp"},
+    {"uid", 'u', "UID", 0, "User ID to trace"},
+    {"print-uid", 'U', NULL, 0, "Print UID"},
+    {"verbose", 'v', NULL, 0, "Verbose debug output"},
+    {"failed", 'x', NULL, 0, "Failed opens only"},
+#ifdef USE_BLAZESYM
+    {"callers", 'c', NULL, 0, "Show calling functions"},
+#endif
+    {NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help"},
+    {}};
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+    static int pos_args;
+
+    switch (key)
+    {
+    case 'e':
+        env.extended = true;
+        break;
+    case 'E':
+        env.fuller_extended = true;
+        break;
+    case 'h':
+        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+        break;
+    case 'T':
+        env.timestamp = true;
+        break;
+    case 'U':
+        env.print_uid = true;
+        break;
+    case 'v':
+        env.verbose = true;
+        break;
+    case 'x':
+        env.failed = true;
+        break;
+    case 'd':
+        env.duration = argp_parse_long(key, arg, state);
+        break;
+    case 'n':
+        env.name = arg;
+        break;
+    case 'p':
+        env.pid = argp_parse_pid(key, arg, state);
+        break;
+    case 't':
+        env.tid = argp_parse_pid(key, arg, state);
+        break;
+    case 'u':
+        errno = 0;
+        env.uid = strtol(arg, NULL, 10);
+        if (errno || env.uid < 0 || env.uid >= INVALID_UID)
+        {
+            warning("Invalid UID %s\n", arg);
+            argp_usage(state);
+        }
+        break;
+#ifdef USE_BLAZESYM
+    case 'c':
+        env.callers = true;
+        break;
+#endif
+    case ARGP_KEY_ARG:
+        if (pos_args++)
+        {
+            warning("Unrecognized positional argument: %s\n", arg);
+            argp_usage(state);
+        }
+        errno = 0;
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
