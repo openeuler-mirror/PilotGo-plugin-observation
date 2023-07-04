@@ -34,3 +34,14 @@ const char argp_program_doc[] =
 "    hardirqs 1 10       # print 1 second summaries, 10 times\n"
 "    hardirqs -c CG      # Trace process under cgroupsPath CG\n"
 "    hardirqs -NT 1      # 1s summaries, nanoseconds, and timestamps\n";
+
+static const struct argp_option opts[] = {
+	{ "count", 'C', NULL, 0, "Show event counts instead of timing" },
+	{ "distributed", 'd', NULL, 0, "Show distributions as histograms" },
+	{ "cgroup", 'c', "/sys/fs/cgroup/unified", 0, "Trace process in cgroup path" },
+	{ "timestamp", 'T', NULL, 0, "Include timestamp on output" },
+	{ "nanoseconds", 'N', NULL, 0, "Output in nanoseconds" },
+	{ "verbose", 'v', NULL, 0, "Verbose debug output" },
+	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
+	{},
+};
