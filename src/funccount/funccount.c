@@ -52,3 +52,44 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'v':
+		env.verbose = true;
+		break;
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'i':
+		env.interval = argp_parse_long(key, arg, state);
+		break;
+	case 'p':
+		env.pid = argp_parse_pid(key, arg, state);
+		break;
+	case 'T':
+		env.timestamp = true;
+		break;
+	case 'd':
+		env.duration = argp_parse_long(key, arg, state);
+		break;
+	case ARGP_KEY_END:
+		if (env.duration) {
+			env.interval = min(env.interval, env.duration);
+			env.interations = env.duration / env.interval;
+		}
+		break;
+	case ARGP_KEY_ARG:
+		if (state->arg_num != 0) {
+			warning("Unrecognized positional argument: %s\n", arg);
+			argp_usage(state);
+		}
+		env.functions = arg;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
