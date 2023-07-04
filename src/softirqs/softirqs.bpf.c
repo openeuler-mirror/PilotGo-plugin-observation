@@ -62,3 +62,30 @@ static int handle_exit(unsigned int vec_nr)
 
 	return 0;
 }
+
+SEC("tp_btf/softirq_entry")
+int BPF_PROG(softirq_entry_btf, unsigned int vec_nr)
+{
+	return handle_entry(vec_nr);
+}
+
+SEC("tp_btf/softirq_exit")
+int BPF_PROG(softirq_exit_btf, unsigned int vec_nr)
+{
+	return handle_exit(vec_nr);
+}
+
+SEC("raw_tp/softirq_entry")
+int BPF_PROG(softirq_entry_raw, unsigned int vec_nr)
+{
+	return handle_entry(vec_nr);
+}
+
+SEC("raw_tp/softirq_exit")
+int BPF_PROG(softirq_exit_raw, unsigned int vec_nr)
+{
+	return handle_exit(vec_nr);
+}
+
+char LICENSE[] SEC("license") = "GPL";
+
