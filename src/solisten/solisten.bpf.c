@@ -40,3 +40,68 @@ static void fill_event(struct event *event, struct socket *sock)
 		BPF_CORE_READ_INTO(event->addr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 	bpf_get_current_comm(event->task, sizeof(event->task));
 }
+
+SEC("kprobe/inet_listen")
+int BPF_KPROBE(inet_listen_entry, struct socket *sock, int backlog)
+{
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u32 tid = (__u32)pid_tgid;
+	struct event event = {};
+
+	if (target_pid && target_pid != pid)
+		return 0;
+
+	fill_event(&event, sock);
+	event.pid = pid;
+	event.backlog = backlog;
+	bpf_map_update_elem(&values, &tid, &event, BPF_ANY);
+	return 0;
+}
+
+SEC("kretprobe/inet_listen")
+int BPF_KRETPROBE(inet_listen_exit, int ret)
+{
+	__u32 tid = bpf_get_current_pid_tgid();
+	struct event *eventp;
+	struct event *buf;
+
+	eventp = bpf_map_lookup_and_delete_elem(&values, &tid);
+	if (!eventp)
+		return 0;
+
+	buf = reserve_buf(sizeof(*buf));
+	if (!buf)
+		return 0;
+
+	__builtin_memcpy(buf, eventp, sizeof(*buf));
+	buf->ret = ret;
+	submit_buf(ctx, buf, sizeof(*buf));
+
+	return 0;
+}
+
+SEC("fexit/inet_listen")
+int BPF_PROG(inet_listen_fexit, struct socket *sock, int backlog, int ret)
+{
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	struct event *eventp;
+
+	if (target_pid && target_pid != pid)
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		return 0;
+
+	fill_event(eventp, sock);
+	eventp->pid = pid;
+	eventp->backlog = backlog;
+	eventp->ret = ret;
+
+	submit_buf(ctx, eventp, sizeof(*eventp));
+	return 0;
+}
+
+char LICENSE[] SEC("license") = "Dual BSD/GPL";
