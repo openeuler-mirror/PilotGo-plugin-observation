@@ -354,3 +354,137 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
     warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
+
+int main(int argc, char *argv[])
+{
+    LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+    static const struct argp argp = {
+        .options = opts,
+        .parser = parse_arg,
+        .doc = argp_program_doc,
+    };
+    struct bpf_buffer *buf = NULL;
+    struct opensnoop_bpf *obj;
+    __u64 time_end = 0;
+    int err;
+
+    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+    if (err)
+        return err;
+
+    if (!bpf_is_root())
+        return 1;
+
+    libbpf_set_print(libbpf_print_fn);
+
+    err = ensure_core_btf(&open_opts);
+    if (err)
+    {
+        warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+        return 1;
+    }
+
+    obj = opensnoop_bpf__open_opts(&open_opts);
+    if (!obj)
+    {
+        warning("Failed to open BPF object\n");
+        return 1;
+    }
+
+    buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+    if (!buf)
+    {
+        err = -errno;
+        warning("Failed to create ring/perf buffer: %d\n", err);
+        goto cleanup;
+    }
+
+    obj->rodata->target_tgid = env.pid;
+    obj->rodata->target_pid = env.tid;
+    obj->rodata->target_uid = env.uid;
+    obj->rodata->target_failed = env.failed;
+
+    /* aarch64 and riscv64 don't have open syscall */
+    if (!tracepoint_exists("syscalls", "sys_enter_open"))
+    {
+        bpf_program__set_autoload(obj->progs.tracepoint__syscalls__sys_enter_open, false);
+        bpf_program__set_autoload(obj->progs.tracepoint__syscalls__sys_exit_open, false);
+    }
+
+    err = opensnoop_bpf__load(obj);
+    if (err)
+    {
+        warning("Failed to load BPF object: %d\n", err);
+        goto cleanup;
+    }
+
+    err = opensnoop_bpf__attach(obj);
+    if (err)
+    {
+        warning("Failed to attach BPF programs: %d\n", err);
+        goto cleanup;
+    }
+
+    err = bpf_buffer__open(buf, handle_event, handle_lost_events, argv[0]);
+    if (err)
+    {
+        warning("Failed to open ring/perf buffer: %d\n", err);
+        goto cleanup;
+    }
+
+#ifdef USE_BLAZESYM
+    if (env.callers)
+        symbolizer = blazesym_new();
+#endif
+
+    /* print headers */
+    if (env.timestamp)
+        printf("%-8s ", "TIME");
+    if (env.print_uid)
+        printf("%-7s ", "UID");
+    printf("%-6s %-16s %3s %3s ", "PID", "COMM", "FD", "ERR");
+    if (env.extended)
+        printf("%-8s %-8s ", "FLAGS", "MODES");
+    printf("%s", "PATH");
+#ifdef USE_BLAZESYM
+    if (env.callers)
+        printf("/CALLER");
+#endif
+    printf("\n");
+
+    /* setup duration */
+    if (env.duration)
+        time_end = get_ktime_ns() + env.duration * NSEC_PER_SEC;
+
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+    {
+        warning("Can't set signal handler: %s\n", strerror(errno));
+        err = 1;
+        goto cleanup;
+    }
+
+    /* main: poll */
+    while (!exiting)
+    {
+        err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+        if (err < 0 && err != -EINTR)
+        {
+            warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+            goto cleanup;
+        }
+        if (env.duration && get_ktime_ns() > time_end)
+            goto cleanup;
+        /* reset err to return 0 if exiting */
+        err = 0;
+    }
+
+cleanup:
+    bpf_buffer__free(buf);
+    opensnoop_bpf__destroy(obj);
+    cleanup_core_btf(&open_opts);
+#ifdef USE_BLAZESYM
+    blazesym_free(symbolizer);
+#endif
+
+    return err != 0;
+}
