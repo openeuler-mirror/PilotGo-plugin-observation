@@ -105,3 +105,50 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va
 		return 0;
 	return vfprintf(stderr, format, args);
 }
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int print_map(struct bpf_map *map)
+{
+	irq_key_t lookup_key = {}, next_key;
+	info_t info;
+	int fd, err;
+	const char *units = env.nanoseconds ? "nsecs" : "usecs";
+
+	if (env.count)
+		printf("%-26s %11s\n", "HARDIRQ", "TOTAL_count");
+	else if (!env.distributed)
+		printf("%-26s %6s%5s\n", "HARDIRQ", "TOTAL_", units);
+
+	fd = bpf_map__fd(map);
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_lookup_elem(fd, &next_key, &info);
+		if (err < 0) {
+			warning("failed to lookup infos: %d\n", err);
+			return -1;
+		}
+		if (!env.distributed) {
+			printf("%-26s %11llu\n", next_key.name, info.count);
+		} else {
+			printf("hardirq = %s\n", next_key.name);
+			print_log2_hist(info.slots, MAX_SLOTS, units);
+		}
+		lookup_key = next_key;
+	}
+
+	memset(&lookup_key, 0, sizeof(lookup_key));
+
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_delete_elem(fd, &next_key);
+		if (err < 0) {
+			warning("failed to cleanup infos: %d\n", err);
+			return -1;
+		}
+		lookup_key = next_key;
+	}
+
+	return 0;
+}
