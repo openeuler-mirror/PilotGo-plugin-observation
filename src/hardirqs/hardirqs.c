@@ -152,3 +152,118 @@ static int print_map(struct bpf_map *map)
 
 	return 0;
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+
+	struct hardirqs_bpf *bpf_obj;
+	char ts[32];
+	int err;
+	int idx, memcg_map_fd;
+	int memcg_fd = -1;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	if (env.count && env.distributed) {
+		warning("count, distributed cann't be used together.\n");
+		return 1;
+	}
+
+	libbpf_set_print(libbpf_print_fn);
+
+	bpf_obj = hardirqs_bpf__open();
+	if (!bpf_obj) {
+		warning("failed to open BPF object\n");
+		return 1;
+	}
+
+	if (probe_tp_btf("irq_handler_entry")) {
+		bpf_program__set_autoload(bpf_obj->progs.irq_handler_entry_raw, false);
+		bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_raw, false);
+		if (env.count)
+			bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_btf, false);
+	} else {
+		bpf_program__set_autoload(bpf_obj->progs.irq_handler_entry_btf, false);
+		bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_btf, false);
+		if (env.count)
+			bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_raw, false);
+	}
+
+	/* initialize global data (filtering options) */
+	bpf_obj->rodata->filter_memcg = env.cg;
+	bpf_obj->rodata->do_count = env.count;
+
+	if (!env.count) {
+		bpf_obj->rodata->target_dist = env.distributed;
+		bpf_obj->rodata->target_ns = env.nanoseconds;
+	}
+
+	err = hardirqs_bpf__load(bpf_obj);
+	if (err) {
+		warning("failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	/* update cgroup path fd to map */
+	if (env.cg) {
+		idx = 0;
+		memcg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
+		memcg_fd = open(env.cgroupspath, O_RDONLY);
+		if (memcg_fd < 0) {
+			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+			goto cleanup;
+		}
+		if (bpf_map_update_elem(memcg_map_fd, &idx, &memcg_fd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map");
+			goto cleanup;
+		}
+	}
+
+	err = hardirqs_bpf__attach(bpf_obj);
+	if (err) {
+		warning("Failed to attach BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	signal(SIGINT, sig_handler);
+
+	if (env.count)
+		printf("Tracing hard irq events... Hit Ctrl-C to end.\n");
+	else
+		printf("Tracing hard irq event time... Hit Ctrl-C to end.\n");
+
+	/* Main loop */
+	for (;;) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		err = print_map(bpf_obj->maps.infos);
+		if (err)
+			break;
+
+		if (exiting || --env.times == 0)
+			break;
+	}
+
+cleanup:
+	hardirqs_bpf__destroy(bpf_obj);
+	if (memcg_fd > 0)
+		close(memcg_fd);
+
+	return err != 0;
+}
