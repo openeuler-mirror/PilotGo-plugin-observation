@@ -28,3 +28,37 @@ static __always_inline bool filter_pid(void)
 	return false;
 }
 
+SEC("kprobe.multi")
+int BPF_KPROBE(function_entry)
+{
+	if (filter_pid())
+		return 0;
+
+	static __u64 zero;
+	__u64 ip = PT_REGS_IP(ctx);
+	__u64 *count = bpf_map_lookup_or_try_init(&counts, &ip, &zero);
+
+	if (!count)
+		return 0;
+
+	__sync_fetch_and_add(count, 1);
+	return 0;
+}
+
+SEC("tracepoint")
+int tracepoint_entry(void *ctx)
+{
+	if (filter_pid())
+		return 0;
+
+	static __u64 zero;
+	__u64 *count = bpf_map_lookup_or_try_init(&counts, &zero, &zero);
+
+	if (!count)
+		return 0;
+
+	__sync_fetch_and_add(count, 1);
+	return 0;
+}
+
+char LICENSE[] SEC("license") = "GPL";
