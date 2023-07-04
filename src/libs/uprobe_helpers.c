@@ -126,3 +126,38 @@ static int which_program(const char *prog, char *path, size_t path_sz)
 	pclose(which);
 	return 0;
 }
+
+/*
+ * Returns 0 on success; -1 on failure.  On success, returns via `path` the full
+ * path to the binary for the given pid.
+ * 1) pid == x, binary == ""    : returns the path to x's program
+ * 2) pid == x, binary == "foo" : returns the path to libfoo linked in x
+ * 3) pid == 0, binary == ""    : failure: need a pid or a binary
+ * 4) pid == 0, binary == "bar" : returns the path to `which bar`
+ *
+ * For case 4), ideally we'd like to search for libbar too, but we don't support
+ * that yet.
+ */
+int resolve_binary_path(const char *binary, pid_t pid, char *path, size_t path_sz)
+{
+	if (!strcmp(binary, "")) {
+		if (!pid) {
+			warn("Uprobes need a pid or a binary\n");
+			return -1;
+		}
+		return get_pid_binary_path(pid, path, path_sz);
+	}
+	if (pid)
+		return get_pid_lib_path(pid, binary, path, path_sz);
+
+	if (which_program(binary, path, path_sz)) {
+		/*
+		 * If the user is tracing a program by name, we can find it.
+		 * But we can't find a library by name yet.  We'd need to parse
+		 * ld.so.cache or something similar.
+		 */
+		warn("Can't find %s (Need a PID if this is a library)\n", binary);
+		return -1;
+	}
+	return 0;
+}
