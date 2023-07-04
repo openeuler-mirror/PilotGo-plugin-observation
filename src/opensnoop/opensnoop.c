@@ -199,3 +199,58 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
     }
     return 0;
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+                           va_list args)
+{
+    if (level == LIBBPF_DEBUG && !env.verbose)
+        return 0;
+    return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+    exiting = 1;
+}
+
+static void parse_open_flags(int flag, int sps_cnt)
+{
+    char flags_string[1024] = {0};
+
+    for (int j = 0; j < ARRAY_SIZE(openflags); j++)
+    {
+        if (!(flag & openflags[j].flag))
+            continue;
+        if (flags_string[0])
+            strcat(flags_string, " | ");
+        strcat(flags_string, openflags[j].name);
+    }
+    if (strlen(flags_string) == 0)
+        return;
+
+    for (int j = 0; j < sps_cnt; j++)
+        printf(" ");
+
+    printf("FLAGS: %s\n", flags_string);
+}
+
+static void parse_open_modes(unsigned short mode, int sps_cnt)
+{
+    char modes_string[1024] = {0};
+
+    for (int j = 0; j < ARRAY_SIZE(openmodes); j++)
+    {
+        if (!(mode & openmodes[j].mode))
+            continue;
+        if (modes_string[0])
+            strcat(modes_string, " | ");
+        strcat(modes_string, openmodes[j].name);
+    }
+    if (strlen(modes_string) == 0)
+        return;
+
+    for (int j = 0; j < sps_cnt; j++)
+        printf(" ");
+
+    printf("MODES: %s\n", modes_string);
+}
