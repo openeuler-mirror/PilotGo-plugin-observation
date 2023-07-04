@@ -84,6 +84,20 @@ int t argc, char *argv[])
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
+        
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
+	obj = solisten_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+        
+	obj->rodata->target_pid = target_pid;
 
 }
 
