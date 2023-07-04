@@ -138,3 +138,23 @@ static __always_inline int syscall_exit_execve(void *ctx, int ret)
 
 	return 0;
 }
+
+SEC("tracepoint/syscalls/sys_enter_execve")
+int tracepoint_syscall_enter_execve(struct trace_event_raw_sys_enter *ctx)
+{
+	const char *filename = (const char *)(ctx->args[0]);
+	const char *const *argv = (const char **)(ctx->args[1]);
+	const char *const *env = (const char **)(ctx->args[2]);
+
+	return syscall_enter_execve(filename, argv, env);
+}
+
+SEC("tracepoint/syscalls/sys_enter_execveat")
+int tracepoint_syscall_enter_execveat(struct trace_event_raw_sys_enter *ctx)
+{
+	const char *filename = (const char *)(ctx->args[1]);
+	const char *const *argv = (const char **)(ctx->args[2]);
+	const char *const *env = (const char **)(ctx->args[3]);
+
+	return syscall_enter_execve(filename, argv, env);
+}
