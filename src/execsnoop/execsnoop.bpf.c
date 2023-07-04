@@ -158,3 +158,17 @@ int tracepoint_syscall_enter_execveat(struct trace_event_raw_sys_enter *ctx)
 
 	return syscall_enter_execve(filename, argv, env);
 }
+
+SEC("tracepoint/syscalls/sys_exit_execve")
+int tracepoint_syscall_exit_execve(struct trace_event_raw_sys_exit *ctx)
+{
+	return syscall_exit_execve(ctx, ctx->ret);
+}
+
+SEC("tracepoint/syscalls/sys_exit_execveat")
+int tracepoint_syscall_exit_execveat(struct trace_event_raw_sys_exit *ctx)
+{
+	return syscall_exit_execve(ctx, ctx->ret);
+}
+
+char LICENSE[] SEC("license") = "GPL";
