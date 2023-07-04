@@ -412,6 +412,35 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	/* after load
+	 * if fentry is supported, let libbpf do auto load
+	 * otherwise, we attach to kprobes manually
+	 */
+	err = support_fentry ? fsslower_bpf__attach(obj) : attach_kprobes(obj);
+	if (err) {
+		warning("Failed to attach BPF program: %d\n", err);
+		goto cleanup;
+	}
+
+	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+			      handle_event, handle_lost_events, NULL, NULL);
+	if (!pb) {
+		err= -errno;
+		warning("Failed to open perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	print_headers();
+
+	if (duration)
+		time_end = get_ktime_ns() + duration * NSEC_PER_SEC;
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
 	}
 
 cleanup:
