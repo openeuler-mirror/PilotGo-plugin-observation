@@ -720,3 +720,77 @@ static int print_outstanding_combined_allocs(int combined_allocs_fd, int stack_t
 
     return 0;
 }
+
+bool has_kernel_node_tracepoints()
+{
+    return tracepoint_exists("kmem", "kmalloc_node") &&
+           tracepoint_exists("kmem", "kmem_cache_alloc_node");
+}
+
+void disable_kernel_node_tracepoints(struct memleak_bpf *skel)
+{
+    bpf_program__set_autoload(skel->progs.memleak__kmalloc_node, false);
+    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_alloc_node, false);
+}
+
+void disable_kernel_percpu_tracepoints(struct memleak_bpf *skel)
+{
+    bpf_program__set_autoload(skel->progs.memleak__percpu_alloc_percpu, false);
+    bpf_program__set_autoload(skel->progs.memleak__percpu_free_percpu, false);
+}
+
+void disable_kernel_tracepoints(struct memleak_bpf *skel)
+{
+    bpf_program__set_autoload(skel->progs.memleak__kmalloc, false);
+    bpf_program__set_autoload(skel->progs.memleak__kmalloc_node, false);
+    bpf_program__set_autoload(skel->progs.memleak__kfree, false);
+    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_alloc, false);
+    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_alloc_node, false);
+    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_free, false);
+    bpf_program__set_autoload(skel->progs.memleak__mm_page_alloc, false);
+    bpf_program__set_autoload(skel->progs.memleak__mm_page_free, false);
+    bpf_program__set_autoload(skel->progs.memleak__percpu_alloc_percpu, false);
+    bpf_program__set_autoload(skel->progs.memleak__percpu_free_percpu, false);
+}
+
+int attach_uprobes(struct memleak_bpf *skel)
+{
+    ATTACH_UPROBE_CHECKED(skel, malloc, malloc_enter);
+    ATTACH_URETPROBE_CHECKED(skel, malloc, malloc_exit);
+
+    ATTACH_UPROBE_CHECKED(skel, calloc, calloc_enter);
+    ATTACH_URETPROBE_CHECKED(skel, calloc, calloc_exit);
+
+    ATTACH_UPROBE_CHECKED(skel, realloc, realloc_enter);
+    ATTACH_URETPROBE_CHECKED(skel, realloc, realloc_exit);
+
+    ATTACH_UPROBE_CHECKED(skel, mmap, mmap_enter);
+    ATTACH_URETPROBE_CHECKED(skel, mmap, mmap_exit);
+
+    ATTACH_UPROBE_CHECKED(skel, posix_memalign, posix_memalign_enter);
+    ATTACH_URETPROBE_CHECKED(skel, posix_memalign, posix_memalign_exit);
+
+    ATTACH_UPROBE_CHECKED(skel, memalign, memalign_enter);
+    ATTACH_URETPROBE_CHECKED(skel, memalign, memalign_exit);
+
+    ATTACH_UPROBE_CHECKED(skel, free, free_enter);
+    ATTACH_UPROBE_CHECKED(skel, munmap, munmap_enter);
+
+    // the following probes are intentinally allowed to fail attachment
+
+    // deprecated in libc.so bionic
+    ATTACH_UPROBE(skel, valloc, valloc_enter);
+    ATTACH_URETPROBE(skel, valloc, valloc_exit);
+
+    // deprecated in libc.so bionic
+    ATTACH_UPROBE(skel, pvalloc, pvalloc_enter);
+    ATTACH_URETPROBE(skel, pvalloc, pvalloc_exit);
+
+    // add in C11
+    ATTACH_UPROBE(skel, aligned_alloc, aligned_alloc_enter);
+    ATTACH_URETPROBE(skel, aligned_alloc, aligned_alloc_exit);
+
+    return 0;
+}
+
+static int child_exec_event_fd = -1;
