@@ -97,6 +97,66 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	int fd = *(int *)ctx;
+
+	if (env.verbose)
+		printf("%-18s %-12s %-6s %-3s %s\n", "TIME(s)", "COMM", "PID",
+		       "CPU", "FUNCTION");
+	else
+		printf("%-18s %s\n", "TIME(s)", "FUNCTION");
+
+	printf("%-18.9f ", time_since_start());
+	if (env.verbose)
+		printf("%-12.12s %-6d %-3d %s\n",
+		       e->comm, e->pid, e->cpu, env.function);
+	else
+		printf("%s\n", env.function);
+
+	bpf_map_lookup_elem(fd, &e->stack_id, stacks);
+	for (size_t i = 0; i < env.perf_max_stack_depth; i++) {
+		if (!stacks[i])
+			break;
+
+		const struct ksym *ksym = ksyms__map_addr(ksyms, stacks[i]);
+		if (ksym) {
+			printf("\t%zu [<%016llx>] %s", i, stacks[i], ksym->name);
+			if (env.print_offset) {
+				printf("+0x%llx", stacks[i] - ksym->addr);
+				if (ksym->module)
+					printf(" [%s]", ksym->module);
+			}
+
+			printf("\n");
+		} else {
+			printf("\t%zu [<%016llx>] <%s>\n", i, stacks[i], "null sym");
+		}
+	}
+
+	printf("\n");
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static bool check_fentry()
+{
+	if (fentry_can_attach(env.function, NULL))
+		return true;
+	return false;
+}
+
 static int fentry_set_attach_target(struct stacksnoop_bpf *obj)
 {
 	return bpf_program__set_attach_target(obj->progs.fentry_function, 0, env.function);
@@ -132,12 +192,13 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
+
 	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
 
-        obj = stacksnoop_bpf__open();
+	obj = stacksnoop_bpf__open();
 	if (!obj) {
 		warning("Failed to open BPF object\n");
 		return 1;
@@ -150,7 +211,7 @@ int main(int argc, char *argv[])
 		err = -ENOMEM;
 		goto cleanup;
 	}
-	
+
 	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
 	if (!buf) {
 		warning("Failed to create ring/perf buffer\n");
@@ -161,7 +222,7 @@ int main(int argc, char *argv[])
 	bpf_map__set_value_size(obj->maps.stack_traces,
 				env.perf_max_stack_depth * sizeof(unsigned long));
 	bpf_map__set_max_entries(obj->maps.stack_traces, env.stack_map_max_entries);
-        
+
 	support_fentry = check_fentry();
 	if (support_fentry) {
 		err = fentry_set_attach_target(obj);
@@ -220,3 +281,4 @@ cleanup:
 
 	return err != 0;
 }
+
