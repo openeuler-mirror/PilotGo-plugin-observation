@@ -28,3 +28,31 @@ static void perfbuf_sample_fn(void *ctx, int cpu, void *data, __u32 size)
 
 	(void)fn(buffer->ctx, data, size);
 }
+
+struct bpf_buffer *bpf_buffer__new(struct bpf_map *events, struct bpf_map *heap)
+{
+	struct bpf_buffer *buffer;
+	bool use_ringbuf;
+	int type;
+
+	use_ringbuf = probe_ringbuf();
+	if (use_ringbuf) {
+		bpf_map__set_autocreate(heap, false);
+		type = BPF_MAP_TYPE_RINGBUF;
+	} else {
+		bpf_map__set_type(events, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+		bpf_map__set_key_size(events, sizeof(int));
+		bpf_map__set_value_size(events, sizeof(int));
+		type = BPF_MAP_TYPE_PERF_EVENT_ARRAY;
+	}
+
+	buffer = calloc(1, sizeof(*buffer));
+	if (!buffer) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	buffer->events = events;
+	buffer->type = type;
+	return buffer;
+}
