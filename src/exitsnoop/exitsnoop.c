@@ -108,3 +108,20 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 		printf("\n");
 	}
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
