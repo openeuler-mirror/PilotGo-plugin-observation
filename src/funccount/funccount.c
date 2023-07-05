@@ -320,6 +320,41 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	ksyms = ksyms__load();
+	if (!ksyms) {
+		warning("Failed to load ksyms\n");
+		err = 1;
+		goto cleanup;
+	}
+
+	signal(SIGINT, sig_handler);
+
+	printf("Tracing %d functions... Ctrl-C to end.\n", cnt);
+	for (int i = 0; i < env.interations && !exiting; i++) {
+		sleep(env.interval);
+
+		printf("\n");
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		if (type == KPROBE) {
+			printf("%-20s %-26s %8s\n", "ADDR", "FUNC", "COUNT");
+			print_maps(obj);
+		} else if (type == TRACEPOINT) {
+			printf("%-26s %8s\n", "FUNC", "COUNT");
+			print_tracepoint(obj, library, pattern);
+		} else {
+			warning("Not implement\n");
+			break;
+		}
+	}
+
+	printf("Detaching...\n");
+
 cleanup:
 	funccount_bpf__destroy(obj);
 	ksyms__free(ksyms);
