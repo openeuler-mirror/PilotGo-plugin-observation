@@ -91,3 +91,21 @@ cleanup:
     bpf_map_delete_elem(&args, &tid);
     return 0;
 }
+
+SEC("tracepoint/syscalls/sys_enter_mount")
+int mount_entry(struct trace_event_raw_sys_enter *ctx)
+{
+    const char *src = (const char *)ctx->args[0];
+    const char *dest = (const char *)ctx->args[1];
+    const char *fs = (const char *)ctx->args[2];
+    const char *data = (const char *)ctx->args[4];
+    __u64 flags = (__u64)ctx->args[3];
+
+    return probe_entry(src, dest, fs, flags, data, MOUNT);
+}
+
+SEC("tracepoint/syscalls/sys_exit_mount")
+int mount_exit(struct trace_event_raw_sys_exit *ctx)
+{
+    return probe_exit(ctx, (int)ctx->ret);
+}
