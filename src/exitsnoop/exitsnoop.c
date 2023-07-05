@@ -74,3 +74,37 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	}
 	return 0;
 }
+
+static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+	struct event *e = data;
+	const struct argument *argument = ctx;
+
+	if (argument->emit_timestamp) {
+		char ts[32];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+
+		printf("%8s ", ts);
+	}
+
+	double age = (e->exit_time - e->start_time) / 1e9;
+	printf("%-16s %-7d %-7d %-7d %-7.2f ",
+	       e->comm, e->pid, e->ppid, e->tid, age);
+
+	if (!e->sig) {
+		if (!e->exit_code)
+			printf("0\n");
+		else
+			printf("code %d\n", e->exit_code);
+	} else {
+		int sig = e->sig & 0x7f;
+		int coredump = e->sig & 0x80;
+
+		if (sig)
+			printf("signal %d (%s)", sig, strsignal(sig));
+		if (coredump)
+			printf(", core dumped");
+		printf("\n");
+	}
+}
