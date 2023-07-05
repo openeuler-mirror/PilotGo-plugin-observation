@@ -16,3 +16,15 @@ struct bpf_buffer {
 	void *ctx;
 	int type;
 };
+
+static void perfbuf_sample_fn(void *ctx, int cpu, void *data, __u32 size)
+{
+	struct bpf_buffer *buffer = ctx;
+	bpf_buffer_sample_fn fn;
+
+	fn = buffer->fn;
+	if (!fn)
+		return;
+
+	(void)fn(buffer->ctx, data, size);
+}
