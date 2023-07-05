@@ -109,3 +109,20 @@ int mount_exit(struct trace_event_raw_sys_exit *ctx)
 {
     return probe_exit(ctx, (int)ctx->ret);
 }
+
+SEC("tracepoint/syscalls/sys_enter_umount")
+int umount_entry(struct trace_event_raw_sys_enter *ctx)
+{
+    const char *dest = (const char *)ctx->args[0];
+    __u64 flags = (__u64)ctx->args[1];
+
+    return probe_entry(NULL, dest, NULL, flags, NULL, UMOUNT);
+}
+
+SEC("tracepoint/syscalls/sys_exit_umount")
+int umount_exit(struct trace_event_raw_sys_exit *ctx)
+{
+    return probe_exit(ctx, (int)ctx->ret);
+}
+
+char LICENSE[] SEC("license") = "GPL";
