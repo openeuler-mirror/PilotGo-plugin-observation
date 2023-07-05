@@ -85,3 +85,15 @@ int bpf_buffer__open(struct bpf_buffer *buffer, bpf_buffer_sample_fn sample_cb,
 	buffer->inner = inner;
 	return 0;
 }
+
+int bpf_buffer__poll(struct bpf_buffer *buffer, int timeout_ms)
+{
+	switch (buffer->type) {
+	case BPF_MAP_TYPE_PERF_EVENT_ARRAY:
+		return perf_buffer__poll(buffer->inner, timeout_ms);
+	case BPF_MAP_TYPE_RINGBUF:
+		return ring_buffer__poll(buffer->inner, timeout_ms);
+	default:
+		return -EINVAL;
+	}
+}
