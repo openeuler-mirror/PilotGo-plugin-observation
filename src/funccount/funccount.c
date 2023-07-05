@@ -188,3 +188,46 @@ enum TRACE_TYPE {
 	TRACEPOINT,
 	USDT,
 };
+
+static int split_pattern(const char *raw_pattern, enum TRACE_TYPE *type,
+			 const char **library, const char **pattern)
+{
+	char *string1, *string2, *string3;
+	char *raw_pattern_tmp = strdup(raw_pattern);
+
+	string1 = strsep(&raw_pattern_tmp, ":");
+	if (!raw_pattern_tmp) {
+		/* Not found ':', return raw_pattern */
+		*type = KPROBE;
+		*pattern = strdup(string1);
+		return 0;
+	}
+	string2 = strsep(&raw_pattern_tmp, ":");
+	if (!raw_pattern_tmp) {
+		/* One ':', return is library */
+		*type = UPROBE;
+		*library = strdup(string1);
+		*pattern = strdup(string2);
+		return 0;
+	}
+	string3 = strsep(&raw_pattern_tmp, ":");
+	if (strlen(string1) != 1)
+		return -EINVAL;
+	if (string1[0] == 'u')
+		*type = USDT;
+	else if (string1[0] == 't')
+		*type = TRACEPOINT;
+	else if (string1[0] == 'p') {
+		if (strlen(string2) == 0)
+			*type = KPROBE;
+		else
+			*type = UPROBE;
+	} else
+		return -EINVAL;
+
+	if (*type != KPROBE)
+		*library = strdup(string2);
+	*pattern = strdup(string3);
+
+	return 0;
+}
