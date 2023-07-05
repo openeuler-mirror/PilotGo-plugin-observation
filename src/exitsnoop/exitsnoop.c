@@ -125,3 +125,61 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct argument argument = {
+		.trace_by_process = true,
+	};
+	struct perf_buffer *pb = NULL;
+	struct exitsnoop_bpf *obj;
+	int err;
+	int cgfd = -1;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
+	obj = exitsnoop_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_pid = argument.target_pid;
+	obj->rodata->trace_failed_only = argument.trace_failed_only;
+	obj->rodata->trace_by_process = argument.trace_by_process;
+	obj->rodata->filter_cg = argument.cg;
+
+	err = exitsnoop_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+cleanup:
+	perf_buffer__free(pb);
+	exitsnoop_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
+	if (cgfd > 0)
+		close(cgfd);
+
+	return err != 0;
+}
