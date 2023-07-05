@@ -64,6 +64,48 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	char proto[16], addr[48] = {};
+	__u16 family = e->proto >> 16;
+	__u16 type = (__u16)e->proto;
+	const char *prot;
+
+	if (emit_timestamp) {
+		char ts[32];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%8s ", ts);
+	}
+
+	if (type == SOCK_STREAM)
+		prot = "TCP";
+	else if (type == SOCK_DGRAM)
+		prot = "UDP";
+	else
+		prot = "UNK";
+	if (family == AF_INET)
+		snprintf(proto, sizeof(proto), "%sv4", prot);
+	else
+		snprintf(proto, sizeof(proto), "%sv6", prot);
+	inet_ntop(family, e->addr, addr, sizeof(addr));
+	printf("%-7d %-16s %-3d %-7d %-5s %-5d %-32s\n",
+	       e->pid, e->task, e->ret, e->backlog, proto, e->port, addr);
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
 int t argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_objmain(inect_open_opts, open_opts);
@@ -79,12 +121,12 @@ int t argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
-	
+
 	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
-        
+
 	err = ensure_core_btf(&open_opts);
 	if (err) {
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
@@ -96,7 +138,7 @@ int t argc, char *argv[])
 		warning("Failed to open BPF object\n");
 		return 1;
 	}
-        
+
 	obj->rodata->target_pid = target_pid;
 
 	 (fentry_can_attach("inet_listen", NULL)) {
@@ -124,6 +166,7 @@ int t argc, char *argv[])
 		warning("Failed to open ring/perf buffer\n");
 		goto cleanup;
 	}
+
 	err = solisten_bpf__attach(obj);
 	if (err) {
 		warning("Failed to attach BPF programs: %d\n", err);
