@@ -56,3 +56,32 @@ struct bpf_buffer *bpf_buffer__new(struct bpf_map *events, struct bpf_map *heap)
 	buffer->type = type;
 	return buffer;
 }
+
+int bpf_buffer__open(struct bpf_buffer *buffer, bpf_buffer_sample_fn sample_cb,
+		     bpf_buffer_lost_fn lost_cb, void *ctx)
+{
+	int fd, type;
+	void *inner;
+
+	fd = bpf_map__fd(buffer->events);
+	type = buffer->type;
+
+	switch (type) {
+	case BPF_MAP_TYPE_PERF_EVENT_ARRAY:
+		buffer->fn = sample_cb;
+		buffer->ctx = ctx;
+		inner = perf_buffer__new(fd, PERF_BUFFER_PAGES, perfbuf_sample_fn, lost_cb, buffer, NULL);
+		break;
+	case BPF_MAP_TYPE_RINGBUF:
+		inner = ring_buffer__new(fd, sample_cb, ctx, NULL);
+		break;
+	default:
+		return 0;
+	}
+
+	if (!inner)
+		return -errno;
+
+	buffer->inner = inner;
+	return 0;
+}
