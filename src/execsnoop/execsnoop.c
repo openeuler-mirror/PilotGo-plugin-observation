@@ -259,6 +259,83 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	
+	/* Init global data (filtering options) */
+	bpf_obj->rodata->ignore_failed = !env.fails;
+	bpf_obj->rodata->target_uid = env.uid;
+	bpf_obj->rodata->max_args = env.max_args;
+	bpf_obj->rodata->filter_memcg = env.cg;
+
+	if (!tracepoint_exists("syscalls", "sys_enter_execve")) {
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_enter_execve, false);
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_exit_execve, false);
+	}
+
+	if (!tracepoint_exists("syscalls", "sys_enter_execveat")) {
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_enter_execveat, false);
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_exit_execveat, false);
+	}
+
+	err = execsnoop_bpf__load(bpf_obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	if (env.cg) {
+		int idx = 0;
+		int cg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
+		cgfd = open(env.cgroupspath, O_RDONLY);
+		if (cgfd < 0) {
+			warning("Failed opening Cgroup path: %s\n", env.cgroupspath);
+			goto cleanup;
+		}
+		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map\n");
+			goto cleanup;
+		}
+	}
+
+	err = execsnoop_bpf__attach(bpf_obj);
+	if (err) {
+		warning("Failed to attach BPF programs\n");
+		goto cleanup;
+	}
+
+	if (env.time)
+		printf("%-9s", "TIME");
+	if (env.timestamp)
+		printf("%-8s ", "TIME(s)");
+	if (env.print_uid)
+		printf("%-6s ", "UID");
+
+	printf("%-16s %-8s %-8s %3s %s\n", "PCOMM", "PID", "PPID", "RET", "ARGS");
+
+	pb = perf_buffer__new(bpf_map__fd(bpf_obj->maps.events), PERF_BUFFER_PAGES,
+			      handle_event, handle_lost_events, NULL, NULL);
+	if (!pb) {
+		err = -errno;
+		warning("Failed to open perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	/* Loop */
+	while (!exiting) {
+		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("error polling perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
 cleanup:
 	perf_buffer__free(pb);
 	execsnoop_bpf__destroy(bpf_obj);
