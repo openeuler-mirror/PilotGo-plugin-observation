@@ -97,3 +97,19 @@ int bpf_buffer__poll(struct bpf_buffer *buffer, int timeout_ms)
 		return -EINVAL;
 	}
 }
+
+void bpf_buffer__free(struct bpf_buffer *buffer)
+{
+	if (!buffer)
+		return;
+
+	switch (buffer->type) {
+	case BPF_MAP_TYPE_PERF_EVENT_ARRAY:
+		perf_buffer__free(buffer->inner);
+		break;
+	case BPF_MAP_TYPE_RINGBUF:
+		ring_buffer__free(buffer->inner);
+		break;
+	}
+	free(buffer);
+}
