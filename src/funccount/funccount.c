@@ -231,3 +231,50 @@ static int split_pattern(const char *raw_pattern, enum TRACE_TYPE *type,
 
 	return 0;
 }
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_kprobe_multi_opts, kmopts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct funccount_bpf *obj;
+	enum TRACE_TYPE type;
+	const char *library, *pattern;
+	int err, cnt;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!strcmp(basename(argv[0]), "vfscount"))
+		env.functions = "vfs_*";
+
+	if (!env.functions) {
+		warning("Not set functions to trace.\n");
+		return 1;
+	}
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	obj = funccount_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_pid = env.pid;
+	split_pattern(env.functions, &type, &library, &pattern);
+
+
+cleanup:
+	funccount_bpf__destroy(obj);
+	ksyms__free(ksyms);
+
+	return err != 0;
+}
