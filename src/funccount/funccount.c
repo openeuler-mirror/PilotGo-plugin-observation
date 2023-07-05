@@ -169,3 +169,22 @@ static int print_maps(struct funccount_bpf *obj)
 
 	return err;
 }
+
+static void print_tracepoint(struct funccount_bpf *obj, const char *tp_category,
+			     const char *tp_name)
+{
+	char buf[26];
+	__u64 zero = 0, counts;
+
+	sprintf(buf, "%s:%s", tp_category, tp_name);
+	bpf_map_lookup_and_delete_elem(bpf_map__fd(obj->maps.counts), &zero, &counts);
+
+	printf("%-26s %8lld\n", buf, counts);
+}
+
+enum TRACE_TYPE {
+	KPROBE,
+	UPROBE,
+	TRACEPOINT,
+	USDT,
+};
