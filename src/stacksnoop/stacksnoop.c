@@ -186,6 +186,32 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	ksyms = ksyms__load();
+	if (!ksyms) {
+		warning("Failed to load ksyms\n");
+		err = -ENOMEM;
+		goto cleanup;
+	}
+
+	int fd = bpf_map__fd(obj->maps.stack_traces);
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, &fd);
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		/* reset err to 0 when exiting */
+		err = 0;
+	}
+
 cleanup:
 	bpf_buffer__free(buf);
 	stacksnoop_bpf__destroy(obj);
