@@ -113,3 +113,59 @@ struct value {
 	__u64 ip;
 	__u64 count;
 };
+
+static int sort_column(const void *o1, const void *o2)
+{
+	const struct value *v1 = o1;
+	const struct value *v2 = o2;
+
+	return v2->count - v1->count;
+}
+
+struct ksyms *ksyms;
+
+static int print_maps(struct funccount_bpf *obj)
+{
+	struct value values[MAX_ROWS+1];
+	int fd = bpf_map__fd(obj->maps.counts);
+	__u64 *prev_key = NULL, next_key;
+	int err = 0, rows = 0;
+
+	while (!bpf_map_get_next_key(fd, prev_key, &values[rows].ip)) {
+		err = bpf_map_lookup_elem(fd, &values[rows].ip, &values[rows].count);
+		if (err) {
+			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+			return err;
+		}
+		prev_key = &values[rows++].ip;
+		if (rows >= MAX_ROWS)
+			break;
+	}
+
+	qsort(values, rows, sizeof(struct value), sort_column);
+
+	for (int i = 0; i < rows; i++) {
+		const struct ksym *ksym = ksyms__map_addr(ksyms, values[i].ip);
+
+		if (ksym) {
+			char buf[26] = {};
+			sprintf(buf, "b'%s'", ksym->name);
+			printf("[<%016llx>] %-26s %8lld\n", values[i].ip, buf,
+			       values[i].count);
+		} else
+			printf("[<%016llx>] b'%-26s' %8lld\n", values[i].ip, "<null sym>",
+			       values[i].count);
+	}
+
+	prev_key = NULL;
+	while (!bpf_map_get_next_key(fd, prev_key, &next_key)) {
+		err = bpf_map_delete_elem(fd, &next_key);
+		if (err) {
+			warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
+			return err;
+		}
+		prev_key = &next_key;
+	}
+
+	return err;
+}
