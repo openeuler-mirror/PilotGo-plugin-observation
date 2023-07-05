@@ -10,6 +10,33 @@
 #include "compat.h"
 #include "trace_helpers.h"
 
+static volatile sig_atomic_t exiting;
+
+static struct env {
+	bool print_offset;
+	bool verbose;
+	pid_t pid;
+	const char *function;
+	int perf_max_stack_depth;
+	int stack_map_max_entries;
+} env = {
+	.perf_max_stack_depth = 127,
+	.stack_map_max_entries = 1024,
+};
+
+struct ksyms *ksyms;
+static __u64 *stacks;
+
+const char *argp_program_version = "stacksnoop 0.1";
+const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char argp_program_doc[] =
+"Trace a kernel function and print all kernel stack traces.\n"
+"\n"
+"USAGE: stacksnoop [-h] [-v] [-s] [-p PID] function\n";
+
+#define OPT_PERF_MAX_STACK_DEPTH	1	/* --perf-max-stack-depth */
+#define OPT_STACK_MAP_MAX_ENTRIES	2	/* --stack-map-max-entries */
+
 static const struct argp_option opts[] = {
 	{ "verbose", 'v', NULL, 0, "show extra columns" },
 	{ "pid", 'p', "PID", 0, "Trace PID only" },
@@ -62,6 +89,14 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -77,4 +112,10 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+	
+	return err != 0;
 }
