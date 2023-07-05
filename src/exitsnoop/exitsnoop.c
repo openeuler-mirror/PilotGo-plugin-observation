@@ -41,3 +41,36 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	struct argument *argument = state->input;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		verbose = true;
+		break;
+	case 't':
+		argument->emit_timestamp = true;
+		break;
+	case 'x':
+		argument->trace_failed_only = true;
+		break;
+	case 'T':
+		argument->trace_by_process = true;
+		break;
+	case 'c':
+		argument->cgroupspath = arg;
+		argument->cg = true;
+		break;
+	case 'p':
+		argument->target_pid = argp_parse_pid(key, arg, state);
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
