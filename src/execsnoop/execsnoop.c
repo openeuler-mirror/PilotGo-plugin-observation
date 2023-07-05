@@ -219,3 +219,52 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 	print_args(e, env.quote);
 	putchar('\n');
 }
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+
+	struct perf_buffer *pb = NULL;
+	struct execsnoop_bpf *bpf_obj;
+	int err, cgfd;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch neccessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
+	bpf_obj = execsnoop_bpf__open_opts(&open_opts);
+	if (!bpf_obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+cleanup:
+	perf_buffer__free(pb);
+	execsnoop_bpf__destroy(bpf_obj);
+	cleanup_core_btf(&open_opts);
+	if (cgfd > 0)
+		close(cgfd);
+
+	return err != 0;
+}
