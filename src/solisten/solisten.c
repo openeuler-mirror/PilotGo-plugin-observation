@@ -130,6 +130,28 @@ int t argc, char *argv[])
 		goto cleanup;
 	}
 
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	if (emit_timestamp)
+		printf("%-8s ", "TIME(s)");
+	printf("%-7s %-16s %-3s %-7s %-5s %-5s %-32s\n",
+	       "PID", "COMM", "RET", "BACKLOG", "PROTO", "PORT", "ADDR");
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling perf buffer: %s\n", strerror(-err));
+			break;
+		}
+
+		/* retset err to return 0 if exiting */
+		err = 0;
+	}
+
 cleanup:
 	bpf_buffer__free(buf);
 	solisten_bpf__destroy(obj);
