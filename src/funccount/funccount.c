@@ -271,6 +271,29 @@ int main(int argc, char *argv[])
 	obj->rodata->target_pid = env.pid;
 	split_pattern(env.functions, &type, &library, &pattern);
 
+	switch (type) {
+	case USDT:
+	case UPROBE:
+		bpf_program__set_autoload(obj->progs.function_entry, false);
+		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
+		warning("Not implement uprobe\n");
+		goto cleanup;
+	case KPROBE:
+		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
+		break;
+	case TRACEPOINT:
+		bpf_program__set_autoload(obj->progs.function_entry, false);
+		break;
+	default:
+		warning("Wrong trace type, exiting.\n");
+		goto cleanup;
+	}
+
+	err = funccount_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
 
 cleanup:
 	funccount_bpf__destroy(obj);
