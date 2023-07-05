@@ -295,6 +295,31 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	switch (type) {
+	case TRACEPOINT:
+		obj->links.tracepoint_entry = bpf_program__attach_tracepoint(
+				obj->progs.tracepoint_entry, library, pattern);
+		if (!obj->links.tracepoint_entry) {
+			warning("Failed to attach t:%s:%s\n", library, pattern);
+			err = -errno;
+			goto cleanup;
+		}
+		cnt = 1;
+		break;
+	case KPROBE:
+		obj->links.function_entry = bpf_program__attach_kprobe_multi_opts(
+						obj->progs.function_entry, pattern, &kmopts);
+		if (!obj->links.function_entry) {
+			warning("Failed attach kprobe multi, kernel don't support: %s\n", strerror(errno));
+			err = -errno;
+			goto cleanup;
+		}
+		cnt = kmopts.cnt;
+		break;
+	default:
+		goto cleanup;
+	}
+
 cleanup:
 	funccount_bpf__destroy(obj);
 	ksyms__free(ksyms);
