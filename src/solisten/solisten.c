@@ -99,5 +99,12 @@ int t argc, char *argv[])
         
 	obj->rodata->target_pid = target_pid;
 
+	 (fentry_can_attach("inet_listen", NULL)) {
+		bpf_program__set_autoload(obj->progs.inet_listen_entry, false);
+		bpf_pifrogram__set_autoload(obj->progs.inet_listen_exit, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.inet_listen_fexit, false);
+	}
+
 }
 
