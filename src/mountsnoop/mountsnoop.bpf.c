@@ -41,3 +41,53 @@ static __always_inline int probe_entry(const char *src, const char *dest,
     bpf_map_update_elem(&args, &tid, &arg, BPF_ANY);
     return 0;
 }
+
+static __always_inline int probe_exit(void *ctx, int ret)
+{
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 pid = pid_tgid >> 32;
+    __u32 tid = (__u32)pid_tgid;
+    struct task_struct *task;
+    struct event *eventp;
+    struct arg *argp;
+
+    argp = bpf_map_lookup_elem(&args, &tid);
+    if (!argp)
+        return 0;
+
+    eventp = reserve_buf(sizeof(*eventp));
+    if (!eventp)
+        goto cleanup;
+
+    task = (struct task_struct *)bpf_get_current_task();
+    eventp->delta = bpf_ktime_get_ns() - argp->ts;
+    eventp->flags = argp->flags;
+    eventp->pid = pid;
+    eventp->tid = tid;
+    eventp->mnt_ns = BPF_CORE_READ(task, nsproxy, mnt_ns, ns.inum);
+    eventp->ret = ret;
+    eventp->op = argp->op;
+    bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+    if (argp->src)
+        bpf_probe_read_user_str(eventp->src, sizeof(eventp->src), argp->src);
+    else
+        eventp->src[0] = '\0';
+    if (argp->dest)
+        bpf_probe_read_user_str(eventp->dest, sizeof(eventp->dest), argp->dest);
+    else
+        eventp->dest[0] = '\0';
+    if (argp->fs)
+        bpf_probe_read_user_str(eventp->fs, sizeof(eventp->fs), argp->fs);
+    else
+        eventp->fs[0] = '\0';
+    if (argp->data)
+        bpf_probe_read_user_str(eventp->data, sizeof(eventp->data), argp->data);
+    else
+        eventp->data[0] = '\0';
+
+    submit_buf(ctx, eventp, sizeof(*eventp));
+
+cleanup:
+    bpf_map_delete_elem(&args, &tid);
+    return 0;
+}
