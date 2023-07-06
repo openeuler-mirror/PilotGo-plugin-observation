@@ -97,6 +97,26 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static int fentry_set_attach_target(struct stacksnoop_bpf *obj)
+{
+	return bpf_program__set_attach_target(obj->progs.fentry_function, 0, env.function);
+}
+
+static int attach_kprobes(struct stacksnoop_bpf *obj)
+{
+	if (kprobe_exists(env.function)) {
+		obj->links.kprobe_function = bpf_program__attach_kprobe(obj->progs.kprobe_function,
+									0,
+									env.function);
+		if (!obj->links.kprobe_function)
+			return 1;
+	} else {
+		return 1;
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -152,6 +172,18 @@ int main(int argc, char *argv[])
 		bpf_program__set_autoload(obj->progs.kprobe_function, false);
 	} else {
 		bpf_program__set_autoload(obj->progs.fentry_function, false);
+	}
+
+	err = stacksnoop_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = support_fentry ? stacksnoop_bpf__attach(obj) : attach_kprobes(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
 	}
 
 cleanup:
