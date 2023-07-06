@@ -130,6 +130,18 @@ int main(int argc, char *argv[])
 		err = -ENOMEM;
 		goto cleanup;
 	}
+	
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		warning("Failed to create ring/perf buffer\n");
+		err = 1;
+		goto cleanup;
+	}
+
+	bpf_map__set_value_size(obj->maps.stack_traces,
+				env.perf_max_stack_depth * sizeof(unsigned long));
+	bpf_map__set_max_entries(obj->maps.stack_traces, env.stack_map_max_entries);
+
 cleanup:
 	bpf_buffer__free(buf);
 	stacksnoop_bpf__destroy(obj);
