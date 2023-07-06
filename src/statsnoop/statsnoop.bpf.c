@@ -36,3 +36,30 @@ static __always_inline int probe_entry(void *ctx, const char *pathname)
 	return 0;
 }
 
+static __always_inline int probe_return(void *ctx, int ret)
+{
+	__u64 id = bpf_get_current_pid_tgid();
+	__u32 pid = id >> 32;
+	__u32 tid = (__u32)id;
+	const char **pathname;
+	struct event *eventp;
+
+	pathname = bpf_map_lookup_and_delete_elem(&values, &tid);
+	if (!pathname)
+		return 0;
+
+	if (trace_failed_only && ret >= 0)
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		return 0;
+
+	eventp->pid = pid;
+	eventp->ret = ret;
+	bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+	bpf_probe_read_user_str(&eventp->pathname, sizeof(eventp->pathname), *pathname);
+
+	submit_buf(ctx, eventp, sizeof(*eventp));
+	return 0;
+}
