@@ -68,3 +68,43 @@ static const struct argp_option opts[] = {
     {NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help"},
     {},
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+    switch (key)
+    {
+    case 'p':
+        target_pid = argp_parse_pid(key, arg, state);
+        break;
+    case 'T':
+    case 't':
+        emit_timestamp = true;
+        break;
+    case 'd':
+        output_vertically = true;
+        break;
+    case 'v':
+        verbose = true;
+        break;
+    case 'h':
+        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+                           va_list args)
+{
+    if (level == LIBBPF_DEBUG && !verbose)
+        return 0;
+
+    return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+    exiting = 1;
+}
