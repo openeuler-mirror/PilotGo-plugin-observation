@@ -207,3 +207,64 @@ static bool read_vals_batch(int fd, struct data_ext_t *vals, __u32 *count)
 	*count = n_read;
 	return true;
 }
+
+static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
+{
+	__u32 keys[MAX_ENTRIES];
+	struct data_t val;
+	__u32 key = -1;
+	__u32 next_key;
+	int i = 0, j;
+	int err;
+
+	if (batch_map_ops) {
+		bool ok = read_vals_batch(fd, vals, count);
+		if (!ok && errno == EINVAL) {
+			/* fallback to a racy variant */
+			batch_map_ops = false;
+		} else {
+			return ok;
+		}
+	}
+
+	if (!vals || !count || !*count)
+		return true;
+
+	for (key = -1; i < *count; ) {
+		err = bpf_map_get_next_key(fd, &key, &next_key);
+		if (err && errno != ENOENT) {
+			warning("Failed to get next key: %s\n", strerror(errno));
+			return false;
+		} else if (err) {
+			break;
+		}
+		key = keys[i++] = next_key;
+	}
+
+	for (j = 0; j < i; j++) {
+		err = bpf_map_lookup_elem(fd, &keys[j], &val);
+		if (err && errno != ENOENT) {
+			warning("Failed to lookup element: %s\n", strerror(errno));
+			return false;
+		}
+		vals[j].count = val.count;
+		vals[j].total_ns = val.total_ns;
+		vals[j].key = keys[j];
+		memcpy(vals[j].comm, val.comm, TASK_COMM_LEN);
+	}
+
+	/* There is a race here: system calls which are represented by keys
+	 * above and happended between lookup and delete will be ignored. This
+	 * will be fixed in future by using bpf_map_lookup_and_delete_batch,
+	 * but this function is too fresh to use it in bcc. */
+	for (j = 0; j < i; j++) {
+		err = bpf_map_delete_elem(fd, &keys[j]);
+		if (err) {
+			warning("failed to delete element: %s\n", strerror(errno));
+			return false;
+		}
+	}
+
+	*count = i;
+	return true;
+}
