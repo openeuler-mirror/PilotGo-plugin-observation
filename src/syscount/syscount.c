@@ -97,3 +97,35 @@ static int compare_count(const void *dx, const void *dy)
 
 	return x > y ? -1 : !(x == y);
 }
+static int compare_latency(const void *dx, const void *dy)
+{
+	__u64 x = ((struct data_ext_t *)dx)->total_ns;
+	__u64 y = ((struct data_ext_t *)dy)->total_ns;
+
+	return x > y ? -1 : !(x == y);
+}
+
+static const char *agg_col(struct data_ext_t *val, char *buf, size_t size)
+{
+	if (env.process) {
+		snprintf(buf, size, "%-6u %-15s", val->key, val->comm);
+	} else {
+		syscall_name(val->key, buf, size);
+	}
+	return buf;
+}
+
+static const char *agg_colname(void)
+{
+	return (env.process) ? "PID    COMM" : "SYSCALL";
+}
+
+static const char *time_colname(void)
+{
+	return (env.milliseconds) ? "TIME(ms)" : "TIME(us)";
+}
+
+static void print_latency_header(void)
+{
+	printf("%-22s %8s %16s\n", agg_colname(), "COUNT", time_colname());
+}
