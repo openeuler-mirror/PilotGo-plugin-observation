@@ -45,3 +45,29 @@ static int entry(void)
 
 	return 0;
 }
+
+SEC("fentry/dummy_fentry")
+int BPF_PROG(dummy_fentry)
+{
+	return entry();
+}
+
+SEC("kprobe/dummy_kprobe")
+int BPF_KPROBE(dummy_kprobe)
+{
+	return entry();
+}
+
+SEC("fexit/dummy_fexit")
+int BPF_PROG(dummy_fexit)
+{
+	return exit();
+}
+
+SEC("kretprobe/dummy_kretprobe")
+int BPF_KRETPROBE(dummy_kretprobe)
+{
+	return exit();
+}
+
+char LICENSE[] SEC("license") = "GPL";
