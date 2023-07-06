@@ -16,3 +16,32 @@ struct {
 	__type(value, u32);
 	__uint(max_entries, 1);
 } cgroup_map SEC(".maps");
+
+/* key: pid. value: start time */
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_PIDS);
+	__type(key, u32);
+	__type(value, u64);
+} starts SEC(".maps");
+
+__u32 hists[MAX_SLOTS] = {};
+
+static int entry(void)
+{
+	u64 id = bpf_get_current_pid_tgid();
+	u32 tgid = id >> 32;
+	u32 pid = (pid_t)id;
+	u64 nsec;
+
+	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return 0;
+
+	if (target_tgid && target_tgid != tgid)
+		return 0;
+
+	nsec = bpf_ktime_get_ns();
+	bpf_map_update_elem(&starts, &pid, &nsec, BPF_ANY);
+
+	return 0;
+}
