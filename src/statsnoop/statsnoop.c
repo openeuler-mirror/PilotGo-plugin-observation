@@ -68,6 +68,36 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	int fd, err;
+
+	if (e->ret >= 0) {
+		fd = e->ret;
+		err = 0;
+	} else {
+		fd = -1;
+		err = e->ret;
+	}
+
+	if (emit_timestamp)
+		printf("%-14.9f ", time_since_start());
+	printf("%-7d %-20s %4d %8s %-s\n", e->pid, e->comm, fd, strerrno(err), e->pathname);
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -76,7 +106,7 @@ int main(int argc, char *argv[])
 		.parser = parse_arg,
 		.doc = argp_program_doc,
 	};
-        struct bpf_buffer *buf = NULL;
+	struct bpf_buffer *buf = NULL;
 	struct statsnoop_bpf *obj;
 	int err;
 
@@ -86,15 +116,15 @@ int main(int argc, char *argv[])
 
 	if (!bpf_is_root())
 		return 1;
-	
-        libbpf_set_print(libbpf_print_fn);
-        
+
+	libbpf_set_print(libbpf_print_fn);
+
 	err = ensure_core_btf(&open_opts);
 	if (err) {
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
 	}
-        
+
 	obj = statsnoop_bpf__open_opts(&open_opts);
 	if (!obj) {
 		warning("Failed to open BPF object\n");
@@ -124,14 +154,14 @@ int main(int argc, char *argv[])
 		bpf_program__set_autoload(obj->progs.handle_newlstat_entry, false);
 		bpf_program__set_autoload(obj->progs.handle_newlstat_return, false);
 	}
-        
+
 	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
 	if (!buf) {
 		err = -errno;
 		warning("Failed to create ring/perf buffer\n");
 		goto cleanup;
 	}
-        
+
 	err = statsnoop_bpf__load(obj);
 	if (err) {
 		warning("Failed to load BPF object: %d\n", err);
@@ -150,7 +180,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-        if (signal(SIGINT, sig_handler) == SIG_ERR) {
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
 		warning("Can't set signal handler: %s\n", strerror(errno));
 		err = 1;
 		goto cleanup;
@@ -169,6 +199,11 @@ int main(int argc, char *argv[])
 		/* retset err to return 0 if exiting */
 		err = 0;
 	}
+
+cleanup:
+	bpf_buffer__free(buf);
+	statsnoop_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
 
 	return err != 0;
 }
