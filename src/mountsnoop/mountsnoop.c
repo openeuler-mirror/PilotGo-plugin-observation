@@ -46,3 +46,25 @@ static const char *flag_names[] = {
     [30] = "MS_ACTIVE",
     [32] = "MS_NOUSER",
 };
+
+const char *argp_program_version = "mountsnoop 0.1";
+const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char argp_program_doc[] =
+    "Trace mount and umount syscalls.\n"
+    "\n"
+    "USAGE: mountsnoop [-h] [-T] [-p PID] [-v]\n"
+    "\n"
+    "EXAMPLES:\n"
+    "    mountsnoop         # trace mount and umount syscalls\n"
+    "    mountsnoop -d      # detailed output (one line per column value)\n"
+    "    mountsnoop -p 1216 # only trace PID 1216\n";
+
+static const struct argp_option opts[] = {
+    {"pid", 'p', "PID", 0, "Process ID to trace"},
+    {"timestamp", 'T', NULL, 0, "Include timestamp on output"},
+    {NULL, 't', NULL, OPTION_ALIAS, "Include timestamp on output"},
+    {"detailed", 'd', NULL, 0, "Output result in detail mode"},
+    {"verbose", 'v', NULL, 0, "Verbose debug output"},
+    {NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help"},
+    {},
+};
