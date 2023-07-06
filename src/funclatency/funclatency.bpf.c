@@ -58,6 +58,40 @@ int BPF_KPROBE(dummy_kprobe)
 	return entry();
 }
 
+static int exit(void)
+{
+	u64 *start;
+	u64 nsec = bpf_ktime_get_ns();
+	u64 id = bpf_get_current_pid_tgid();
+	u32 pid = (pid_t)id;
+	u64 slot, delta;
+
+	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return 0;
+
+	start = bpf_map_lookup_elem(&starts, &pid);
+	if (!start)
+		return 0;
+
+	delta = nsec - *start;
+
+	switch (units) {
+	case USEC:
+		delta /= 1000;
+		break;
+	case MSEC:
+		delta /= 1000000;
+		break;
+	}
+
+	slot = log2l(delta);
+	if (slot >= MAX_SLOTS)
+		slot = MAX_SLOTS - 1;
+	__sync_fetch_and_add(&hists[slot], 1);
+
+	return 0;
+}
+
 SEC("fexit/dummy_fexit")
 int BPF_PROG(dummy_fexit)
 {
