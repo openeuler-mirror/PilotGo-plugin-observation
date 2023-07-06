@@ -64,3 +64,82 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	struct env *env = state->input;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env->verbose = true;
+		break;
+	case 'T':
+		env->timestamp = true;
+		break;
+	case 'k':
+		env->kprobes = true;
+		break;
+	case 'c':
+		env->cgroupspath = arg;
+		env->cg = true;
+		break;
+	case 'p':
+		env->pid = argp_parse_pid(key, arg, state);
+		break;
+	case 'm':
+		if (env->units != NSEC) {
+			warning("only set one of -m or -u\n");
+			argp_usage(state);
+		}
+		env->units = MSEC;
+		break;
+	case 'u':
+		if (env->units != NSEC) {
+			warning("only set one of -m or -u\n");
+			argp_usage(state);
+		}
+		env->units = USEC;
+		break;
+	case 'd':
+		errno = 0;
+		env->duration = strtol(arg, NULL, 10);
+		if (errno || env->duration <= 0) {
+			warning("Invalid duration: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'i':
+		errno = 0;
+		env->interval = strtol(arg, NULL, 10);
+		if (errno || env->interval <= 0) {
+			warning("Invalid interval: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case ARGP_KEY_ARG:
+		if (env->funcname) {
+			warning("Too many function names: %s\n", arg);
+			argp_usage(state);
+		}
+		env->funcname = arg;
+		break;
+	case ARGP_KEY_END:
+		if (!env->funcname) {
+			warning("Need a function to trace\n");
+			argp_usage(state);
+		}
+		if (env->duration) {
+			if (env->interval > env->duration)
+				env->interval = env->duration;
+			env->iterations = env->duration / env->interval;
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
