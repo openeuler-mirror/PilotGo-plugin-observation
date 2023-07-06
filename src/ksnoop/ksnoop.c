@@ -24,3 +24,21 @@ static bool verbose = false;
 
 static __u32 filter_pid;
 static bool stack_mode;
+
+static void __p(enum log_level level, char *level_str, char *fmt, ...)
+{
+	va_list ap;
+
+	if (level < log_level)
+		return;
+	va_start(ap, fmt);
+	warning("%s: ", level_str);
+	vfprintf(stderr, fmt, ap);
+	warning("\n");
+	va_end(ap);
+	fflush(stderr);
+}
+
+#define pr_err(fmt, ...)	__p(ERROR, "Error", fmt, ##__VA_ARGS__)
+#define pr_warn(fmt, ...)	__p(WARNING, "Warn", fmt, ##__VA_ARGS__)
+#define pr_debug(fmt, ...)	__p(DEBUG, "Debug", fmt, ##__VA_ARGS__)
