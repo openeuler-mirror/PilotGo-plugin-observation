@@ -124,6 +124,19 @@ int main(int argc, char *argv[])
 		bpf_program__set_autoload(obj->progs.handle_newlstat_entry, false);
 		bpf_program__set_autoload(obj->progs.handle_newlstat_return, false);
 	}
+        
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		err = -errno;
+		warning("Failed to create ring/perf buffer\n");
+		goto cleanup;
+	}
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer: %d\n",  err);
+		goto cleanup;
+	}
 
 	return err != 0;
 }
