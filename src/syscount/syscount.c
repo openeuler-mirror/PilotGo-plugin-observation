@@ -129,3 +129,33 @@ static void print_latency_header(void)
 {
 	printf("%-22s %8s %16s\n", agg_colname(), "COUNT", time_colname());
 }
+
+static void print_count_header(void)
+{
+	printf("%-22s %8s\n", agg_colname(), "COUNT");
+}
+
+static void print_latency(struct data_ext_t *vals, size_t count)
+{
+	double div = env.milliseconds ? 1000000.0 : 1000.0;
+	char buf[2 * TASK_COMM_LEN];
+
+	print_latency_header();
+	for (int i = 0; i < count && i < env.top; i++) {
+		printf("%-22s %8llu %16.3lf\n",
+		       agg_col(&vals[i], buf, sizeof(buf)),
+		       vals[i].count, vals[i].total_ns / div);
+	}
+	printf("\n");
+}
+
+static void print_count(struct data_ext_t *vals, size_t count)
+{
+	char buf[2 * TASK_COMM_LEN];
+
+	print_count_header();
+	for (int i = 0; i < count && i < env.top; i++)
+		printf("%-22s %8llu\n",
+		       agg_col(&vals[i], buf, sizeof(buf)), vals[i].count);
+	printf("\n");
+}
