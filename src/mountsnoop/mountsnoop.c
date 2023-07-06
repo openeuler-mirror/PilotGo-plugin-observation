@@ -197,3 +197,103 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
     warning("Lost %llu events on cpu #%d!\n", lost_cnt, cpu);
 }
+
+int main(int argc, char *argv[])
+{
+    LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+    static const struct argp argp = {
+        .options = opts,
+        .parser = parse_arg,
+        .doc = argp_program_doc,
+    };
+    struct bpf_buffer *buf = NULL;
+    struct mountsnoop_bpf *obj;
+    int err;
+
+    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+    if (err)
+        return err;
+
+    if (!bpf_is_root())
+        return 1;
+
+    libbpf_set_print(libbpf_print_fn);
+
+    err = ensure_core_btf(&open_opts);
+    if (err)
+    {
+        warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+        return 1;
+    }
+
+    obj = mountsnoop_bpf__open_opts(&open_opts);
+    if (!obj)
+    {
+        warning("Failed to open BPF objects\n");
+        return 1;
+    }
+
+    obj->rodata->target_pid = target_pid;
+
+    buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+    if (!buf)
+    {
+        err = -errno;
+        warning("Failed to create ring/perf buffer: %d\n", err);
+        goto cleanup;
+    }
+
+    err = mountsnoop_bpf__load(obj);
+    if (err)
+    {
+        warning("Failed to load BPF object: %d\n", err);
+        goto cleanup;
+    }
+
+    err = mountsnoop_bpf__attach(obj);
+    if (err)
+    {
+        warning("Failed to attach BPF programs: %d\n", err);
+        goto cleanup;
+    }
+
+    err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+    if (err)
+    {
+        warning("Failed to open ring/perf buffer: %d\n", err);
+        goto cleanup;
+    }
+
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+    {
+        warning("Can't set signal handler: %s\n", strerror(errno));
+        err = 1;
+        goto cleanup;
+    }
+
+    if (!output_vertically)
+    {
+        if (emit_timestamp)
+            printf("%-8s ", "TIME");
+        printf("%-16s %-7s %-7s %-11s %s\n", "COMM", "PID", "TID", "MNT_NS", "CALL");
+    }
+
+    while (!exiting)
+    {
+        err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+        if (err < 0 && err != -EINTR)
+        {
+            warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+            goto cleanup;
+        }
+        /* reset err to return 0 if exiting */
+        err = 0;
+    }
+
+cleanup:
+    bpf_buffer__free(buf);
+    mountsnoop_bpf__destroy(obj);
+    cleanup_core_btf(&open_opts);
+
+    return err != 0;
+}
