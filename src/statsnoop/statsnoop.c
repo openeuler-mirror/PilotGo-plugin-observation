@@ -131,6 +131,18 @@ int main(int argc, char *argv[])
 		warning("Failed to create ring/perf buffer\n");
 		goto cleanup;
 	}
+        
+	err = statsnoop_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = statsnoop_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
 
 	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
 	if (err) {
