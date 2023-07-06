@@ -145,3 +145,55 @@ static const char *gen_call(const struct event *e)
     }
     return call;
 }
+
+static int handle_event(void *ctx, void *data, size_t len)
+{
+    const struct event *e = data;
+    char ts[32];
+    const char *indent;
+    static const char *op_name[] = {
+        [MOUNT] = "MOUNT",
+        [UMOUNT] = "UMOUNT",
+    };
+
+    if (emit_timestamp)
+    {
+        strftime_now(ts, sizeof(ts), "%H:%M:%S ");
+        printf("%s", ts);
+        indent = "   ";
+    }
+    else
+    {
+        indent = "";
+    }
+
+    if (!output_vertically)
+    {
+        printf("%-16s %-7d %-7d %-11u %s\n",
+               e->comm, e->pid, e->tid, e->mnt_ns, gen_call(e));
+        return 0;
+    }
+
+    if (emit_timestamp)
+        printf("\n");
+    printf("%sPID:\t\t%d\n", indent, e->pid);
+    printf("%sTID:\t\t%d\n", indent, e->tid);
+    printf("%sCOMM:\t%s\n", indent, e->comm);
+    printf("%sOP:\t\t%s\n", indent, op_name[e->op]);
+    printf("%sRET:\t\t%s\n", indent, strerrno(e->ret));
+    printf("%sLAT:\t\t%lldus\n", indent, e->delta / 1000);
+    printf("%sMNT_NS:\t%u\n", indent, e->mnt_ns);
+    printf("%sFS:\t\t%s\n", indent, e->fs);
+    printf("%sSOURCE:\t%s\n", indent, e->src);
+    printf("%sTARGET:\t%s\n", indent, e->dest);
+    printf("%sDATA:\t%s\n", indent, e->data);
+    printf("%sFLAGS:\t%s\n", indent, strflags(e->flags));
+    printf("\n");
+
+    return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+    warning("Lost %llu events on cpu #%d!\n", lost_cnt, cpu);
+}
