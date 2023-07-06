@@ -174,6 +174,57 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	/* update cgroup path fd to map */
+	if (argument.cg) {
+		int idx = 0;
+		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+
+		cgfd = open(argument.cgroupspath, O_RDONLY);
+		if (cgfd < 0) {
+			warning("Failed opening cgroup path: %s", argument.cgroupspath);
+			goto cleanup;
+		}
+		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map");
+			goto cleanup;
+		}
+	}
+
+	err = exitsnoop_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+
+	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+			      handle_event, handle_lost_events, &argument, NULL);
+	if (!pb) {
+		err = -errno;
+		warning("Failed to open perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	if (argument.emit_timestamp)
+		printf("%-8s ", "TIME(s)");
+	printf("%-16s %-7s %-7s %-7s %-7s %-s\n",
+	       "PCOMM", "PID", "PPID", "TID", "AGE(s)", "EXIT_CODE");
+
+	while (!exiting) {
+		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
 cleanup:
 	perf_buffer__free(pb);
 	exitsnoop_bpf__destroy(obj);
