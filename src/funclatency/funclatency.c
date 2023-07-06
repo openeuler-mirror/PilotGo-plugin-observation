@@ -165,3 +165,37 @@ static const char *unit2str(void)
 
 	return "bad units";
 }
+
+static bool try_fentry(struct funclatency_bpf *obj)
+{
+	long err;
+
+	if (env.kprobes || !env.is_kernel_func ||
+	    !fentry_can_attach(env.funcname, NULL))
+		goto out_no_fentry;
+
+	err = bpf_program__set_attach_target(obj->progs.dummy_fentry, 0,
+					     env.funcname);
+	if (err) {
+		warning("failed to set attach fentry: %s\n", strerror(-err));
+		goto out_no_fentry;
+	}
+
+	err = bpf_program__set_attach_target(obj->progs.dummy_fexit, 0,
+					     env.funcname);
+	if (err) {
+		warning("failed to set attach fexit: %s\n", strerror(-err));
+		goto out_no_fentry;
+	}
+
+	bpf_program__set_autoload(obj->progs.dummy_kprobe, false);
+	bpf_program__set_autoload(obj->progs.dummy_kretprobe, false);
+
+	return true;
+
+out_no_fentry:
+	bpf_program__set_autoload(obj->progs.dummy_fentry, false);
+	bpf_program__set_autoload(obj->progs.dummy_fexit, false);
+
+	return false;
+}
