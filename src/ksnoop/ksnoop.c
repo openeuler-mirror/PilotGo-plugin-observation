@@ -48,3 +48,26 @@ static int do_version(int argc, char *argv[])
 	printf("%s v%s\n", bin_name, KSNOOP_VERSION);
 	return 0;
 }
+
+static int cmd_help(int argc, char *argv[])
+{
+	warning("Usage: %s [OPTIONS] [COMMAND | help] FUNC\n"
+		"	COMMAND	:= { trace | info }\n"
+		"	FUNC	:= { name | name(ARG[,ARG]*) }\n"
+		"	ARG	:= { arg | arg [PRED] | arg->member [PRED] }\n"
+		"	PRED	:= { == | != | > | >= | < | <=  value }\n"
+		"	OPTIONS	:= { {-d|--debug} | {-v|--verbose} | {-V|--version} |\n"
+		"                    {-p|--pid filter_pid}|\n"
+		"                    {-P|--pages nr_pages} }\n"
+		"                    {-s|--stack}\n",
+		bin_name);
+	warning("Examples:\n"
+		"	%s info ip_send_skb\n"
+		"	%s trace ip_send_skb\n"
+		"	%s trace \"ip_send_skb(skb, return)\"\n"
+		"	%s trace \"ip_send_skb(skb->sk, return)\"\n"
+		"	%s trace \"ip_send_skb(skb->len > 128, skb)\"\n"
+		"	%s trace -s udp_sendmsg ip_send_skb\n",
+		bin_name, bin_name, bin_name, bin_name, bin_name, bin_name);
+	return 0;
+}
