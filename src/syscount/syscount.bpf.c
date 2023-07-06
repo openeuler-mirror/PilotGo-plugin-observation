@@ -62,3 +62,51 @@ int sys_enter(struct trace_event_raw_sys_enter *args)
 	bpf_map_update_elem(&start, &tid, &ts, BPF_ANY);
 	return 0;
 }
+
+SEC("tracepoint/raw_syscalls/sys_exit")
+int sys_exit(struct trace_event_raw_sys_exit *args)
+{
+	if (filter_cg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return 0;
+
+	u64 id = bpf_get_current_pid_tgid();
+	pid_t pid = id >> 32;
+	const struct data_t zero = {};
+	struct data_t *val;
+	u64 *start_ts, lat = 0;
+	u32 tid = id;
+	u32 key;
+
+	/* this happens when there is an interrupt */
+	if (args->id == -1)
+		return 0;
+
+	if (filter_pid && pid != filter_pid)
+		return 0;
+	if (filter_failed && args->ret >= 0)
+		return 0;
+	if (filter_errno && args->ret != -filter_errno)
+		return 0;
+
+	if (measure_latency) {
+		start_ts = bpf_map_lookup_and_delete_elem(&start, &tid);
+		if (!start_ts)
+			return 0;
+		lat = bpf_ktime_get_ns() - *start_ts;
+	}
+
+	key = count_by_process ? pid : args->id;
+	val = bpf_map_lookup_or_try_init(&data, &key, &zero);
+	if (!val)
+		return 0;
+
+	__sync_fetch_and_add(&val->count, 1);
+	if (count_by_process)
+		save_proc_name(val);
+	if (measure_latency)
+		__sync_fetch_and_add(&val->total_ns, lat);
+
+	return 0;
+}
+
+char LICENSE[] SEC("license") = "GPL";
