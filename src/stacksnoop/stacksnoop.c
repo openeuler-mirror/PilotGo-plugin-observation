@@ -141,6 +141,18 @@ int main(int argc, char *argv[])
 	bpf_map__set_value_size(obj->maps.stack_traces,
 				env.perf_max_stack_depth * sizeof(unsigned long));
 	bpf_map__set_max_entries(obj->maps.stack_traces, env.stack_map_max_entries);
+        
+	support_fentry = check_fentry();
+	if (support_fentry) {
+		err = fentry_set_attach_target(obj);
+		if (err) {
+			warning("Failed to set fentry attach: %d\n", err);
+			goto cleanup;
+		}
+		bpf_program__set_autoload(obj->progs.kprobe_function, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.fentry_function, false);
+	}
 
 cleanup:
 	bpf_buffer__free(buf);
