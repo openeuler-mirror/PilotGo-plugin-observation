@@ -108,3 +108,40 @@ static void sig_handler(int sig)
 {
     exiting = 1;
 }
+
+static const char *strflags(__u64 flags)
+{
+    static char str[512];
+
+    if (!flags)
+        return "0x0";
+
+    str[0] = 0;
+
+    for (int i = 0; i < ARRAY_SIZE(flag_names); i++)
+    {
+        if (!((1 << i) & flags))
+            continue;
+        if (str[0])
+            strcat(str, " | ");
+        strcat(str, flag_names[i]);
+    }
+    return str;
+}
+
+static const char *gen_call(const struct event *e)
+{
+    static char call[10240] = {};
+
+    if (e->op == UMOUNT)
+    {
+        snprintf(call, sizeof(call), "umount(\"%s\", %s) = %s",
+                 e->dest, strflags(e->flags), strerrno(e->ret));
+    }
+    else
+    {
+        snprintf(call, sizeof(call), "mount(\"%s\", \"%s\", \"%s\", %s, \"%s\") = %s",
+                 e->src, e->dest, e->fs, strflags(e->flags), e->data, strerrno(e->ret));
+    }
+    return call;
+}
