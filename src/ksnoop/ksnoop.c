@@ -77,3 +77,43 @@ static void usage(void)
 	cmd_help(0, NULL);
 	exit(1);
 }
+
+static void type_to_value(struct btf *btf, char *name, __u32 type_id,
+			  struct value *val)
+{
+	const struct btf_type *type;
+	__s32 id = type_id;
+
+	if (strlen(val->name) == 0) {
+		if (name)
+			strncpy(val->name, name,
+				sizeof(val->name) - 1);
+		else
+			val->name[0] = '\0';
+	}
+
+	do {
+		type = btf__type_by_id(btf, id);
+
+		switch (BTF_INFO_KIND(type->info)) {
+		case BTF_KIND_CONST:
+		case BTF_KIND_VOLATILE:
+		case BTF_KIND_RESTRICT:
+			id = type->type;
+			break;
+		case BTF_KIND_PTR:
+			val->flags |= KSNOOP_F_PTR;
+			id = type->type;
+			break;
+		default:
+			val->type_id = id;
+			goto done;
+		}
+	} while (id >= 0);
+
+	val->type_id = KSNOOP_ID_UNKNOWN;
+	return;
+
+done:
+	val->size = btf__resolve_size(btf, val->type_id);
+}
