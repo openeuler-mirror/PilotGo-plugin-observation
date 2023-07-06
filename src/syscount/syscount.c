@@ -69,3 +69,31 @@ static struct env {
 } env = {
 	.top = 10,
 };
+
+static inline __maybe_unused
+long argp_parse_long_range(int key, const char *arg, struct argp_state *state,
+			   long min, long max)
+{
+	long temp = argp_parse_long(key, arg, state);
+	if (temp > max || temp < min) {
+		warning("value isn't in range [%ld - %ld]\n", min, max);
+		argp_usage(state);
+	}
+	return temp;
+}
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static int compare_count(const void *dx, const void *dy)
+{
+	__u64 x = ((struct data_ext_t *)dx)->count;
+	__u64 y = ((struct data_ext_t *)dy)->count;
+
+	return x > y ? -1 : !(x == y);
+}
