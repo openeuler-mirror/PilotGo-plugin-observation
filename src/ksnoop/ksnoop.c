@@ -42,3 +42,9 @@ static void __p(enum log_level level, char *level_str, char *fmt, ...)
 #define pr_err(fmt, ...)	__p(ERROR, "Error", fmt, ##__VA_ARGS__)
 #define pr_warn(fmt, ...)	__p(WARNING, "Warn", fmt, ##__VA_ARGS__)
 #define pr_debug(fmt, ...)	__p(DEBUG, "Debug", fmt, ##__VA_ARGS__)
+
+static int do_version(int argc, char *argv[])
+{
+	printf("%s v%s\n", bin_name, KSNOOP_VERSION);
+	return 0;
+}
