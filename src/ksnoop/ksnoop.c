@@ -71,3 +71,9 @@ static int cmd_help(int argc, char *argv[])
 		bin_name, bin_name, bin_name, bin_name, bin_name, bin_name);
 	return 0;
 }
+
+static void usage(void)
+{
+	cmd_help(0, NULL);
+	exit(1);
+}
