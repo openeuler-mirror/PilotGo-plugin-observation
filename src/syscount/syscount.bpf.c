@@ -40,3 +40,25 @@ static __always_inline void save_proc_name(struct data_t *val)
 
 	BPF_CORE_READ_STR_INTO(&val->comm, current, group_leader, comm);
 }
+
+SEC("tracepoint/raw_syscalls/sys_enter")
+int sys_enter(struct trace_event_raw_sys_enter *args)
+{
+	u64 id = bpf_get_current_pid_tgid();
+	pid_t pid = id >> 32;
+	u32 tid = id;
+	u64 ts;
+
+	if (!measure_latency)
+		return 0;
+
+	if (filter_cg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return 0;
+
+	if (filter_pid && pid != filter_pid)
+		return 0;
+
+	ts = bpf_ktime_get_ns();
+	bpf_map_update_elem(&start, &tid, &ts, BPF_ANY);
+	return 0;
+}
