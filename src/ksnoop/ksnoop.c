@@ -194,3 +194,50 @@ static int member_to_value(struct btf *btf, const char *name, __u32 type_id,
 	}
 	return -ENOENT;
 }
+
+static int get_func_btf(struct btf *btf, struct func *func)
+{
+	const struct btf_param *param;
+	const struct btf_type *type;
+	__u8 i;
+
+	func->id = btf__find_by_name_kind(btf, func->name, BTF_KIND_FUNC);
+	if (func->id <= 0) {
+		pr_err("Cannot find function '%s' in BTF: %s",
+			func->name, strerror(-func->id));
+		return -ENOENT;
+	}
+	type = btf__type_by_id(btf, func->id);
+	if (!type || BTF_INFO_KIND(type->info) != BTF_KIND_FUNC) {
+		pr_err("Error looking up function proto type via id '%d'",
+			func->id);
+		return -EINVAL;
+	}
+
+	type = btf__type_by_id(btf, type->type);
+	if (!type || BTF_INFO_KIND(type->info) != BTF_KIND_FUNC_PROTO) {
+		pr_err("Error looking up function proto type via id '%d'",
+		       func->id);
+		return -EINVAL;
+	}
+
+	for (param = (struct btf_param *)(type + 1), i = 0;
+	     i < BTF_INFO_VLEN(type->info) && i < MAX_ARGS;
+	     param++, i++) {
+		type_to_value(btf,
+			      (char *)btf__str_by_offset(btf, param->name_off),
+			      param->type, &func->args[i]);
+		pr_debug("arg #%d: <name '%s', type id '%u'>",
+			 i + 1, func->args[i].name, func->args[i].type_id);
+	}
+
+	/* real number of args, even if it is > number we recorded. */
+	func->nr_args = BTF_INFO_VLEN(type->info);
+
+	type_to_value(btf, KSNOOP_RETURN_NAME, type->type,
+		      &func->args[KSNOOP_RETURN]);
+	pr_debug("return value: type id '%u'>",
+		 func->args[KSNOOP_RETURN].type_id);
+	return 0;
+}
+
