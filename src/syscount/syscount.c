@@ -333,3 +333,86 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	}
 	return 0;
 }
+
+static volatile sig_atomic_t exiting;
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	void (*print)(struct data_ext_t *, size_t);
+	int (*compare)(const void *, const void *);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct data_ext_t vals[MAX_ENTRIES];
+	struct syscount_bpf *obj;
+	int seconds = 0;
+	__u32 count;
+	int err;
+	int cgfd = -1;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	init_syscall_names();
+
+	if (env.list_syscalls) {
+		list_syscalls();
+		goto free_names;
+	}
+
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
+	obj = syscount_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		err = 1;
+		goto free_names;
+	}
+
+	if (env.pid)
+		obj->rodata->filter_pid = env.pid;
+	if (env.failures)
+		obj->rodata->filter_failed = true;
+	if (env.latency)
+		obj->rodata->measure_latency = true;
+	if (env.process)
+		obj->rodata->count_by_process = true;
+	if (env.filter_errno)
+		obj->rodata->filter_errno = env.filter_errno;
+	if (env.cg)
+		obj->rodata->filter_cg = env.cg;
+
+	err = syscount_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %s\n", strerror(-err));
+		goto cleanup_obj;
+	}
+
+cleanup_obj:
+	syscount_bpf__destroy(obj);
+free_names:
+	free_syscall_names();
+	cleanup_core_btf(&open_opts);
+	if (cgfd > 0)
+		close(cgfd);
+
+	return err != 0;
+}
