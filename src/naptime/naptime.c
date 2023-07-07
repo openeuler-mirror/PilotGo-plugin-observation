@@ -21,3 +21,35 @@ static const struct argp_option opts[] = {
     {"timestamp", 'T', NULL, 0, "Include timestamp on output"},
     {NULL, 'h', NULL, 0, "Show the full help"},
     {}};
+
+static void sig_handler(int sig)
+{
+    exiting = 1;
+}
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+                           va_list args)
+{
+    if (level == LIBBPF_DEBUG && !verbose)
+        return 0;
+    return vfprintf(stderr, format, args);
+}
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+    switch (key)
+    {
+    case 'v':
+        verbose = true;
+        break;
+    case 'h':
+        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+        break;
+    case 'T':
+        timestamp = true;
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
