@@ -286,3 +286,62 @@ static void sig_hander(int sig)
 static struct sigaction sigact = {
 	.sa_handler = sig_hander
 };
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.parser = parse_arg,
+		.options = opts,
+		.args_doc = args_doc,
+		.doc = argp_program_doc,
+	};
+	struct funclatency_bpf *obj;
+	int err, cgfd;
+	bool used_fentry = false;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, &env);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	env.is_kernel_func = !strchr(env.funcname, ':');
+
+	sigaction(SIGINT, &sigact, 0);
+
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
+	obj = funclatency_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to load BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->units = env.units;
+	obj->rodata->target_tgid = env.pid;
+	obj->rodata->filter_memcg = env.cg;
+
+	used_fentry = try_fentry(obj);
+
+	err = funclatency_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object\n");
+		return 1;
+	}
+
+cleanup:
+	funclatency_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
+	if (cgfd > 0)
+		close(cgfd);
+
+	return err != 0;
+}
