@@ -322,3 +322,32 @@ static int trace_to_value(struct btf *btf, struct func *func, char *argname,
 	return -ENOENT;
 }
 
+static struct btf *get_btf(const char *name)
+{
+	struct btf *mod_btf;
+	int err;
+
+	pr_debug("getting BTF for %s",
+		 name && strlen(name) > 0 ? name : "vmlinux");
+
+	if (!vmlinux_btf) {
+		vmlinux_btf = btf__load_vmlinux_btf();
+		if (!vmlinux_btf) {
+			err = -errno;
+			pr_err("No BTF, cannot determine type info: %s", strerror(-err));
+			return NULL;
+		}
+	}
+	if (!name || strlen(name) == 0)
+		return vmlinux_btf;
+
+	mod_btf = btf__load_module_btf(name, vmlinux_btf);
+	if (!mod_btf) {
+		err = -errno;
+		pr_err("No BTF for module '%s': %s", name, strerror(-err));
+		return NULL;
+	}
+
+	return mod_btf;
+}
+
