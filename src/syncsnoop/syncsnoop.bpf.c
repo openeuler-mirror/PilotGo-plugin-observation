@@ -22,3 +22,21 @@ static __always_inline int handle_enter_sync(void *ctx, const char *funcname)
 
 	return 0;
 }
+
+SEC("tracepoint/syscalls/sys_enter_sync")
+int tracepoint_sys_enter_sync(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_sync");
+}
+
+SEC("tracepoint/syscalls/sys_enter_syncfs")
+int tracepoint_sys_enter_syncfs(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_syncfs");
+}
+
+SEC("tracepoint/syscalls/sys_enter_fsync")
+int tracepoint_sys_enter_fsync(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_fsync");
+}
