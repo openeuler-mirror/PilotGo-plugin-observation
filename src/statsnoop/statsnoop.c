@@ -94,6 +94,36 @@ int main(int argc, char *argv[])
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
 	}
+        
+	obj = statsnoop_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_pid = target_pid;
+	obj->rodata->trace_failed_only = trace_failed_only;
+
+	if (!tracepoint_exists("syscalls", "sys_enter_statfs")) {
+		bpf_program__set_autoload(obj->progs.handle_statfs_entry, false);
+		bpf_program__set_autoload(obj->progs.handle_statfs_return, false);
+	}
+	if (!tracepoint_exists("syscalls", "sys_enter_statx")) {
+		bpf_program__set_autoload(obj->progs.handle_statx_entry, false);
+		bpf_program__set_autoload(obj->progs.handle_statx_return, false);
+	}
+	if (!tracepoint_exists("syscalls", "sys_enter_newstat")) {
+		bpf_program__set_autoload(obj->progs.handle_newstat_entry, false);
+		bpf_program__set_autoload(obj->progs.handle_newstat_return, false);
+	}
+	if (!tracepoint_exists("syscalls", "sys_enter_newfstatat")) {
+		bpf_program__set_autoload(obj->progs.handle_newfstatat_entry, false);
+		bpf_program__set_autoload(obj->progs.handle_newfstatat_return, false);
+	}
+	if (!tracepoint_exists("syscalls", "sys_enter_newlstat")) {
+		bpf_program__set_autoload(obj->progs.handle_newlstat_entry, false);
+		bpf_program__set_autoload(obj->progs.handle_newlstat_return, false);
+	}
 
 	return err != 0;
 }
