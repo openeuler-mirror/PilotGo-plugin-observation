@@ -117,3 +117,80 @@ static void type_to_value(struct btf *btf, char *name, __u32 type_id,
 done:
 	val->size = btf__resolve_size(btf, val->type_id);
 }
+
+static int member_to_value(struct btf *btf, const char *name, __u32 type_id,
+			   struct value *val, int lvl)
+{
+	const struct btf_member *member;
+	const struct btf_type *type;
+	const char *pname;
+	__s32 id = type_id;
+	int i, nmembers;
+	__u8 kind;
+
+	/* type_to_value has already stripped qualifiers, so
+	 * we either have a base type, a struct, union, etc.
+	 * only struct/unions have named members so anything
+	 * else is invalid.
+	 */
+	pr_debug("Looking for member '%s' in type id %d", name, type_id);
+	type = btf__type_by_id(btf, id);
+	pname = btf__str_by_offset(btf, type->name_off);
+	if (strlen(pname) == 0)
+		pname = "<anon>";
+
+	kind = BTF_INFO_KIND(type->info);
+	switch (kind) {
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+		nmembers = BTF_INFO_VLEN(type->info);
+		pr_debug("Checking %d members...", nmembers);
+		for (member = (struct btf_member *)(type + 1), i = 0;
+		     i < nmembers;
+		     member++, i++) {
+			const char *mname;
+			__u16 offset;
+
+			type = btf__type_by_id(btf, member->type);
+			mname = btf__str_by_offset(btf, member->name_off);
+			offset = member->offset / 8;
+
+			pr_debug("Checking member '%s' type %d offset %d",
+				 mname, member->type, offset);
+
+			/* anonymous struct member? */
+			kind = BTF_INFO_KIND(type->info);
+			if (strlen(mname) == 0 &&
+			    (kind == BTF_KIND_STRUCT ||
+			     kind == BTF_KIND_UNION)) {
+				pr_debug("Checking anon struct/union %d",
+					 member->type);
+				val->offset += offset;
+				if (!member_to_value(btf, name, member->type,
+						     val, lvl + 1))
+					return 0;
+				val->offset -= offset;
+				continue;
+			}
+
+			if (strcmp(mname, name) == 0) {
+				val->offset += offset;
+				val->flags |= KSNOOP_F_MEMBER;
+				type_to_value(btf, NULL, member->type, val);
+				pr_debug("Member '%s', offset %d, flags %x size %d",
+					 mname, val->offset, val->flags,
+					 val->size);
+				return 0;
+			}
+		}
+		if (lvl > 0)
+			break;
+		pr_err("No member '%s' found in %s [%d], offset %d", name, pname,
+		       id, val->offset);
+		break;
+	default:
+		pr_err("'%s' is not a struct/union", pname);
+		break;
+	}
+	return -ENOENT;
+}
