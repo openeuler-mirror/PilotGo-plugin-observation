@@ -290,3 +290,35 @@ out:
 
 	return 0;
 }
+
+static int trace_to_value(struct btf *btf, struct func *func, char *argname,
+			  char *membername, char *predicate, struct value *val)
+{
+	if (strlen(membername) > 0)
+		snprintf(val->name, sizeof(val->name), "%s->%s",
+			 argname, membername);
+	else
+		strncpy(val->name, argname, sizeof(val->name));
+
+	for (int i = 0; i < MAX_TRACES; i++) {
+		if (strcmp(argname, func->args[i].name) != 0)
+			continue;
+		pr_debug("Setting base arg for val %s to %d", val->name, i);
+		val->base_arg = i;
+
+		if (strlen(membername) > 0) {
+			if (member_to_value(btf, membername,
+					    func->args[i].type_id, val, 0))
+				return -ENOENT;
+		} else {
+			val->type_id = func->args[i].type_id;
+			val->flags |= func->args[i].flags;
+			val->size = func->args[i].size;
+		}
+		return predicate_to_value(predicate, val);
+	}
+	pr_err("Could not find '%s' in argument/return value for '%s'",
+	       argname, func->name);
+	return -ENOENT;
+}
+
