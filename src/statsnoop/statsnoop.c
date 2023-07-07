@@ -150,6 +150,26 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+        if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	if (emit_timestamp)
+		printf("%-14s ", "TIME(s)");
+	printf("%-7s %-20s %4s %8s %-s\n", "PID", "COMM", "RET", "ERR", "PATH");
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* retset err to return 0 if exiting */
+		err = 0;
+	}
+
 	return err != 0;
 }
 
