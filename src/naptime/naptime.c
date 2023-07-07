@@ -53,3 +53,26 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
     }
     return 0;
 }
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+    const struct event *e = data;
+
+    if (timestamp)
+    {
+        char ts[32];
+
+        strftime_now(ts, sizeof(ts), "%H:%M:%S");
+        printf("%-8s ", ts);
+    }
+
+    printf("%-6d %-16s %-6d %-16s %lld.%03lld\n",
+           e->ppid, e->pcomm, e->pid, e->comm, e->tv_sec, e->tv_nsec / 1000000);
+
+    return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+    warning("Lost %llu event on CPU #%d!\n", lost_cnt, cpu);
+}
