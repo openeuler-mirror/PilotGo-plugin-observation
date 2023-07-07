@@ -337,6 +337,62 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	/* update cgroup path to map */
+	if (env.cg) {
+		int idx = 0;
+
+		cgfd = open(env.cgroupspath, O_RDONLY);
+		if (cgfd < 0) {
+			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+			goto cleanup;
+		}
+		if (bpf_map_update_elem(bpf_map__fd(obj->maps.cgroup_map), &idx, &cgfd,
+					BPF_ANY)) {
+			warning("Failed adding target cgroup to map");
+			goto cleanup;
+		}
+	}
+
+	if (!obj->bss) {
+		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+		goto cleanup;
+	}
+
+	if (!used_fentry) {
+		if (env.is_kernel_func)
+			err = attach_kprobes(obj);
+		else
+			err = attach_uprobes(obj);
+		if (err)
+			goto cleanup;
+	}
+
+	err = funclatency_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %s\n", strerror(-err));
+		goto cleanup;
+	}
+
+	printf("Tracing %s. Hit Ctrl-C to exit\n", env.funcname);
+
+	for (int i = 0; i < env.iterations && !exiting; i++) {
+		sleep(env.interval);
+
+		printf("\n");
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+
+			printf("%-8s\n", ts);
+		}
+
+		print_log2_hist(obj->bss->hists, MAX_SLOTS, unit2str());
+		memset(obj->bss->hists, 0, MAX_SLOTS * sizeof(__u32));
+	}
+
+	printf("Exiting trace of %s\n", env.funcname);
+
 cleanup:
 	funclatency_bpf__destroy(obj);
 	cleanup_core_btf(&open_opts);
