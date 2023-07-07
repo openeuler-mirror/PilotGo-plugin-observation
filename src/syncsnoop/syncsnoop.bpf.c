@@ -40,3 +40,23 @@ int tracepoint_sys_enter_fsync(struct trace_event_raw_sys_enter *ctx)
 {
 	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_fsync");
 }
+
+SEC("tracepoint/syscalls/sys_enter_fdatasync")
+int tracepoint_sys_enter_fdatasync(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_fdatasync");
+}
+
+SEC("tracepoint/syscalls/sys_enter_sync_file_range")
+int tracepoint_sys_enter_sync_file_range(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_sync_file_range");
+}
+
+SEC("tracepoint/syscalls/sys_enter_msync")
+int tracepoint_sys_enter_msync(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_enter_sync(ctx, "tracepoint:syscalls:sys_enter_msync");
+}
+
+char LICENSE[] SEC("license") = "GPL";
