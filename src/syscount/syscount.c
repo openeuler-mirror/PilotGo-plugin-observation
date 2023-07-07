@@ -268,3 +268,68 @@ static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
 	*count = i;
 	return true;
 }
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case 'x':
+		env.failures = true;
+		break;
+	case 'L':
+		env.latency = true;
+		break;
+	case 'm':
+		env.milliseconds = true;
+		break;
+	case 'P':
+		env.process = true;
+		break;
+	case 'p':
+		env.pid = argp_parse_pid(key, arg, state);
+		break;
+	case 'i':
+		env.interval = argp_parse_long_range(key, arg, state, 0, INT_MAX);
+		break;
+	case 'd':
+		env.duration = argp_parse_long_range(key, arg, state, 1, INT_MAX);
+		break;
+	case 'T':
+		env.top = argp_parse_long_range(key, arg, state, 1, INT_MAX);
+		break;
+	case 'c':
+		env.cgroupspath = arg;
+		env.cg = true;
+		break;
+	case 'e':
+		{
+		int number;
+
+		errno = 0;
+		number = strtol(arg, NULL, 10);
+		if (errno) {
+			number = errno_by_name(arg);
+			if (number < 0) {
+				warning("Invalid errno: %s (bad, or can't "
+					"parse dynamically; consider using "
+					"numeric value and/or installing the "
+					"errno program from moreutils)\n", arg);
+				argp_usage(state);
+			}
+		}
+		env.filter_errno = number;
+		break;
+		}
+	case 'l':
+		env.list_syscalls = true;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
