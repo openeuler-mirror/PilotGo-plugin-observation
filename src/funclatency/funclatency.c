@@ -199,3 +199,33 @@ out_no_fentry:
 
 	return false;
 }
+
+static int attach_kprobes(struct funclatency_bpf *obj)
+{
+	obj->links.dummy_kprobe = bpf_program__attach_kprobe(obj->progs.dummy_kprobe, false,
+							     env.funcname);
+	if (!obj->links.dummy_kprobe) {
+		warning("Failed to attach kprobe: %d\n", -errno);
+		return -1;
+	}
+
+	obj->links.dummy_kretprobe = bpf_program__attach_kprobe(obj->progs.dummy_kretprobe, true,
+								env.funcname);
+	if (!obj->links.dummy_kretprobe) {
+		warning("Failed to attach kretprobe: %d\n", -errno);
+		return -1;
+	}
+
+	return 0;
+}
+
+static volatile sig_atomic_t exiting;
+
+static void sig_hander(int sig)
+{
+	exiting = 1;
+}
+
+static struct sigaction sigact = {
+	.sa_handler = sig_hander
+};
