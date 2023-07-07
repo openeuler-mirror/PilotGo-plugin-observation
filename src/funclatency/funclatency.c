@@ -219,6 +219,63 @@ static int attach_kprobes(struct funclatency_bpf *obj)
 	return 0;
 }
 
+static int attach_uprobes(struct funclatency_bpf *obj)
+{
+	char *binary, *function;
+	char bin_path[PATH_MAX];
+	off_t func_off;
+	int ret = -1;
+	long err;
+
+	binary = strdup(env.funcname);
+	if (!binary) {
+		warning("strdup failed");
+		return -1;
+	}
+
+	function = strchr(binary, ':');
+	if (!function) {
+		warning("Binary should have contained ':' (internal bug!)\n");
+		return -1;
+	}
+
+	*function = '\0';
+	function++;
+
+	if (resolve_binary_path(binary, env.pid, bin_path, sizeof(bin_path)))
+		goto out_binary;
+
+	func_off = get_elf_func_offset(bin_path, function);
+	if (func_off < 0) {
+		warning("Could not find %s in %s\n", function, bin_path);
+		goto out_binary;
+	}
+
+	obj->links.dummy_kprobe =
+		bpf_program__attach_uprobe(obj->progs.dummy_kprobe, false,
+					   env.pid ?: -1, bin_path, func_off);
+	if (!obj->links.dummy_kprobe) {
+		err = -errno;
+		warning("Failed to attach uprobe: %ld\n", err);
+		goto out_binary;
+	}
+
+	obj->links.dummy_kretprobe =
+		bpf_program__attach_uprobe(obj->progs.dummy_kretprobe, true,
+					   env.pid ?: -1, bin_path, func_off);
+	if (!obj->links.dummy_kretprobe) {
+		err = -errno;
+		warning("Failed to attach uprobe: %ld\n", err);
+		goto out_binary;
+	}
+
+	ret = 0;
+
+out_binary:
+	free(binary);
+	return ret;
+}
+
 static volatile sig_atomic_t exiting;
 
 static void sig_hander(int sig)
