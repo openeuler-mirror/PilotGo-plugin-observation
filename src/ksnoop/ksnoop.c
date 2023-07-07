@@ -241,3 +241,52 @@ static int get_func_btf(struct btf *btf, struct func *func)
 	return 0;
 }
 
+static int predicate_to_value(char *predicate, struct value *val)
+{
+	char pred[MAX_STR];
+	long v;
+
+	if (!predicate)
+		return 0;
+
+	pr_debug("Checking predicate '%s' for '%s'", predicate, val->name);
+
+	if (sscanf(predicate, "%[!=><]%li", pred, &v) != 2) {
+		pr_err("Invalid specification; expected predicate, not '%s'",
+		       predicate);
+		return -EINVAL;
+	}
+	if (!(val->flags & KSNOOP_F_PTR) &&
+	    (val->size == 0 || val->size > sizeof(__u64))) {
+		pr_err("'%s' (size %d) does not support predicate comparison",
+		       val->name, val->size);
+		return -EINVAL;
+	}
+	val->predicate_value = (__u64)v;
+
+	if (strcmp(pred, "==") == 0) {
+		val->flags |= KSNOOP_F_PREDICATE_EQ;
+		goto out;
+	} else if (strcmp(pred, "!=") == 0) {
+		val->flags |= KSNOOP_F_PREDICATE_NOTEQ;
+		goto out;
+	}
+	if (pred[0] == '>')
+		val->flags |= KSNOOP_F_PREDICATE_GT;
+	else if (pred[0] == '<')
+		val->flags |= KSNOOP_F_PREDICATE_LT;
+
+	if (strlen(pred) == 1)
+		goto out;
+	if (pred[1] != '=') {
+		pr_err("Invalid predicate specification '%s'", predicate);
+		return -EINVAL;
+	}
+	val->flags |= KSNOOP_F_PREDICATE_EQ;
+
+out:
+	pr_debug("predicate '%s', flags 0x%x value %x",
+		 pred, val->flags, val->predicate_value);
+
+	return 0;
+}
