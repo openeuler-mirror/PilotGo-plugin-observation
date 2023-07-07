@@ -58,3 +58,39 @@ static __always_inline int trace_entry(struct pt_regs *ctx, int id)
 	bpf_map_update_elem(&entryinfo, &pid_tgid, &entry, BPF_ANY);
 	return 0;
 }
+
+static int trace_return(struct pt_regs *ctx, bool kprobe)
+{
+	struct entry_t *entryp;
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+
+	entryp = bpf_map_lookup_elem(&entryinfo, &pid_tgid);
+	if (!entryp)
+		return 0;
+
+	s64 delta_ns = bpf_ktime_get_ns() - entryp->start_ns;
+	if (delta_ns < 0 || delta_ns < duration_ns)
+		return 0;
+
+	struct event *event = reserve_buf(sizeof(struct event));
+	if (!event)
+		return 0;
+
+	event->id = entryp->id;
+	event->pid_tgid = pid_tgid;
+	event->duration_ns = delta_ns;
+	event->retval = PT_REGS_RC(ctx);
+	event->user_stack_id = -1;
+	event->kernel_stack_id = -1;
+
+	if (need_user_stack)
+		event->user_stack_id = bpf_get_stackid(ctx, &stack_trace, BPF_F_USER_STACK);
+	if (need_kernel_stack && kprobe)
+		event->kernel_stack_id = bpf_get_stackid(ctx, &stack_trace, 0);
+	if (need_grab_args)
+		bpf_probe_read(event->args, sizeof(event->args), entryp->args);
+	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+
+	submit_buf(ctx, event, sizeof(*event));
+	return 0;
+}
