@@ -140,3 +140,17 @@ int BPF_KPROBE(mark_page_accessed_kprobe, struct page *page)
 {
     return page_accessed_entry(page);
 }
+
+SEC("fentry/folio_mark_accessed")
+int BPF_PROG(folio_mark_accessed, struct folio *folio)
+{
+    return page_accessed_entry(folio);
+}
+
+SEC("kprobe/folio_mark_accessed")
+int BPF_KPROBE(folio_mark_accessed_kprobe, struct folio *folio)
+{
+    return page_accessed_entry(folio);
+}
+
+char LICENSE[] SEC("license") = "GPL";
