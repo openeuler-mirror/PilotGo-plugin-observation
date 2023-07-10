@@ -38,6 +38,44 @@ static struct env {
 	.perf_max_stack_depth = 127,
 };
 
+const char *argp_progarm_version = "funcslower 0.1";
+const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char argp_program_doc[] =
+"funcslower  Trace slow kernel or user function calls.\n"
+"\n"
+"USAGE: funcslower [-h] [-p PID] [-m MIN_MS] [-u MIN_US] [-a ARGUMENTS]\n"
+"                  [-T] [-t] [-v] function [function ...]\n"
+"\n"
+"Example:\n"
+"  ./funcslower vfs_write        # trace vfs_write calls slower than 1ms\n"
+"  ./funcslower -m 10 vfs_write  # same, but slower than 10ms\n"
+"  ./funcslower -u 10 c:open     # trace open calls slower than 10us\n"
+"  ./funcslower -p 135 c:open    # trace pid 135 only\n"
+"  ./funcslower c:malloc c:free  # trace both malloc and free slower than 1ms\n"
+"  ./funcslower -a 2 c:open      # show first two arguments to open\n"
+"  ./funcslower -UK -m 10 c:open # Show user and kernel stack frame of open calls slower than 10ms\n";
+
+#define OPT_PERF_MAX_STACK_DEPTH	1	/* --perf-max-stack-depth */
+#define OPT_STACK_STORAGE_SIZE		2	/* --stack-storage-size */
+
+const struct argp_option opts[] = {
+	{ "verbose", 'v', NULL, 0, "Verbose debug output" },
+	{ "pid", 'p', "PID", 0, "trace this PID only" },
+	{ "min-ms", 'm', "MIN-MS", 0, "minimum duration to trace (ms)" },
+	{ "min-us", 'u', "MIN-US", 0, "minimum duration to trace (us)" },
+	{ "arguments", 'a', "ARGUMENTS", 0, "print this many entry arguments, as hex" },
+	{ "time", 'T', NULL, 0, "show HH:MM:SS timestamp" },
+	{ "timestamp", 't', NULL, 0, "show timestamp in seconds at us resolution" },
+	{ "user-stack", 'U', NULL, 0, "output user stack trace" },
+	{ "kernel-stack", 'K', NULL, 0, "output kernel stack trace" },
+	{ "perf-max-stack-depth", OPT_PERF_MAX_STACK_DEPTH, "PERF_MAX_STACK_DEPTH",
+	   0, "The limit for both kernel and user stack traces (default 127)" },
+	{ "stack-storage-size", OPT_STACK_STORAGE_SIZE, "STACK_STORAGE_SIZE",
+	   0, "The number of unique stack traces that can be stored and displayed (default 1024)" },
+	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show this help" },
+	{}
+};
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
