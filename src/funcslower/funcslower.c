@@ -95,3 +95,37 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static void autoload_programs(struct funcslower_bpf *obj)
+{
+	char buf[128] = {};
+
+	for (int i = 0; i < ARRAY_SIZE(env.functions) && env.functions[i]; i++) {
+		bool is_kernel_func = !strchr(env.functions[i], ':');
+
+		if (is_kernel_func)
+			sprintf(buf, "trace_k%d", i);
+		else
+			sprintf(buf, "trace_u%d", i);
+
+		for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
+			if (strcmp(buf, obj->skeleton->progs[j].name) == 0) {
+				bpf_program__set_autoload(*obj->skeleton->progs[j].prog, true);
+				break;
+			}
+		}
+	}
+}
