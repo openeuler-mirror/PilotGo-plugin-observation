@@ -104,6 +104,18 @@ int main(int argc, char *argv[])
 		bpf_program__set_autoload(obj->progs.swap_readpage_fentry, false);
 
 	obj->rodata->target_pid = env.pid;
+        
+	err = swapin_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = swapin_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
 
 	return err != 0;
 }
