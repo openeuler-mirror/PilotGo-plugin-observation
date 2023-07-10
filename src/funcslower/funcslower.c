@@ -231,3 +231,73 @@ free_binary:
 		}
 	}
 }
+
+static int print_stack(struct funcslower_bpf *obj, struct event *e)
+{
+	unsigned long *ip;
+	const struct syms *syms;
+	int idx = 0;
+
+	if (!env.need_user_stack && !env.need_kernel_stack)
+		return 0;
+
+	ip = calloc(env.perf_max_stack_depth, sizeof(*ip));
+	if (!ip) {
+		warning("Failed to alloc ip\n");
+		return 0;
+	}
+
+	if (!env.need_kernel_stack || e->kernel_stack_id == -1)
+		goto print_ustack;
+
+	if (bpf_map_lookup_elem(bpf_map__fd(obj->maps.stack_trace),
+				&e->kernel_stack_id, ip)) {
+		warning("    [Missed Kernel Stack]\n");
+		goto print_ustack;
+	}
+
+	for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
+		const struct ksym *ksym = ksyms__map_addr(ksyms, ip[i]);
+
+		if (ksym)
+			printf("    #%-2d 0x%lx %s+0x%lx\n", idx++, ip[i], ksym->name, ip[i] - ksym->addr);
+		else
+			printf("    #%-2d 0x%lx [unknown]\n", idx++, ip[i]);
+	}
+
+print_ustack:
+	if (!env.need_user_stack || e->user_stack_id == -1)
+		goto out;
+
+	if (bpf_map_lookup_elem(bpf_map__fd(obj->maps.stack_trace),
+				&e->user_stack_id, ip)) {
+		warning("    [Missed User Stack]\n");
+		goto out;
+	}
+
+	syms = syms_cache__get_syms(syms_cache, e->pid_tgid >> 32);
+	for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
+		if (!syms)
+			printf("    #%-2d 0x%016lx [unknown]\n", idx++, ip[i]);
+		else {
+			const struct sym *sym;
+			char *dso_name;
+			unsigned long dso_offset;
+
+			sym = syms__map_addr_dso(syms, ip[i], &dso_name, &dso_offset);
+			printf("    #%-2d 0x%016lx", idx++, ip[i]);
+			if (sym) {
+				printf(" %s+0x%lx", sym->name, sym->offset);
+				if (dso_name)
+					printf(" (%s+0x%lx)", dso_name, dso_offset);
+			} else {
+				printf(" [unknown]");
+			}
+			printf("\n");
+		}
+	}
+
+out:
+	free(ip);
+	return 0;
+}
