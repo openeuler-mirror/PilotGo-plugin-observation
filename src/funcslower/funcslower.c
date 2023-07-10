@@ -167,3 +167,67 @@ static void autoload_programs(struct funcslower_bpf *obj)
 		}
 	}
 }
+
+static void attach_programs(struct funcslower_bpf *obj)
+{
+	char buf[128] = {};
+
+	for (int i = 0; i < ARRAY_SIZE(env.functions) && env.functions[i]; i++) {
+		bool is_kernel_func = !strchr(env.functions[i], ':');
+
+		if (is_kernel_func) {
+			sprintf(buf, "trace_k%d", i);
+			for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
+				if (strcmp(buf, obj->skeleton->progs[j].name) == 0) {
+					bpf_program__attach_kprobe(*obj->skeleton->progs[j].prog,
+								   false,
+								   env.functions[i]);
+					break;
+				}
+			}
+			bpf_program__attach_kprobe(obj->progs.trace_return_k, true,
+						   env.functions[i]);
+		} else {
+			const char *binary;
+			char *function;
+			char bin_path[PATH_MAX];
+			off_t func_off;
+
+			binary = strdup(env.functions[i]);
+
+			function = strchr(binary, ':');
+			if (!function) {
+				warning("Binary should have contained ':' (internal bug!)\n");
+				goto free_binary;
+			}
+
+			*function = '\0';
+			function++;
+
+			if (resolve_binary_path(binary, getpid(), bin_path, sizeof(bin_path)))
+				goto free_binary;
+
+			func_off = get_elf_func_offset(bin_path, function);
+			if (func_off < 0) {
+				warning("Could not find %s in %s\n", function, bin_path);
+				goto free_binary;
+			}
+
+			sprintf(buf, "trace_u%d", i);
+			for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
+				if (strcmp(buf, obj->skeleton->progs[j].name) == 0) {
+					bpf_program__attach_uprobe(*obj->skeleton->progs[j].prog,
+								   false,
+								   env.pid ? env.pid : -1, bin_path, func_off);
+					break;
+				}
+			}
+
+			bpf_program__attach_uprobe(obj->progs.trace_return_u, true,
+						   env.pid ? env.pid : -1, bin_path, func_off);
+
+free_binary:
+			free((void *)binary);
+		}
+	}
+}
