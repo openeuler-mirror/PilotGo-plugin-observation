@@ -73,6 +73,41 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int print_map(int map_fd)
+{
+	struct key_t lookup_key = { .pid = -1 }, next_key;
+	__u64 val;
+
+	while (!bpf_map_get_next_key(map_fd, &lookup_key, &next_key)) {
+		int err = bpf_map_lookup_elem(map_fd, &next_key, &val);
+		if (err < 0) {
+			warning("Failed to lookup info: %d\n", err);
+			return err;
+		}
+		printf("%-16s %-7d %lld\n", next_key.comm, next_key.pid, val);
+		lookup_key = next_key;
+	}
+	printf("\n");
+
+	/* Clear the map */
+	lookup_key.pid = -1;
+	while (!bpf_map_get_next_key(map_fd, &lookup_key, &next_key)) {
+		int err = bpf_map_delete_elem(map_fd, &next_key);
+		if (err < 0) {
+			warning("Failed to cleanup info: %d\n", err);
+			return err;
+		}
+		lookup_key = next_key;
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -86,12 +121,12 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
-	
+
 	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
-        
+
 	obj = swapin_bpf__open();
 	if (!obj) {
 		warning("Failed to open BPF object\n");
@@ -104,7 +139,7 @@ int main(int argc, char *argv[])
 		bpf_program__set_autoload(obj->progs.swap_readpage_fentry, false);
 
 	obj->rodata->target_pid = env.pid;
-        
+
 	err = swapin_bpf__load(obj);
 	if (err) {
 		warning("Failed to load BPF object: %d\n", err);
@@ -116,7 +151,7 @@ int main(int argc, char *argv[])
 		warning("Failed to attach BPF programs: %d\n", err);
 		goto cleanup;
 	}
-        
+
 	signal(SIGINT, sig_handler);
 
 	while (!exiting) {
@@ -145,3 +180,4 @@ cleanup:
 
 	return err != 0;
 }
+
