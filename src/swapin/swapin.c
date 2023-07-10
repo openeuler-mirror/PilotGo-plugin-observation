@@ -91,6 +91,19 @@ int main(int argc, char *argv[])
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
+        
+	obj = swapin_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	if (fentry_can_attach("swap_readpage", NULL))
+		bpf_program__set_autoload(obj->progs.swap_readpage_kprobe, false);
+	else
+		bpf_program__set_autoload(obj->progs.swap_readpage_fentry, false);
+
+	obj->rodata->target_pid = env.pid;
 
 	return err != 0;
 }
