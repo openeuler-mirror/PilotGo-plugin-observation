@@ -94,3 +94,51 @@ static int trace_return(struct pt_regs *ctx, bool kprobe)
 	submit_buf(ctx, event, sizeof(*event));
 	return 0;
 }
+
+SEC("kretprobe")
+int trace_return_k(struct pt_regs *ctx)
+{
+	return trace_return(ctx, true);
+}
+
+SEC("uretprobe")
+int trace_return_u(struct pt_regs *ctx)
+{
+	return trace_return(ctx, false);
+}
+
+#define TRACE_FUNCTION_K(id)	\
+SEC("?kprobe") int trace_k##id(struct pt_regs *ctx)	\
+{ \
+	return trace_entry(ctx, id);	\
+}
+
+#define TRACE_FUNCTION_U(id)	\
+SEC("?uprobe") int trace_u##id(struct pt_regs *ctx)	\
+{ \
+	return trace_entry(ctx, id);	\
+}
+
+TRACE_FUNCTION_K(0)
+TRACE_FUNCTION_K(1)
+TRACE_FUNCTION_K(2)
+TRACE_FUNCTION_K(3)
+TRACE_FUNCTION_K(4)
+TRACE_FUNCTION_K(5)
+TRACE_FUNCTION_K(6)
+TRACE_FUNCTION_K(7)
+TRACE_FUNCTION_K(8)
+TRACE_FUNCTION_K(9)
+
+TRACE_FUNCTION_U(0)
+TRACE_FUNCTION_U(1)
+TRACE_FUNCTION_U(2)
+TRACE_FUNCTION_U(3)
+TRACE_FUNCTION_U(4)
+TRACE_FUNCTION_U(5)
+TRACE_FUNCTION_U(6)
+TRACE_FUNCTION_U(7)
+TRACE_FUNCTION_U(8)
+TRACE_FUNCTION_U(9)
+
+char LICENSE[] SEC("license") = "GPL";
