@@ -35,3 +35,24 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	char ts[16];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S ");
+	printf("%s %-6d %-16s %s\n", ts, e->pid, e->comm, e->funcname);
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
