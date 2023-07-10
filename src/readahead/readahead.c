@@ -29,3 +29,35 @@ static const struct argp_option opts[] = {
     {"verbose", 'v', NULL, 0, "Verbose output debug"},
     {NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help"},
     {}};
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+    switch (key)
+    {
+    case 'h':
+        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+        break;
+    case 'v':
+        env.verbose = true;
+        break;
+    case 'd':
+        env.duration = argp_parse_long(key, arg, state);
+        break;
+    default:
+        return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+                           va_list args)
+{
+    if (level == LIBBPF_DEBUG && !env.verbose)
+        return 0;
+    return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+    exiting = 1;
+}
