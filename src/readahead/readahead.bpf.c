@@ -25,3 +25,39 @@ struct
 } birth SEC(".maps");
 
 struct hist hist = {};
+
+SEC("fentry/do_page_cache_ra")
+int BPF_PROG(do_page_cache_ra)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+    u64 one = 1;
+
+    bpf_map_update_elem(&in_readahead, &pid, &one, BPF_ANY);
+    return 0;
+}
+
+SEC("kprobe/do_page_cache_ra")
+int BPF_KPROBE(do_page_cache_ra_kprobe)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+    u64 one = 1;
+
+    bpf_map_update_elem(&in_readahead, &pid, &one, BPF_ANY);
+    return 0;
+}
+
+static __always_inline int alloc_page_ret(void *key)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+    u64 ts;
+
+    if (!bpf_map_lookup_elem(&in_readahead, &pid))
+        return 0;
+
+    ts = bpf_ktime_get_ns();
+    bpf_map_update_elem(&birth, &key, &ts, BPF_ANY);
+    __sync_fetch_and_add(&hist.unused, 1);
+    __sync_fetch_and_add(&hist.total, 1);
+
+    return 0;
+}
