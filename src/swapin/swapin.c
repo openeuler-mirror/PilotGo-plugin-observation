@@ -116,6 +116,32 @@ int main(int argc, char *argv[])
 		warning("Failed to attach BPF programs: %d\n", err);
 		goto cleanup;
 	}
+        
+	signal(SIGINT, sig_handler);
+
+	while (!exiting) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		printf("%-16s %-7s %s\n", "COMM", "PID", "COUNT");
+
+		err = print_map(bpf_map__fd(obj->maps.counts));
+		if (err)
+			break;
+
+		if (--env.times == 0)
+			break;
+	}
+
+cleanup:
+	swapin_bpf__destroy(obj);
 
 	return err != 0;
 }
