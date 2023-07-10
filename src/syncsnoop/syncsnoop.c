@@ -90,6 +90,43 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+    err = syncsnoop_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = syncsnoop_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal hander: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	printf("Tracing sync syscalls... Hit Ctrl-C to end.\n");
+	printf("%-9s %-6s %-16s %s\n", "TIME", "PID", "COMM", "EVENT");
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Failed to polling ring/perf buffer: %d\n", err);
+			break;
+		}
+		/* reset err to 0 when exiting */
+		err = 0;
+	}
+    
 cleanup:
 	bpf_buffer__free(buf);
 	syncsnoop_bpf__destroy(obj);
