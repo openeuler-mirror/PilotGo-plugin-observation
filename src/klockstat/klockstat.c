@@ -11,6 +11,9 @@ static struct prog_env {
 	pid_t tid;
     char *lock_name;
     bool per_thread;
+    unsigned int interval;
+    unsigned int iterations;
+    bool timestamp;
 }
 
 static const char args_doc[] = "FUNCTION";
@@ -36,6 +39,8 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 		return 0;
 	return vfprintf(stderr, format, args);
 }
+
+static volatile sig_atomic_t exiting;
 
 static void enable_fentry(struct klockstat_bpf *obj)
 {
@@ -201,8 +206,45 @@ int main(int argc, char *argv[])
 		enable_fentry(obj);
 	else
 		enable_kprobes(obj);
+    
+    err = klockstat_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object\n");
+		goto cleanup;
+	}
+
+	err = klockstat_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs\n");
+		goto cleanup;
+	}
+
+    printf("Tracing mutex/sem lock events... Hit Ctrl-C to end\n");
+
+	for (int i = 0; i < env.iterations && !exiting; i++) {
+		sleep(env.interval);
+
+		printf("\n");
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		if (print_stats(ksyms, bpf_map__fd(obj->maps.stack_map),
+				bpf_map__fd(obj->maps.stat_map))) {
+			warning("print_stats error, aborting.\n");
+			break;
+		}
+		fflush(stdout);
+	}
+
+    printf("Exiting trace of mutex/sem locks\n");
 
 cleanup:
+    if (obj)
+        klockstat_bpf__destroy(obj);
     ksyms__free(ksyms);
 
     return err != 0;
