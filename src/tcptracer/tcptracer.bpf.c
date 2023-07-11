@@ -54,3 +54,49 @@ struct {
 	__type(value, struct sock *);
 } sockets SEC(".maps");
 
+static __always_inline bool
+fill_tuple(struct tuple_key_t *tuple, struct sock *sk, int family)
+{
+	struct inet_sock *sockp = (struct inet_sock *)sk;
+
+	BPF_CORE_READ_INTO(&tuple->netns, sk, __sk_common.skc_net.net, ns.inum);
+
+	switch (family) {
+	case AF_INET:
+		BPF_CORE_READ_INTO(&tuple->saddr_v4, sk, __sk_common.skc_rcv_saddr);
+		if (tuple->saddr_v4 == 0)
+			return false;
+
+		BPF_CORE_READ_INTO(&tuple->daddr_v4, sk, __sk_common.skc_daddr);
+		if (tuple->daddr_v4 == 0)
+			return false;
+
+		break;
+	case AF_INET6:
+		BPF_CORE_READ_INTO(&tuple->saddr_v6, sk,
+				   __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		if (tuple->saddr_v6 == 0)
+			return false;
+
+		BPF_CORE_READ_INTO(&tuple->daddr_v6, sk,
+				   __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+		if (tuple->daddr_v6 == 0)
+			return false;
+
+		break;
+	/* It should not happen but to be sure let's handle this case */
+	default:
+		return false;
+	}
+
+	BPF_CORE_READ_INTO(&tuple->dport, sk, __sk_common.skc_dport);
+	if (tuple->dport == 0)
+		return false;
+
+	BPF_CORE_READ_INTO(&tuple->sport, sockp, inet_sport);
+	if (tuple->sport == 0)
+		return false;
+
+	return true;
+}
+
