@@ -188,3 +188,73 @@ static int attach_kprobes(struct readahead_bpf *obj)
 
 	return 0;
 }
+
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct readahead_bpf *obj;
+	struct hist *histp;
+	int err;
+	bool support_fentry;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	obj = readahead_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	support_fentry = try_fentry(obj);
+	if (!support_fentry) {
+		err = set_autoload_kprobes(obj);
+		if (err)
+			goto cleanup;
+	}
+
+	err = readahead_bpf__load(obj);
+	if (err) {
+		warning("failed to load BPF object\n");
+		goto cleanup;
+	}
+
+	if (!obj->bss) {
+		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+		goto cleanup;
+	}
+
+	err = support_fentry ? readahead_bpf__attach(obj) : attach_kprobes(obj);
+	if (err) {
+		warning("Failed to attach BPF programs\n");
+		goto cleanup;
+	}
+
+	signal(SIGINT, sig_handler);
+
+	printf("Tracing fs read-ahead ... Hit Ctrl-C tp end.\n");
+
+	sleep(env.duration);
+	printf("\n");
+
+	histp = &obj->bss->hist;
+
+	printf("Readahead unused/total pages: %d/%d\n",
+	       histp->unused, histp->total);
+	print_log2_hist(histp->slots, MAX_SLOTS, "msecs");
+
+cleanup:
+	readahead_bpf__destroy(obj);
+	return err != 0;
+}
