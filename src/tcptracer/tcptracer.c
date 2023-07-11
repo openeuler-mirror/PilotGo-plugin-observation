@@ -26,6 +26,25 @@ const char argp_program_doc[] =
 "    tcptracer --C mappath # only trace cgroups in the map\n"
 "    tcptracer --M mappath # only trace mount namespaces in the map\n";
 
+static int get_uint(const char *arg, unsigned int *ret, unsigned int min,
+		    unsigned int max)
+{
+	char *end;
+	long val;
+
+	errno = 0;
+	val = strtoul(arg, &end, 10);
+	if (errno) {
+		warning("strtoul: %s: %s\n", arg, strerror(errno));
+		return -1;
+	} else if (end == arg || val < min || val > max) {
+		return -1;
+	}
+	if (ret)
+		*ret = val;
+	return 0;
+}
+
 static const struct argp_option opts[] = {
 	{ "verbose", 'v', NULL, 0, "Verbose debug output" },
 	{ "timestamp", 't', NULL, 0, "Include timestamp on output" },
