@@ -488,3 +488,137 @@ static void trace_printf(void *ctx, const char *fmt, va_list args)
 {
 	vprintf(fmt, args);
 }
+
+#define VALID_NAME	"%[A-Za-z0-9\\-_]"
+#define ARGDATA		"%[^)]"
+
+static int parse_trace(char *str, struct trace *trace)
+{
+	__u8 i, nr_predicates = 0, nr_entry = 0, nr_return = 0;
+	char argname[MAX_NAME], membername[MAX_NAME];
+	char tracestr[MAX_STR], argdata[MAX_STR];
+	struct func *func = &trace->func;
+	char *arg, *saveptr;
+	int ret;
+
+	copy_without_spaces(tracestr, str);
+
+	pr_debug("Parsing trace '%s'", tracestr);
+
+	trace->filter_pid = (__u32)filter_pid;
+	if (filter_pid)
+		pr_debug("Using pid %lu as filter", trace->filter_pid);
+
+	trace->btf = vmlinux_btf;
+
+	ret = sscanf(tracestr, VALID_NAME "(" ARGDATA ")", func->name, argdata);
+	if (ret <= 0)
+		usage();
+	if (ret == 1) {
+		if (strlen(tracestr) > strlen(func->name)) {
+			pr_err("Invalid function specification '%s'", tracestr);
+			usage();
+		}
+		argdata[0] = '\0';
+		pr_debug("got func '%s'", func->name);
+	} else {
+		if (strlen(tracestr) >
+		    strlen(func->name) + strlen(argdata) + 2) {
+			pr_err("Invalid function specification '%s'", tracestr);
+			usage();
+		}
+		pr_debug("got fun '%s', args '%s'", func->name, argdata);
+		trace->flags |= KSNOOP_F_CUSTOM;
+	}
+
+	ret = get_func_ip_mod(func);
+	if (ret) {
+		pr_err("could not get address of '%s'", func->name);
+		return ret;
+	}
+	trace->btf = get_btf(func->mod);
+	if (!trace->btf) {
+		ret = -errno;
+		pr_err("Could not get BTF for '%s': %s",
+		       strlen(func->mod) ? func->mod : "vmlinux",
+		       strerror(-ret));
+		return -ENOENT;
+	}
+	trace->dump = btf_dump__new(trace->btf, trace_printf, NULL, NULL);
+	if (!trace->dump) {
+		ret = -errno;
+		pr_err("Could not create BTF dump : %s", strerror(-ret));
+		return -EINVAL;
+	}
+
+	ret = get_func_btf(trace->btf, func);
+	if (ret) {
+		pr_debug("Unexpected return value '%d' getting function", ret);
+		return ret;
+	}
+
+	for (arg = strtok_r(argdata, ",", &saveptr), i = 0;
+	     arg;
+	     arg = strtok_r(NULL, ",", &saveptr), i++) {
+		char *predicate = NULL;
+
+		ret = sscanf(arg, VALID_NAME "->" VALID_NAME,
+			     argname, membername);
+		if (ret == 2) {
+			if (strlen(arg) >
+			    strlen(argname) + strlen(membername) + 2) {
+				predicate = arg + strlen(argname) +
+					    strlen(membername) + 2;
+			}
+			pr_debug("'%s' dereferences '%s', predicate '%s'",
+				 argname, membername, predicate);
+		} else {
+			if (strlen(arg) > strlen(argname))
+				predicate = arg + strlen(argname);
+			pr_debug("'%s' arg, predicate '%s'", argname, predicate);
+			membername[0] = '\0';
+		}
+
+		if (i >= MAX_TRACES) {
+			pr_err("Too many arguments; up to %d are supported",
+				MAX_TRACES);
+			return -EINVAL;
+		}
+		if (trace_to_value(trace->btf, func, argname, membername,
+				   predicate, &trace->traces[i]))
+			return -EINVAL;
+
+		if (predicate)
+			nr_predicates++;
+		if (trace->traces[i].base_arg == KSNOOP_RETURN)
+			nr_return++;
+		else
+			nr_entry++;
+		trace->nr_traces++;
+	}
+
+	if (trace->nr_traces > 0) {
+		trace->flags |= KSNOOP_F_CUSTOM;
+		pr_debug("custom trace with %d args", trace->nr_traces);
+
+		/* If we have one or more predicates _and_ references to
+		 * entry and return values, we need to activate "stash"
+		 * mode where arg traces are stored on entry and not
+		 * send until return to ensure predicates are satisfied.
+		 */
+		if (nr_predicates > 0 && nr_entry > 0 && nr_return > 0) {
+			trace->flags |= KSNOOP_F_STASH;
+			pr_debug("activating stash mode on entry");
+		}
+	} else {
+		pr_debug("Standard trace, function with %d arguments",
+			 func->nr_args);
+		/* copy function arg/return value to trace specification. */
+		memcpy(trace->traces, func->args, sizeof(trace->traces));
+		for (i = 0; i < MAX_TRACES; i++)
+			trace->traces[i].base_arg = i;
+		trace->nr_traces = MAX_TRACES;
+	}
+
+	return 0;
+}
