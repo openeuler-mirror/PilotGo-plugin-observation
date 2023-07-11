@@ -141,6 +141,29 @@ int main(int argc, char *argv[])
 		warning("Failed to load BPF object: %d\n", err);
 		goto cleanup;
 	}
+	
+	signal(SIGINT, sig_handler);
+
+	printf("Tracing SYN backlog size. Ctrl-C to end.\n");
+
+	while (1) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		err = print_log2_hists(bpf_map__fd(obj->maps.hists));
+		if (err)
+			break;
+
+		if (exiting || --env.times == 0)
+			break;
+	}
 
 cleanup:
 	tcpsynbl_bpf__destroy(obj);
