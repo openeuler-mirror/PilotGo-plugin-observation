@@ -120,6 +120,70 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_events_header()
+{
+	if (env.print_timestamp)
+		printf("%-9s", "TIME(s)");
+	if (env.print_uid)
+		printf("%-6s", "UID");
+	printf("%s %-6s %-12s %-2s %-16s %-16s %-4s %-4s\n",
+	       "T", "PID", "COMM", "IP", "SADDR", "DADDR", "SPORT", "DPORT");
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	char src[INET6_ADDRSTRLEN];
+	char dst[INET6_ADDRSTRLEN];
+	union {
+		struct in_addr x4;
+		struct in6_addr x6;
+	} s, d;
+
+	if (e->af == AF_INET) {
+		s.x4.s_addr = e->saddr_v4;
+		d.x4.s_addr = e->daddr_v4;
+	} else if (e->af == AF_INET6) {
+		memcpy(&s.x6.s6_addr, &e->saddr_v6, sizeof(s.x6.s6_addr));
+		memcpy(&d.x6.s6_addr, &e->daddr_v6, sizeof(d.x6.s6_addr));
+	} else {
+		warning("Broken event: event->af=%d\n", e->af);
+		return 1;
+	}
+
+	if (env.print_timestamp)
+		printf("%-9.3f", time_since_start());
+
+	if (env.print_uid)
+		printf("%-6d", e->uid);
+
+	char type = '-';
+	switch (e->type) {
+	case TCP_EVENT_TYPE_CONNECT:
+		type = 'C';
+		break;
+	case TCP_EVENT_TYPE_ACCEPT:
+		type = 'A';
+		break;
+	case TCP_EVENT_TYPE_CLOSE:
+		type = 'X';
+		break;
+	}
+
+	printf("%c %-6d %-12.12s %-2d %-16s %-16s %-4d %-4d\n",
+	       type, e->pid, e->task, e->af == AF_INET ? 4 : 6,
+	       inet_ntop(e->af, &s, src, sizeof(src)),
+	       inet_ntop(e->af, &d, dst, sizeof(dst)),
+	       ntohs(e->sport), ntohs(e->dport));
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -135,25 +199,25 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
-		
-        if (!bpf_is_root())
+
+	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
 
-        err = ensure_core_btf(&open_opts);
+	err = ensure_core_btf(&open_opts);
 	if (err) {
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
 	}
-	
+
 	obj = tcptracer_bpf__open_opts(&open_opts);
 	if (!obj) {
 		warning("Failed to open BPF object\n");
 		return 1;
 	}
 
-        buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
 	if (!buf) {
 		warning("Faile to create ring/perf buffer\n");
 		err = -errno;
@@ -164,7 +228,7 @@ int main(int argc, char *argv[])
 		obj->rodata->filter_pid = env.pid;
 	if (env.uid != (uid_t)-1)
 		obj->rodata->filter_uid = env.uid;
-        
+
 	err = tcptracer_bpf__load(obj);
 	if (err) {
 		warning("Failed to load BPF object: %d\n", err);
@@ -176,7 +240,7 @@ int main(int argc, char *argv[])
 		warning("Failed to attach BPF programs: %s\n", strerror(-err));
 		goto cleanup;
 	}
-	
+
 	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
 	if (err) {
 		warning("Failed to open ring/perf buffer: %d\n", err);
@@ -208,3 +272,4 @@ cleanup:
 
 	return err != 0;
 }
+
