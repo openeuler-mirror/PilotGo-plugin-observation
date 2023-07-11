@@ -424,3 +424,15 @@ static char *type_id_to_str(struct btf *btf, __s32 type_id, char *str)
 
 	return str;
 }
+
+static char *value_to_str(struct btf *btf, struct value *val, char *str)
+{
+	str = type_id_to_str(btf, val->type_id, str);
+	if (val->flags & KSNOOP_F_PTR)
+		strncat(str, "*", MAX_STR);
+	if (strlen(val->name) > 0 &&
+	    strcmp(val->name, KSNOOP_RETURN_NAME) != 0)
+		strncat(str, val->name, MAX_STR);
+
+	return str;
+}
