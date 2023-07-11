@@ -7,14 +7,37 @@
 
 #include <arpa/inet.h>
 
-struct bpf_buffer {
-	struct bpf_map *events;
-	void *inner;
-	bpf_buffer_sample_fn fn;
-	void *ctx;
-	int type;
+static struct env {
+	pid_t pid;
+	pid_t tid;
+	__u64 min_us;
+	__u16 lport;
+	__u16 rport;
+	__u16 target_family;
+	bool timestamp;
+	bool verbose;
+	int column_width;
+} env = {
+	.column_width = 15,
 };
 
+static volatile sig_atomic_t exiting;
+
+const char *argp_program_version = "tcppktlat 0.1";
+const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char argp_program_doc[] =
+"Trace latency between TCP received pkt and picked up by userspace thread.\n"
+"\n"
+"USAGE: tcppkglat [--help] [-T] [-p PID] [-t TID] [-l LPORT] [-r RPORT] [-v]\n"
+"                 [-W ADDR-WIDTH] [-4] [-6]\n"
+"\n"
+"EXAMPLES:\n"
+"    tcppkglat             # Trace all TCP packet picked up latency\n"
+"    tcppkglat -T          # summarize with timestamps\n"
+"    tcppkglat -p          # filter for pid\n"
+"    tcppkglat -t          # filter for tid\n"
+"    tcppkglat -l          # filter for local port\n"
+"    tcppkglat -r          # filter for remote port\n";
 
 static const struct argp_option opts[] = {
 	{ "pid", 'p', "PID", 0, "Process ID to trace" },
@@ -99,5 +122,30 @@ int main(int argc, char *argv[])
 		return err;
 
 	libbpf_set_print(libbpf_print_fn);
-	return 0
+
+	obj = tcppktlat_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_pid = env.pid;
+	obj->rodata->target_tid = env.tid;
+	obj->rodata->target_sport = env.lport;
+	obj->rodata->target_dport = env.rport;
+	obj->rodata->target_min_us = env.min_us;
+	obj->rodata->target_family = env.target_family;
+
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		err = -errno;
+		warning("Failed to create ring/perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+cleanup:
+	bpf_buffer__free(buf);
+	tcppktlat_bpf__destroy(obj);
+
+	return err != 0;
 }
