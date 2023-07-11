@@ -100,3 +100,24 @@ fill_tuple(struct tuple_key_t *tuple, struct sock *sk, int family)
 	return true;
 }
 
+static __always_inline void
+fill_event(struct tuple_key_t *tuple, struct event *event, __u32 pid,
+	   __u32 uid, __u16 family, __u8 type)
+{
+	event->type = type;
+	event->pid = pid;
+	event->uid = uid;
+	event->af = family;
+	event->netns = tuple->netns;
+	if (family == AF_INET) {
+		event->saddr_v4 = tuple->saddr_v4;
+		event->daddr_v4 = tuple->daddr_v4;
+	} else {
+		event->saddr_v6 = tuple->saddr_v6;
+		event->daddr_v6 = tuple->daddr_v6;
+	}
+	event->sport = tuple->sport;
+	event->dport = tuple->dport;
+}
+
+
