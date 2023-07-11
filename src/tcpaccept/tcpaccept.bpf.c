@@ -50,3 +50,26 @@ tcp_ipv4_trace(void *ctx, struct sock *sk, __u32 pid, __u16 lport, __u16 dport)
 
 	submit_buf(ctx, data4, sizeof(*data4));
 }
+
+static __always_inline void
+tcp_ipv6_trace(void *ctx, struct sock *sk, __u32 pid, __u16 lport, __u16 dport)
+{
+	struct data_t *data6;
+
+	data6 = reserve_buf(sizeof(*data6));
+	if (!data6)
+		return;
+
+	data6->af = AF_INET6;
+	data6->pid = pid;
+	data6->ip = 6;
+	BPF_CORE_READ_INTO(&data6->saddr_v6, sk,
+			   __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+	BPF_CORE_READ_INTO(&data6->daddr_v6, sk,
+			   __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	data6->lport = lport;
+	data6->dport = dport;
+	bpf_get_current_comm(&data6->task, sizeof(data6->task));
+
+	submit_buf(ctx, data6, sizeof(*data6));
+}
