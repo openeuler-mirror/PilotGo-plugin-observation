@@ -351,3 +351,10 @@ static struct btf *get_btf(const char *name)
 	return mod_btf;
 }
 
+static void copy_without_spaces(char *target, char *src)
+{
+	for (; *src != '\0'; src++)
+		if (!isspace(*src))
+			*(target++) = *src;
+	*target = '\0';
+}
