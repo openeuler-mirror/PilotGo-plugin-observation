@@ -61,3 +61,58 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{},
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case 'i':
+		env.interval = argp_parse_long(key, arg, state);
+		break;
+	case 'd':
+		env.duration = argp_parse_long(key, arg, state);
+		break;
+	case 'T':
+		env.timestamp = true;
+		break;
+	case 'm':
+		env.milliseconds = true;
+		break;
+	case 'p':
+		env.lport = htons(argp_parse_long(key, arg, state));
+		break;
+	case 'P':
+		env.rport = htons(argp_parse_long(key, arg, state));
+		break;
+	case 'a':
+	case 'A':
+	{
+		struct in_addr addr;
+
+		if (inet_aton(arg, &addr) < 0) {
+			warning("Invalid address: %s\n", arg);
+			argp_usage(state);
+		}
+		if (key == 'a')
+			env.laddr = addr.s_addr;
+		else
+			env.raddr = addr.s_addr;
+		break;
+	}
+	case 'b':
+		env.laddr_hist = true;
+		break;
+	case 'B':
+		env.raddr_hist = true;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
