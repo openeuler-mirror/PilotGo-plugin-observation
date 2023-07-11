@@ -301,3 +301,41 @@ out:
 	free(ip);
 	return 0;
 }
+
+static void print_args(__u64 args[])
+{
+	for (int i = 0; i < MIN(MAX_ARGS, env.arguments); i++)
+		printf(" 0x%llx", args[i]);
+	printf("\n");
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	struct event *e = data;
+	struct funcslower_bpf *obj = ctx;
+
+	if (env.time) {
+		char ts[16];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%-10s ", ts);
+	} else if (env.timestamp) {
+		printf("%-10.6f ", time_since_start());
+	}
+
+	char retval[20];
+	sprintf(retval, "0x%llx", e->retval);
+
+	printf("%-16s %-10lld %10.2f %16s %s", e->comm, e->pid_tgid >> 32,
+	       e->duration_ns / (env.ms ? 1e6 : 1e3), retval,
+	       env.functions[e->id]);
+
+	print_args(e->args);
+	print_stack(obj, e);
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %lld events on CPU #%d!\n", lost_cnt, cpu);
+}
