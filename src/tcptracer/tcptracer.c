@@ -189,6 +189,18 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	print_events_header();
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
 cleanup:
 	bpf_buffer__free(buf);
 	tcptracer_bpf__destroy(obj);
