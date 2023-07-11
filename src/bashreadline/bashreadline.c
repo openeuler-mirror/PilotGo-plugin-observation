@@ -92,5 +92,70 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		goto cleanup;
+	}
+
+	obj = bashreadline_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		goto cleanup;
+	}
+
+	err = bashreadline_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object\n");
+		goto cleanup;
+	}
+
+	func_off = get_elf_func_offset(readline_so_path, "readline");
+	if (func_off < 0) {
+		warning("Count not find readline in %s\n", readline_so_path);
+		goto cleanup;
+	}
+
+	obj->links.printret = bpf_program__attach_uprobe(obj->progs.printret, true, -1,
+							 readline_so_path, func_off);
+	if (!obj->links.printret) {
+		err = -errno;
+		warning("Failed to attach readline: %d\n", err);
+		goto cleanup;
+	}
+
+	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+			      handle_event, handle_lost_event, NULL, NULL);
+	if (!pb) {
+		err = -errno;
+		warning("Failed to open perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	printf("%-9s %-7s %s\n", "TIME", "PID", "COMMAND");
+	while (!exiting) {
+		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		err = 0;
+	}
+
+cleanup:
+	if (readline_so_path)
+		free(readline_so_path);
+	perf_buffer__free(pb);
+	bashreadline_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
+
 	return err != 0;
 }
