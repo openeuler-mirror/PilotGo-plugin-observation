@@ -129,3 +129,62 @@ out_shutdown_fentry:
     disable_fentry(obj);
     return false;
 }
+
+
+static int set_autoload_kprobes(struct readahead_bpf *obj)
+{
+	if (kprobe_exists("folio_mark_accessed") &&
+	    kprobe_exists("filemap_alloc_folio")) {
+		bpf_program__set_autoload(obj->progs.page_cache_alloc_kretprobe, false);
+		bpf_program__set_autoload(obj->progs.mark_page_accessed_kprobe, false);
+	} else if (kprobe_exists("mark_page_accessed") &&
+		   kprobe_exists("__page_cache_alloc")) {
+		bpf_program__set_autoload(obj->progs.filemap_alloc_folio_kretprobe, false);
+		bpf_program__set_autoload(obj->progs.folio_mark_accessed_kprobe, false);
+	} else {
+		return 1;
+	}
+
+	return 0;
+}
+
+static int attach_kprobes(struct readahead_bpf *obj)
+{
+	/*
+	 * starting from v5.10-rc1, __do_page_cache_readahead has renamed to
+	 * do_page_cache_ra, so we specify the function dynamically.
+	 */
+	if (kprobe_exists("do_page_cache_ra")) {
+		obj->links.do_page_cache_ra_kprobe =
+			bpf_program__attach_kprobe(obj->progs.do_page_cache_ra_kprobe,
+						   false,
+						   "do_page_cache_ra");
+		if (!obj->links.do_page_cache_ra_kprobe)
+			return 1;
+	} else {
+		obj->links.do_page_cache_ra_kprobe =
+			bpf_program__attach_kprobe(obj->progs.do_page_cache_ra_kprobe,
+						   false,
+						   "__do_page_cache_readahead");
+		if (!obj->links.do_page_cache_ra_kprobe)
+			return 1;
+	}
+
+	if (kprobe_exists("do_page_cache_ra")) {
+		obj->links.do_page_cache_ra_kretprobe =
+			bpf_program__attach_kprobe(obj->progs.do_page_cache_ra_kretprobe,
+						   true,
+						   "do_page_cache_ra");
+		if (!obj->links.do_page_cache_ra_kretprobe)
+			return 1;
+	} else {
+		obj->links.do_page_cache_ra_kretprobe =
+			bpf_program__attach_kprobe(obj->progs.do_page_cache_ra_kretprobe,
+						   true,
+						   "__do_page_cache_readahead");
+		if (!obj->links.do_page_cache_ra_kretprobe)
+			return 1;
+	}
+
+	return 0;
+}
