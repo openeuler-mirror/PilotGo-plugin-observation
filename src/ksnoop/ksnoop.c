@@ -384,6 +384,39 @@ static char *type_id_to_str(struct btf *btf, __s32 type_id, char *str)
 				break;
 			}
 
+			switch (BTF_INFO_KIND(type->info)) {
+			case BTF_KIND_CONST:
+			case BTF_KIND_VOLATILE:
+			case BTF_KIND_RESTRICT:
+				type_id = type->type;
+				break;
+			case BTF_KIND_PTR:
+				ptr = "* ";
+				type_id = type->type;
+				break;
+			case BTF_KIND_ARRAY:
+				suffix = "[]";
+				type_id = type->type;
+				break;
+			case BTF_KIND_STRUCT:
+				prefix = "struct ";
+				name = btf__str_by_offset(btf, type->name_off);
+				break;
+			case BTF_KIND_UNION:
+				prefix = "union ";
+				name = btf__str_by_offset(btf, type->name_off);
+				break;
+			case BTF_KIND_ENUM:
+				prefix = "enum ";
+				name = btf__str_by_offset(btf, type->name_off);
+				break;
+			case BTF_KIND_TYPEDEF:
+				name = btf__str_by_offset(btf, type->name_off);
+				break;
+			default:
+				name = btf__str_by_offset(btf, type->name_off);
+				break;
+			}
 		} while (type_id >= 0 && strlen(name) == 0);
 		break;
 	}
