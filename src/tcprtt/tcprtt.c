@@ -128,3 +128,45 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+static int print_map(struct bpf_map *map)
+{
+	const char *units = env.milliseconds ? "msecs" : "usecs";
+	__u64 lookup_key = -1, next_key;
+	int err, fd = bpf_map__fd(map);
+	struct hist hist;
+
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_lookup_elem(fd, &next_key, &hist);
+		if (err < 0) {
+			warning("Failed to lookup infos: %d\n", err);
+			return -1;
+		}
+
+		struct in_addr addr = { .s_addr = next_key };
+		if (env.laddr_hist)
+			printf("Local Address = %s ", inet_ntoa(addr));
+		else if (env.raddr_hist)
+			printf("Remote Address = %s ", inet_ntoa(addr));
+		else
+			printf("All Address = ****** ");
+		if (env.extended)
+			printf("[AVG %llu]", hist.latency / hist.cnt);
+		printf("\n");
+		print_log2_hist(hist.slots, MAX_SLOTS, units);
+		printf("\n");
+		lookup_key = next_key;
+	}
+
+	lookup_key = -1;
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_delete_elem(fd, &next_key);
+		if (err < 0) {
+			warning("Failed to cleanup infos: %d\n", err);
+			return -1;
+		}
+		lookup_key = next_key;
+	}
+
+	return 0;
+}
