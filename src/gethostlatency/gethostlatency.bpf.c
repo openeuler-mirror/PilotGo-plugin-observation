@@ -21,3 +21,25 @@ struct {
 	__uint(key_size, sizeof(u32));
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
+
+static int probe_entry(struct pt_regs *ctx)
+{
+	if (!PT_REGS_PARM1(ctx))
+		return 0;
+
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u32 tid = (__u32)pid_tgid;
+
+	if (target_pid && target_pid != pid)
+		return 0;
+
+	struct event event = {};
+	event.time = bpf_ktime_get_ns();
+	event.pid = pid;
+	bpf_get_current_comm(&event.comm, sizeof(event.comm));
+	bpf_core_read_user(&event.host, sizeof(event.host), (void *)PT_REGS_PARM1(ctx));
+	bpf_map_update_elem(&starts, &tid, &event, BPF_ANY);
+
+	return 0;
+}
