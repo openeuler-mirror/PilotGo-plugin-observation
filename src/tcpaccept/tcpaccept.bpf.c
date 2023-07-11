@@ -73,3 +73,34 @@ tcp_ipv6_trace(void *ctx, struct sock *sk, __u32 pid, __u16 lport, __u16 dport)
 
 	submit_buf(ctx, data6, sizeof(*data6));
 }
+
+static __always_inline int
+trace_event(void *ctx, struct sock *sk)
+{
+	__u16 *port;
+	__u32 pid = bpf_get_current_pid_tgid() >> 32;
+
+	if (trace_pid && trace_pid != pid)
+		return 0;
+
+	if (sk == NULL)
+		return 0;
+
+	if (BPF_CORE_READ_BITFIELD_PROBED(sk, sk_protocol) != IPPROTO_TCP)
+		return 0;
+
+	__u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	__u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);
+	__u16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
+
+	port = bpf_map_lookup_elem(&ports, &lport);
+	if (filter_by_port && !port)
+		return 0;
+
+	if (family == AF_INET)
+		tcp_ipv4_trace(ctx, sk, pid, lport, dport);
+	else if (family == AF_INET6)
+		tcp_ipv6_trace(ctx, sk, pid, lport, dport);
+
+	return 0;
+}
