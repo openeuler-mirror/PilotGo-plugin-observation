@@ -40,3 +40,17 @@ struct pid_comm_t {
 	u32 uid;
 };
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, struct tuple_key_t);
+	__type(value, struct pid_comm_t);
+} tuplepid SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, u32);
+	__type(value, struct sock *);
+} sockets SEC(".maps");
+
