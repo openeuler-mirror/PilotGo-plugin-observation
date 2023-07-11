@@ -104,3 +104,11 @@ trace_event(void *ctx, struct sock *sk)
 
 	return 0;
 }
+
+SEC("kretprobe/inet_csk_accept")
+int BPF_KRETPROBE(inet_csk_accept_kretprobe, struct sock *sk)
+{
+	return trace_event(ctx, sk);
+}
+
+char LICENSE[] SEC("license") = "GPL";
