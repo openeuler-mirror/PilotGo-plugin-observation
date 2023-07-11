@@ -70,6 +70,16 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_size)
 	printf("%-9s %-7d %s\n", ts, e->pid, e->str);
 }
 
+static void handle_lost_event(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
