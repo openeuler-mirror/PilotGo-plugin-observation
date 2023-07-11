@@ -210,3 +210,43 @@ int BPF_KRETPROBE(tcp_v6_connect_ret, int ret)
 {
 	return exit_tcp_connect(ctx, ret, AF_INET6);
 }
+
+SEC("kprobe/tcp_close")
+int BPF_KPROBE(entry_trace_close, struct sock *sk)
+{
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u64 uid_gid = bpf_get_current_uid_gid();
+	__u32 uid = uid_gid;
+	struct tuple_key_t tuple = {};
+	struct event *eventp;
+	u16 family;
+
+	if (filter_event(sk, uid, pid))
+		return 0;
+
+	/*
+	 * Don't generate close events for connections that were never
+	 * established in the first place.
+	 */
+	u8 oldstate = BPF_CORE_READ(sk, __sk_common.skc_state);
+	if (oldstate == TCP_SYN_SENT ||
+	    oldstate == TCP_SYN_RECV ||
+	    oldstate == TCP_NEW_SYN_RECV)
+		return 0;
+
+	family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	if (!fill_tuple(&tuple, sk, family))
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		return 0;
+
+	fill_event(&tuple, eventp, pid, uid, family, TCP_EVENT_TYPE_CLOSE);
+	bpf_get_current_comm(&eventp->task, sizeof(eventp->task));
+
+	submit_buf(ctx, eventp, sizeof(*eventp));
+	return 0;
+}
+
