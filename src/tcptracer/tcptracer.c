@@ -159,6 +159,22 @@ int main(int argc, char *argv[])
 		obj->rodata->filter_pid = env.pid;
 	if (env.uid != (uid_t)-1)
 		obj->rodata->filter_uid = env.uid;
+        
+	err = tcptracer_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = tcptracer_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %s\n", strerror(-err));
+		goto cleanup;
+	}
+cleanup:
+	bpf_buffer__free(buf);
+	tcptracer_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
 
 	return err != 0;
 }
