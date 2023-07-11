@@ -484,3 +484,7 @@ out:
 	return err;
 }
 
+static void trace_printf(void *ctx, const char *fmt, va_list args)
+{
+	vprintf(fmt, args);
+}
