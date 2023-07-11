@@ -148,5 +148,17 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+        buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		warning("Faile to create ring/perf buffer\n");
+		err = -errno;
+		goto cleanup;
+	}
+
+	if (env.pid)
+		obj->rodata->filter_pid = env.pid;
+	if (env.uid != (uid_t)-1)
+		obj->rodata->filter_uid = env.uid;
+
 	return err != 0;
 }
