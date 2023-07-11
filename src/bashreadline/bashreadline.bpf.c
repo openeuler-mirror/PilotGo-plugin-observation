@@ -26,6 +26,10 @@ int BPF_KRETPROBE(printret, const void *ret)
 
 	bpf_get_current_comm(&comm, sizeof(comm));
 
+	if (comm[0] != 'b' || comm[1] != 'a' || comm[2] != 's' ||
+	    comm[3] != 'h' || comm[4] != 0)
+		return 0;
+		
 	pid = bpf_get_current_pid_tgid() >> 32;
 	data.pid = pid;
 	bpf_core_read_user_str(&data.str, sizeof(data.str), ret);
