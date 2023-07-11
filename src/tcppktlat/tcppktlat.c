@@ -107,6 +107,11 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	const struct event *e = data;
@@ -144,6 +149,7 @@ int main(int argc, char *argv[])
 	struct bpf_buffer *buf = NULL;
 	struct tcppktlat_bpf *obj;
 	int err;
+
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
@@ -194,6 +200,28 @@ int main(int argc, char *argv[])
 	if (err) {
 		warning("Failed to open ring/perf buffer: %d\n", err);
 		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	if (env.timestamp)
+		printf("%-8s ", "TIME(s)");
+	printf("%-7s %-7s %-16s %-*s %-5s %-*s %-5s %-s\n",
+	       "PID", "TID", "COMM", env.column_width, "LADDR", "LPORT",
+	       env.column_width, "RADDR", "RPORT", "MS");
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
 	}
 
 cleanup:
