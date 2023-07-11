@@ -125,5 +125,16 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	
+	disable_all_progs(obj);
+
+	if (env.ipv4) {
+		set_autoload_progs(obj, 4);
+	} else if (env.ipv6) {
+		set_autoload_progs(obj, 6);
+	} else {
+		set_autoload_progs(obj, 4);
+		set_autoload_progs(obj, 6);
+	}
+
 	return err != 0;
 }
