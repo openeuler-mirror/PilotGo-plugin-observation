@@ -120,4 +120,20 @@ fill_event(struct tuple_key_t *tuple, struct event *event, __u32 pid,
 	event->dport = tuple->dport;
 }
 
+/* returns true if the event should be skipped */
+static __always_inline bool
+filter_event(struct sock *sk, __u32 uid, __u32 pid)
+{
+	u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
 
+	if (family != AF_INET && family != AF_INET6)
+		return true;
+
+	if (filter_pid && pid != filter_pid)
+		return true;
+
+	if (filter_uid != (uid_t)-1 && uid != filter_uid)
+		return true;
+
+	return false;
+}
