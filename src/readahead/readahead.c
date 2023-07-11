@@ -61,3 +61,71 @@ static void sig_handler(int sig)
 {
     exiting = 1;
 }
+
+static bool readahead__set_attach_target(struct bpf_program *prog)
+{
+    if (!bpf_program__set_attach_target(prog, 0, "do_page_cache_ra"))
+        return true;
+
+    if (!bpf_program__set_attach_target(prog, 0,
+                                        "__do_page_cache_readahead"))
+        return true;
+
+    return false;
+}
+
+static void disable_kprobes(struct readahead_bpf *obj)
+{
+    bpf_program__set_autoload(obj->progs.do_page_cache_ra_kprobe, false);
+    bpf_program__set_autoload(obj->progs.do_page_cache_ra_kretprobe, false);
+    bpf_program__set_autoload(obj->progs.page_cache_alloc_kretprobe, false);
+    bpf_program__set_autoload(obj->progs.mark_page_accessed_kprobe, false);
+    bpf_program__set_autoload(obj->progs.filemap_alloc_folio_kretprobe, false);
+    bpf_program__set_autoload(obj->progs.folio_mark_accessed_kprobe, false);
+}
+
+static void disable_fentry(struct readahead_bpf *obj)
+{
+    bpf_program__set_autoload(obj->progs.do_page_cache_ra, false);
+    bpf_program__set_autoload(obj->progs.do_page_cache_ra_ret, false);
+    bpf_program__set_autoload(obj->progs.page_cache_alloc_ret, false);
+    bpf_program__set_autoload(obj->progs.mark_page_accessed, false);
+    bpf_program__set_autoload(obj->progs.filemap_alloc_folio_ret, false);
+    bpf_program__set_autoload(obj->progs.folio_mark_accessed, false);
+}
+
+static bool try_fentry(struct readahead_bpf *obj)
+{
+    /*
+     * starting from v5.10-rc1, __do_page_cache_readahead has renamed to
+     * do_page_cache_ra, so we specify the function dynamically.
+     */
+    if (!readahead__set_attach_target(obj->progs.do_page_cache_ra))
+        goto out_shutdown_fentry;
+    if (!readahead__set_attach_target(obj->progs.do_page_cache_ra_ret))
+        goto out_shutdown_fentry;
+
+    if (fentry_can_attach("folio_mark_accessed", NULL) &&
+        fentry_can_attach("filemap_alloc_folio", NULL))
+    {
+        bpf_program__set_autoload(obj->progs.page_cache_alloc_ret, false);
+        bpf_program__set_autoload(obj->progs.mark_page_accessed, false);
+    }
+    else if (fentry_can_attach("mark_page_accessed", NULL) &&
+             fentry_can_attach("__page_cache_alloc", NULL))
+    {
+        bpf_program__set_autoload(obj->progs.filemap_alloc_folio_ret, false);
+        bpf_program__set_autoload(obj->progs.folio_mark_accessed, false);
+    }
+    else
+    {
+        goto out_shutdown_fentry;
+    }
+
+    disable_kprobes(obj);
+    return true;
+
+out_shutdown_fentry:
+    disable_fentry(obj);
+    return false;
+}
