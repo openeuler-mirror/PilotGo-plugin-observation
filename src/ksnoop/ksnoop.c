@@ -358,3 +358,36 @@ static void copy_without_spaces(char *target, char *src)
 			*(target++) = *src;
 	*target = '\0';
 }
+
+static char *type_id_to_str(struct btf *btf, __s32 type_id, char *str)
+{
+	const struct btf_type *type;
+	const char *name = "";
+	char *prefix = "";
+	char *suffix = " ";
+	char *ptr = "";
+
+	str[0] = '\0';
+
+	switch (type_id) {
+	case 0:
+		name = "void";
+		break;
+	case KSNOOP_ID_UNKNOWN:
+		name = "?";
+		break;
+	default:
+		do {
+			type = btf__type_by_id(btf, type_id);
+			if (!type) {
+				name = "?";
+				break;
+			}
+
+		} while (type_id >= 0 && strlen(name) == 0);
+		break;
+	}
+	snprintf(str, MAX_STR, "%s%s%s%s", prefix, name, suffix, ptr);
+
+	return str;
+}
