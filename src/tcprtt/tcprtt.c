@@ -170,3 +170,99 @@ static int print_map(struct bpf_map *map)
 
 	return 0;
 }
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct tcprtt_bpf *obj;
+	__u64 time_end = 0;
+	int err;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	obj = tcprtt_bpf__open();
+	if (!obj) {
+		warning("Failed to opne BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_laddr_hist = env.laddr_hist;
+	obj->rodata->target_raddr_hist = env.raddr_hist;
+	obj->rodata->target_show_ext = env.extended;
+	obj->rodata->target_sport = env.lport;
+	obj->rodata->target_dport = env.rport;
+	obj->rodata->target_saddr = env.laddr;
+	obj->rodata->target_daddr = env.raddr;
+	obj->rodata->target_ms = env.milliseconds;
+
+	if (fentry_can_attach("tcp_rcv_established", NULL))
+		bpf_program__set_autoload(obj->progs.tcp_rcv_kprobe, false);
+	else
+		bpf_program__set_autoload(obj->progs.tcp_rcv, false);
+
+	err = tcprtt_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = tcprtt_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		err = -errno;
+		warning("Can't set signal handler: %s\n", strerror(err));
+		goto cleanup;
+	}
+
+	printf("Tracing TCP RTT");
+	if (env.duration)
+		printf(" for %ld secs.\n", env.duration);
+	else
+		printf("... Hit Ctrl-C to end.\n");
+
+	/* setup duration */
+	if (env.duration)
+		time_end = get_ktime_ns() + env.duration * NSEC_PER_SEC;
+
+	/* main: poll */
+	while (1) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		err = print_map(obj->maps.hists);
+		if (err)
+			break;
+
+		if (env.duration && get_ktime_ns() > time_end)
+			goto cleanup;
+
+		if (exiting)
+			break;
+	}
+
+cleanup:
+	tcprtt_bpf__destroy(obj);
+
+	return err != 0;
+}
