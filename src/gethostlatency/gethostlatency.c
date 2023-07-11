@@ -24,3 +24,39 @@ const char argp_program_doc[] =
 "EXAMPLES:\n"
 "    gethostlatency             # time getaddrinfo/gethostbyname[2] calls\n"
 "    gethostlatency -p 1216     # only trace PID 1216\n";
+
+static const struct argp_option opts[] = {
+	{ "pid", 'p', "PID", 0, "Process ID to trace" },
+	{ "libc", 'l', "LIBC", 0, "Specify which libc.so to use" },
+	{ "verbose", 'v', NULL, 0, "Verbose debug output" },
+	{ NULL, 'h', NULL, 0, "Show the full help" },
+	{},
+};
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case 'p':
+		env.pid = argp_parse_pid(key, arg, state);
+		break;
+	case 'l':
+		if (!arg)
+			return ARGP_ERR_UNKNOWN;
+		env.libc_path = strdup(arg);
+		if (access(env.libc_path, F_OK)) {
+			warning("Invalid libc: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
