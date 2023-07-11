@@ -107,6 +107,33 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	char saddr[48], daddr[48];
+
+	if (env.timestamp) {
+		char ts[32];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%-8s ", ts);
+	}
+
+	inet_ntop(e->family, &e->saddr, saddr, sizeof(saddr));
+	inet_ntop(e->family, &e->daddr, daddr, sizeof(daddr));
+
+	printf("%-7d %-7d %-16s %-*s %-5d %-*s %-5d %-.2f\n",
+	       e->pid, e->tid, e->comm, env.column_width, saddr, e->sport,
+	       env.column_width, daddr, e->dport, e->delta_us / 1e3);
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -140,6 +167,32 @@ int main(int argc, char *argv[])
 	if (!buf) {
 		err = -errno;
 		warning("Failed to create ring/perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	if (probe_tp_btf("tcp_probe")) {
+		bpf_program__set_autoload(obj->progs.tcp_probe_raw, false);
+		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_raw, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.tcp_probe_btf, false);
+		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_btf, false);
+	}
+
+	err = tcppktlat_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = tcppktlat_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer: %d\n", err);
 		goto cleanup;
 	}
 
