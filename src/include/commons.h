@@ -62,6 +62,50 @@ static inline int get_pid_max(void)
 	return pid_max;
 }
 
+static inline double time_since_start(void)
+{
+	long nsec, sec;
+	static struct timespec start_time;
+	static struct timespec current_time;
+	static bool first = true;
+
+	if (first) {
+		clock_gettime(CLOCK_MONOTONIC, &start_time);
+		first = false;
+		return 0.0;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &current_time);
+	nsec = current_time.tv_nsec - start_time.tv_nsec;
+	sec = current_time.tv_sec - start_time.tv_sec;
+	if (nsec < 0) {
+		nsec += NSEC_PER_SEC;
+		sec--;
+	}
+
+	return sec + (double)nsec / NSEC_PER_SEC;
+}
+
+static inline __maybe_unused
+const char *strftime_now(char *s, size_t max, const char *format)
+{
+	struct tm *tm;
+	time_t t;
+
+	t = time(NULL);
+	tm = localtime(&t);
+	if (!tm) {
+		warning("localtime: %s\n", strerror(errno));
+		return "<failed>";
+	}
+	if (!strftime(s, max, format, tm)) {
+		warning("strftime error\n");
+		return "<failed>";
+	}
+
+	return s;
+}
+
 /* https://www.gnu.org/software/gnulib/manual/html_node/strerrorname_005fnp.html */
 #if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 32)
 static inline const char *strerrorname_np(int errnum)
