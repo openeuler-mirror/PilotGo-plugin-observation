@@ -109,3 +109,53 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+
+static int nr_cpus;
+
+static int open_and_attach_perf_event(int freq, struct bpf_program *prog,
+				      struct bpf_link *links[])
+{
+	for (int i = 0; i < nr_cpus; i++) {
+		struct perf_event_attr attr = {
+			.type = PERF_TYPE_SOFTWARE,
+			.freq = 1,
+			.sample_period = freq,
+			.config = PERF_COUNT_SW_CPU_CLOCK,
+		};
+
+		int fd = syscall(__NR_perf_event_open, &attr, -1, i, -1, 0);
+
+		if (fd < 0) {
+			/* Ignore CPU that is offline */
+			if (errno == ENODEV)
+				continue;
+
+			warning("Failed to init perf sampling: %s\n", strerror(errno));
+			return -1;
+		}
+
+		links[i] = bpf_program__attach_perf_event(prog, fd);
+		if (!links[i]) {
+			warning("Failed to attach perf event on cpu#%d!\n", i);
+			close(fd);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static struct hist zero;
