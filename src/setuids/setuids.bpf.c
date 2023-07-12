@@ -48,3 +48,30 @@ handle_syscall_enter_uid_fsuid(struct trace_event_raw_sys_enter *ctx)
 
 	return 0;
 }
+
+SEC("tracepoint/syscalls/sys_enter_setuid")
+int tracepoint_syscall_enter_setuid(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_syscall_enter_uid_fsuid(ctx);
+}
+
+SEC("tracepoint/syscalls/sys_enter_setfsuid")
+int tracepoint_syscall_enter_setfsuid(struct trace_event_raw_sys_enter *ctx)
+{
+	return handle_syscall_enter_uid_fsuid(ctx);
+}
+
+SEC("tracepoint/syscalls/sys_enter_setresuid")
+int tracepoint_syscall_enter_setresuid(struct trace_event_raw_sys_enter *ctx)
+{
+	struct data2_t data = {};
+	pid_t tid = bpf_get_current_pid_tgid();
+
+	data.prev_uid = bpf_get_current_uid_gid();
+	data.ruid = (uid_t)ctx->args[0];
+	data.euid = (uid_t)ctx->args[1];
+	data.suid = (uid_t)ctx->args[2];
+
+	bpf_map_update_elem(&birth_setreuid, &tid, &data, BPF_ANY);
+	return 0;
+}
