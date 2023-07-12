@@ -765,3 +765,33 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+static int add_traces(struct bpf_map *func_map, struct trace *traces,
+		      int nr_traces)
+{
+	int i, j, ret, nr_cpus = libbpf_num_possible_cpus();
+	struct trace *map_traces;
+
+	map_traces = calloc(nr_cpus, sizeof(struct trace));
+	if (!map_traces) {
+		pr_err("Could not allocate memory for %d traces", nr_traces);
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < nr_traces; i++) {
+		for (j = 0; j < nr_cpus; j++)
+			memcpy(&map_traces[j], &traces[i], sizeof(map_traces[j]));
+
+		ret = bpf_map_update_elem(bpf_map__fd(func_map),
+					  &traces[i].func.ip,
+					  map_traces,
+					  BPF_NOEXIST);
+		if (ret) {
+			pr_err("Could not add map entry for '%s': %s",
+			       traces[i].func.name, strerror(-ret));
+			break;
+		}
+	}
+	free(map_traces);
+	return ret;
+}
