@@ -103,3 +103,46 @@ handle_syscall_exit_uid_fsuid(struct trace_event_raw_sys_exit *ctx,
 	submit_buf(ctx, eventp, sizeof(*eventp));
 	return 0;
 }
+
+SEC("tracepoint/syscalls/sys_exit_setuid")
+int tracepoint_syscall_exit_setuid(struct trace_event_raw_sys_exit *ctx)
+{
+	return handle_syscall_exit_uid_fsuid(ctx, UID);
+}
+
+SEC("tracepoint/syscalls/sys_exit_setfsuid")
+int tracepoint_syscall_exit_setfsuid(struct trace_event_raw_sys_exit *ctx)
+{
+	return handle_syscall_exit_uid_fsuid(ctx, FSUID);
+}
+
+SEC("tracepoint/syscalls/sys_exit_setreuid")
+int tracepoint_syscall_exit_setreuid(struct trace_event_raw_sys_exit *ctx)
+{
+	struct event *eventp;
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	pid_t tid = pid_tgid;
+	pid_t pid = pid_tgid >> 32;
+
+	struct data2_t *d = bpf_map_lookup_and_delete_elem(&birth_setreuid, &tid);
+	if (!d)
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		return 0;
+
+	eventp->pid = pid;
+	bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+	eventp->uid = d->prev_uid;
+	eventp->type = REUID;
+	eventp->ruid = d->ruid;
+	eventp->euid = d->euid;
+	eventp->suid = d->suid;
+	eventp->ret = (int)ctx->ret;
+
+	submit_buf(ctx, eventp, sizeof(*eventp));
+	return 0;
+}
+
+char LICENSE[] SEC("license") = "GPL";
