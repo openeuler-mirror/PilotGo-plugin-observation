@@ -120,3 +120,78 @@ static int get_libc_path(char *path)
 	fclose(fp);
 	return -1;
 }
+
+static int attach_uprobes(struct gethostlatency_bpf *obj, struct bpf_link *links[])
+{
+	char libc_path[PATH_MAX] = {};
+	off_t func_off;
+	int err;
+
+	err = get_libc_path(libc_path);
+	if (err) {
+		warning("Could not find libc.so\n");
+		return -1;
+	}
+
+	func_off = get_elf_func_offset(libc_path, "getaddrinfo");
+	if (func_off < 0) {
+		warning("Could not find getaddrinfo in %s\n", libc_path);
+		return -1;
+	}
+
+	links[0] = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost, false,
+					      env.pid ?: -1, libc_path, func_off);
+	if (!links[0]) {
+		warning("Failed to attach getaddrinfo: %d\n", -errno);
+		return -1;
+	}
+
+	links[1] = bpf_program__attach_uprobe(obj->progs.handle_return_gethost, true,
+					      env.pid ?: -1, libc_path, func_off);
+	if (!links[1]) {
+		warning("Failed to attach getaddrinfo: %d\n", -errno);
+		return -1;
+	}
+
+	func_off = get_elf_func_offset(libc_path, "gethostbyname");
+	if (func_off < 0) {
+		warning("Could not find gethostbyname in %s\n", libc_path);
+		return -1;
+	}
+
+	links[2] = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost, false,
+					      env.pid ?: -1, libc_path, func_off);
+	if (!links[2]) {
+		warning("Failed to attach gethostbyname: %d\n", -errno);
+		return -1;
+	}
+
+	links[3] = bpf_program__attach_uprobe(obj->progs.handle_return_gethost, true,
+					      env.pid ?: -1, libc_path, func_off);
+	if (!links[3]) {
+		warning("Failed to attach gethostbyname: %d\n", -errno);
+		return -1;
+	}
+
+	func_off = get_elf_func_offset(libc_path, "gethostbyname2");
+	if (func_off < 0) {
+		warning("Could not find gethostbyname2 in %s\n", libc_path);
+		return -1;
+	}
+
+	links[4] = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost, false,
+					      env.pid ?: -1, libc_path, func_off);
+	if (!links[4]) {
+		warning("Failed to attach gethostbyname2: %d\n", -errno);
+		return -1;
+	}
+
+	links[5] = bpf_program__attach_uprobe(obj->progs.handle_return_gethost, true,
+					      env.pid ?: -1, libc_path, func_off);
+	if (!links[5]) {
+		warning("Failed to attach gethostbyname2: %d\n", -errno);
+		return -1;
+	}
+
+	return 0;
+}
