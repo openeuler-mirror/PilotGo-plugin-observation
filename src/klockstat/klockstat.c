@@ -66,6 +66,20 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void *parse_lock_addr(const char *lock_name)
+{
+	unsigned long lock_addr;
+
+	return sscanf(lock_name, "0x%lx", &lock_addr) ? (void *)lock_addr : NULL;
+}
+
+static void *get_lock_addr(struct ksyms *ksyms, const char *lock_name)
+{
+	const struct ksym *ksym = ksyms__get_symbol(ksyms, lock_name);
+
+	return ksym ? (void *)ksym->addr : parse_lock_addr(lock_name);
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	struct prog_env *env = state->input;
@@ -158,6 +172,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
+static volatile sig_atomic_t exiting;
+
 static void sig_handler(int sig)
 {
 	exiting = 1;
@@ -170,8 +186,6 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 		return 0;
 	return vfprintf(stderr, format, args);
 }
-
-static volatile sig_atomic_t exiting;
 
 static void enable_fentry(struct klockstat_bpf *obj)
 {
