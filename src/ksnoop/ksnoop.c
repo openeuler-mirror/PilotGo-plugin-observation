@@ -684,3 +684,22 @@ static int cmd_info(int argc, char *argv[])
 	free(traces);
 	return 0;
 }
+
+static void trace_handler(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+	struct trace *trace = data;
+	int i, shown, ret;
+
+	pr_debug("got trace, size %d", data_sz);
+	if (data_sz < (sizeof(*trace) - MAX_TRACE_BUF)) {
+		pr_err("\t/* trace buffer size '%u' < min %ld */",
+		       data_sz, sizeof(trace) - MAX_TRACE_BUF);
+		return;
+	}
+	printf("%16lld %4d %8u %s(\n", trace->time, trace->cpu, trace->pid,
+	       trace->func.name);
+
+	printf("\n%31s);\n\n", "");
+	fflush(stdout);
+}
+
