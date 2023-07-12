@@ -137,3 +137,27 @@ filter_event(struct sock *sk, __u32 uid, __u32 pid)
 
 	return false;
 }
+
+SEC("kprobe/tcp_v4_connect")
+int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
+{
+	return enter_tcp_connect(ctx, sk);
+}
+
+SEC("kretprobe/tcp_v4_connect")
+int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
+{
+	return exit_tcp_connect(ctx, ret, AF_INET);
+}
+
+SEC("kprobe/tcp_v6_connect")
+int BPF_KPROBE(tcp_v6_connect, struct sock *sk)
+{
+	return enter_tcp_connect(ctx, sk);
+}
+
+SEC("kretprobe/tcp_v6_connect")
+int BPF_KRETPROBE(tcp_v6_connect_ret, int ret)
+{
+	return exit_tcp_connect(ctx, ret, AF_INET6);
+}
