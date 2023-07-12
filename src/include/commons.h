@@ -106,7 +106,6 @@ const char *strftime_now(char *s, size_t max, const char *format)
 	return s;
 }
 
-
 static inline __maybe_unused long
 safe_strtol(const char *str, long min, long max, const struct argp_state *state)
 {
@@ -168,6 +167,47 @@ safe_strtoul(const char *str, unsigned long min, unsigned long max,
 	}
 
 	return rval;
+}
+
+static inline __maybe_unused
+long argp_parse_long(int key, const char *arg, const struct argp_state *state)
+{
+	long temp;
+
+	if (!arg) {
+		warning("Arg is NULL\n");
+		argp_usage(state);
+	}
+
+	errno = 0;
+	temp = strtol(arg, NULL, 10);
+	if (errno || temp <= 0) {
+		warning("Error arg: %c : %s\n", (char)key, arg);
+		argp_usage(state);
+	}
+
+	return temp;
+}
+
+static inline bool do_process_running(int pid)
+{
+	bool ret = kill(pid, 0);
+
+	if (ret)
+		warning("PID %d is not running.\n", pid);
+
+	return !ret;
+}
+
+static inline __maybe_unused
+long argp_parse_pid(int key, const char *arg, const struct argp_state *state)
+{
+	long pid = argp_parse_long(key, arg, state);
+
+	if (!do_process_running(pid))
+		argp_usage(state);
+
+	return pid;
 }
 
 /* https://www.gnu.org/software/gnulib/manual/html_node/strerrorname_005fnp.html */
