@@ -795,3 +795,36 @@ static int add_traces(struct bpf_map *func_map, struct trace *traces,
 	free(map_traces);
 	return ret;
 }
+
+static int attach_traces(struct ksnoop_bpf *obj, struct trace *traces,
+			 int nr_traces)
+{
+	int i, ret;
+
+	for (i = 0; i < nr_traces; i++) {
+		traces[i].links[0] =
+			bpf_program__attach_kprobe(obj->progs.kprobe_entry,
+						   false,
+						   traces[i].func.name);
+		if (!traces[i].links[0]) {
+			ret = -errno;
+			pr_err("Could not attach kprobe to '%s': %s",
+			       traces[i].func.name, strerror(-ret));
+			return ret;
+		}
+		pr_debug("Attached kprobe for '%s'", traces[i].func.name);
+
+		traces[i].links[1] =
+			bpf_program__attach_kprobe(obj->progs.kprobe_return,
+						   true,
+						   traces[i].func.name);
+		if (!traces[i].links[1]) {
+			ret = -errno;
+			pr_err("Could not attach kretprobe to '%s': %s",
+			       traces[i].func.name, strerror(-ret));
+			return ret;
+		}
+		pr_debug("Attached kretprobe for '%s'", traces[i].func.name);
+	}
+	return 0;
+}
