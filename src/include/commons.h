@@ -106,6 +106,70 @@ const char *strftime_now(char *s, size_t max, const char *format)
 	return s;
 }
 
+
+static inline __maybe_unused long
+safe_strtol(const char *str, long min, long max, const struct argp_state *state)
+{
+	long rval;
+	char *endstr;
+
+	errno = 0;
+	rval = strtol(str, &endstr, 10);
+
+	if ((errno == ERANGE && (rval == LONG_MAX || rval == LONG_MIN)) ||
+	    (errno != 0 && rval == 0)) {
+		warning("strtol(%s) failed\n", str);
+		argp_usage(state);
+		return rval;
+	}
+
+	if (endstr == str || (*endstr != '\0' && *endstr != '\n')) {
+		warning("strtol(%s): Invalid value\n", str);
+		argp_usage(state);
+		return 0;
+	}
+
+	if (rval > max || rval < min) {
+		warning("strtol(%s): %ld is out of range %ld - %ld\n", str, rval, min, max);
+		argp_usage(state);
+		return 0;
+	}
+
+	return rval;
+}
+
+static inline __maybe_unused unsigned long
+safe_strtoul(const char *str, unsigned long min, unsigned long max,
+	     const struct argp_state *state)
+{
+	unsigned long rval;
+	char *endstr;
+
+	errno = 0;
+	rval = strtoul(str, &endstr, 10);
+
+	if ((errno == ERANGE && rval == ULONG_MAX) ||
+	    (errno != 0 && rval == 0)) {
+		warning("strtoul(%s) failed\n", str);
+		argp_usage(state);
+		return rval;
+	}
+
+	if (endstr == str || (*endstr != '\0' && *endstr != '\n')) {
+		warning("strtoul(%s): Invalid value\n", str);
+		argp_usage(state);
+		return 0;
+	}
+
+	if (rval > max || rval < min) {
+		warning("strtoul(%s): %lu is out of range %lu - %lu\n", str, rval, min, max);
+		argp_usage(state);
+		return 0;
+	}
+
+	return rval;
+}
+
 /* https://www.gnu.org/software/gnulib/manual/html_node/strerrorname_005fnp.html */
 #if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 32)
 static inline const char *strerrorname_np(int errnum)
