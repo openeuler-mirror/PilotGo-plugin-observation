@@ -250,3 +250,38 @@ int BPF_KPROBE(entry_trace_close, struct sock *sk)
 	return 0;
 }
 
+SEC("kprobe/tcp_set_state")
+int BPF_KPROBE(enter_tcp_set_state, struct sock *sk, int state)
+{
+	struct tuple_key_t tuple = {};
+	struct event *eventp;
+	__u16 family;
+
+	if (state != TCP_ESTABLISHED && state != TCP_CLOSE)
+		goto end;
+
+	family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	if (!fill_tuple(&tuple, sk, family))
+		goto end;
+
+	if (state == TCP_CLOSE)
+		goto end;
+
+	struct pid_comm_t *p;
+	p = bpf_map_lookup_elem(&tuplepid, &tuple);
+	if (!p)
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		goto end;
+
+	fill_event(&tuple, eventp, p->pid, p->uid, family, TCP_EVENT_TYPE_CONNECT);
+	__builtin_memcpy(&eventp->task, p->comm, sizeof(eventp->task));
+
+	submit_buf(ctx, eventp, sizeof(*eventp));
+
+end:
+	bpf_map_delete_elem(&tuplepid, &tuple);
+	return 0;
+}
