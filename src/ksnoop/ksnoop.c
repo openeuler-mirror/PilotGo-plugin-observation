@@ -756,3 +756,8 @@ static void trace_handler(void *ctx, int cpu, void *data, __u32 data_sz)
 	fflush(stdout);
 }
 
+static void lost_handler(void *ctx, int cpu, __u64 cnt)
+{
+	pr_err("\t/* lost %llu events */", cnt);
+}
+
