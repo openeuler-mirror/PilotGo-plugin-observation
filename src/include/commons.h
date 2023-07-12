@@ -39,6 +39,28 @@
 
 #define __maybe_unused __attribute__((unused))
 
+static inline bool bpf_is_root()
+{
+	if (getuid()) {
+		warning("Please run the tool as root - Exiting.\n");
+		return false;
+	} else
+		return true;
+}
+
+static inline int get_pid_max(void)
+{
+	int pid_max;
+	FILE *f;
+
+	f = fopen("/proc/sys/kernel/pid_max", "r");
+	if (!f)
+		return -1;
+	if (fscanf(f, "%d\n", &pid_max) != 1)
+		pid_max = -1;
+	fclose(f);
+	return pid_max;
+}
 
 /* https://www.gnu.org/software/gnulib/manual/html_node/strerrorname_005fnp.html */
 #if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 32)
