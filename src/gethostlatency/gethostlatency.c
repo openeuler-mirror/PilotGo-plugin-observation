@@ -88,3 +88,35 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
+
+static int get_libc_path(char *path)
+{
+	FILE *fp;
+	char buf[PATH_MAX] = {};
+	char *filename;
+	float version;
+
+	if (env.libc_path) {
+		memcpy(path, env.libc_path, strlen(env.libc_path));
+		return 0;
+	}
+
+	fp = fopen("/proc/self/maps", "r");
+	if (!fp)
+		return -errno;
+
+	while (fscanf(fp, "%*x-%*x %*s %*s %*s %*s %[^\n]\n", buf) != EOF) {
+		if (strchr(buf, '/') != buf)
+			continue;
+		filename = strrchr(buf, '/') + 1;
+		if (sscanf(filename, "libc-%f.so", &version) == 1 ||
+		    sscanf(filename, "libc.so.%f", &version) == 1) {
+			memcpy(path, buf, strlen(buf));
+			fclose(fp);
+			return 0;
+		}
+	}
+
+	fclose(fp);
+	return -1;
+}
