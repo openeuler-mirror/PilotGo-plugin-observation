@@ -9,22 +9,153 @@
 static struct prog_env {
     pid_t pid;
 	pid_t tid;
+	char *caller;
     char *lock_name;
-    bool per_thread;
+	unsigned int nr_locks;
+	unsigned int nr_stack_entries;
+	unsigned int duration;
     unsigned int interval;
     unsigned int iterations;
-    bool timestamp;
+	bool reset;
+	bool timestamp;
+	bool verbose;
+	bool per_thread;
 }
 
 static const char args_doc[] = "FUNCTION";
-static const char argp_program_doc[] =;
+static const char argp_program_doc[] =
+"Trace mutex/sem lock acquisition and hold times, in nsec\n"
+"\n"
+"Usage: klockstat [-hPRTv] [-p PID] [-t TID] [-c FUNC] [-L LOCK] [-n NR_LOCKS]\n"
+"                 [-s NR_STACKS] [-S SORT] [-d DURATION] [-i INTERVAL]\n"
+"\v"
+"Examples:\n"
+"  klockstat                     # trace system wide until ctrl-c\n"
+"  klockstat -d 5                # trace for 5 seconds\n"
+"  klockstat -i 5                # print stats every 5 seconds\n"
+"  klockstat -p 181              # trace process 181 only\n"
+"  klockstat -t 181              # trace thread 181 only\n"
+"  klockstat -c pipe_            # print only for lock callers with 'pipe_'\n"
+"                                # prefix\n"
+"  klockstat -L cgroup_mutex     # trace the cgroup_mutex lock only (accepts addr too)\n"
+"  klockstat -S acq_count        # sort lock acquired results by acquire count\n"
+"  klockstat -S hld_total        # sort lock held results by total held time\n"
+"  klockstat -S acq_count,hld_total  # combination of above\n"
+"  klockstat -n 3                # display top 3 locks/threads\n"
+"  klockstat -s 6                # display 6 stack entries per lock\n"
+"  klockstat -P                  # print stats per thread\n";
 
 static const struct argp_option opts[] = {
-    {}
+	{ "pid", 'p', "PID", 0, "Filter by process ID" },
+	{ "tid", 't', "TID", 0, "Filter by thread ID" },
+	{ 0, 0, 0, 0, "" },
+	{ "caller", 'c', "FUNC", 0, "Filter by caller string prefix " },
+	{ "lock", 'L', "LOCK", 0, "Filter by specific ksym lock name" },
+	{ 0, 0, 0, 0, "" },
+	{ "locks", 'n', "NR_LOCKS", 0, "Number of locks or threads to print" },
+	{ "stacks", 's', "NR_STACKS", 0, "Number of stack entries to print per lock" },
+	{ "sort", 'S', "SORT", 0, "Sort by field:\n  acq_[max|total|count]\n  hld_[max|total|count]" },
+	{ 0, 0, 0, 0, "" },
+	{ "duration", 'd', "SECONDS", 0, "Duration to trace" },
+	{ "interval", 'i', "SECONDS", 0, "Print interval" },
+	{ "reset", 'R', NULL, 0, "Reset stats each interval" },
+	{ "timestamp", 'T', NULL, 0, "Print timestamp" },
+	{ "verbose", 'v', NULL, 0, "Verbose debug output" },
+	{ "per-thread", 'P', NULL, 0, "Print per-thread stats" },
+	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
+	{}
 };
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
+	struct prog_env *env = state->input;
+
+	switch (key) {
+	case 'p':
+		env->pid = argp_parse_pid(key, arg, state);
+		break;
+	case 't':
+		errno = 0;
+		env->tid = strtol(arg, NULL, 10);
+		if (errno || env->tid <= 0) {
+			warning("Invalid TID: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'c':
+		env->caller = arg;
+		break;
+	case 'L':
+		env->lock_name = arg;
+		break;
+	case 'n':
+		errno = 0;
+		env->nr_locks = strtol(arg, NULL, 10);
+		if (errno || env->nr_locks <= 0) {
+			warning("Invalid NR_LOCKS: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 's':
+		errno = 0;
+		env->nr_stack_entries = strtol(arg, NULL, 10);
+		if (errno || env->nr_stack_entries <= 0) {
+			warning("Invalid NR_STACKS: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'S':
+		if (!parse_sorts(env, arg)) {
+			warning("Bad sort string: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'd':
+		errno = 0;
+		env->duration = strtol(arg, NULL, 10);
+		if (errno || env->duration <= 0) {
+			warning("Invalid duration: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'i':
+		errno = 0;
+		env->interval = strtol(arg, NULL, 10);
+		if (errno || env->interval <= 0) {
+			warning("Invalid duration: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case 'R':
+		env->reset = true;
+		break;
+	case 'T':
+		env->timestamp = true;
+		break;
+	case 'P':
+		env->per_thread = true;
+		break;
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env->verbose = true;
+		break;
+	case ARGP_KEY_END:
+		if (env->duration) {
+			env->interval = min(env->interval, env->duration);
+			env->iterations = env->duration / env->interval;
+		}
+		if (env->per_thread && env->nr_stack_entries != 1) {
+			warning("--per-thread and --stacks cannot be used together\n");
+			argp_usage(state);
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
 }
 
 static void sig_handler(int sig)
