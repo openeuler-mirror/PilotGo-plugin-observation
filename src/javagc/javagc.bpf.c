@@ -53,3 +53,29 @@ static __always_inline int gc_end(void *ctx)
 
 	return 0;
 }
+
+SEC("usdt")
+int handle_gc_start(struct pt_regs *ctx)
+{
+	return gc_start();
+}
+
+SEC("usdt")
+int handle_gc_end(struct pt_regs *ctx)
+{
+	return gc_end(ctx);
+}
+
+SEC("usdt")
+int handle_mem_pool_gc_start(struct pt_regs *ctx)
+{
+	return gc_start();
+}
+
+SEC("usdt")
+int handle_mem_pool_gc_end(struct pt_regs *ctx)
+{
+	return gc_end(ctx);
+}
+
+char LICENSE[] SEC("license") = "Dual BSD/GPL";
