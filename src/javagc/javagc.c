@@ -34,3 +34,36 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case 't':
+		env.time = argp_parse_long(key, arg, state);
+		break;
+	case ARGP_KEY_ARG:
+		if (state->arg_num == 0) {
+			env.pid = argp_parse_pid(key, arg, state);
+		} else {
+			warning("Unrecognized positional argument: %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	case ARGP_KEY_END:
+		if (env.pid == -1) {
+			warning("The javagc trace program are required: pid\n");
+			argp_usage(state);
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
