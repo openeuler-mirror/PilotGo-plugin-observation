@@ -159,3 +159,48 @@ static void sig_handler(int sig)
 }
 
 static struct hist zero;
+
+static void print_runq_occupancy(struct runqlen_bpf__bss *bss)
+{
+	int i = 0;
+
+	do {
+		__u64 samples, idle = 0, queued = 0;
+		float runqocc;
+		struct hist hist;
+
+		hist = bss->hists[i];
+		bss->hists[i] = zero;
+
+		for (int slot = 0; slot < MAX_SLOTS; slot++) {
+			__u64 val = hist.slots[slot];
+
+			if (slot == 0)
+				idle += val;
+			else
+				queued += val;
+		}
+
+		samples = idle + queued;
+		runqocc = queued * 1.0 / max(1ULL, samples);
+		if (env.per_cpu)
+			printf("runqocc, CPU#%d: %6.2f%%\n", i, 100 * runqocc);
+		else
+			printf("runqocc: %0.2f%%\n", 100 * runqocc);
+	} while (env.per_cpu && ++i < nr_cpus);
+}
+
+static void print_linear_hists(struct runqlen_bpf__bss *bss)
+{
+	struct hist hist;
+	int i = 0;
+
+	do {
+		hist = bss->hists[i];
+		bss->hists[i] = zero;
+		if (env.per_cpu)
+			printf("cpu = %d\n", i);
+
+		print_linear_hist(hist.slots, MAX_SLOTS, 0, 1, "runqlen");
+	} while (env.per_cpu && ++i < nr_cpus);
+}
