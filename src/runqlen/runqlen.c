@@ -204,3 +204,105 @@ static void print_linear_hists(struct runqlen_bpf__bss *bss)
 		print_linear_hist(hist.slots, MAX_SLOTS, 0, 1, "runqlen");
 	} while (env.per_cpu && ++i < nr_cpus);
 }
+
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+
+	struct bpf_link *links[MAX_CPU_NR] = {};
+	struct runqlen_bpf *bpf_obj;
+	int err;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	nr_cpus = libbpf_num_possible_cpus();
+	if (nr_cpus < 0) {
+		warning("Failed to get # of possible cpus: '%s'!\n",
+			strerror(-nr_cpus));
+		return 1;
+	}
+
+	if (nr_cpus > MAX_CPU_NR) {
+		warning("The number of cpu cores is too big, please increase "
+			"MAX_CPU_NR's value and recompile");
+		return 1;
+	}
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n",
+			strerror(-err));
+		return 1;
+	}
+
+	bpf_obj = runqlen_bpf__open_opts(&open_opts);
+	if (!bpf_obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	/* Init global data (filtering options) */
+	bpf_obj->rodata->target_per_cpu = env.per_cpu;
+	bpf_obj->rodata->target_host = env.host;
+
+	err = runqlen_bpf__load(bpf_obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	if (!bpf_obj->bss) {
+		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+		goto cleanup;
+	}
+
+	err = open_and_attach_perf_event(env.freq, bpf_obj->progs.do_sample, links);
+	if (err)
+		goto cleanup;
+
+	printf("Sampling run queue length... Hit Ctrl-C to end.\n");
+
+	signal(SIGINT, sig_handler);
+
+	for (;;) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		if (env.runqocc)
+			print_runq_occupancy(bpf_obj->bss);
+		else
+			print_linear_hists(bpf_obj->bss);
+
+		if (exiting || --env.times == 0)
+			break;
+	}
+
+cleanup:
+	for (int i = 0; i < nr_cpus; i++)
+		bpf_link__destroy(links[i]);
+
+	runqlen_bpf__destroy(bpf_obj);
+	cleanup_core_btf(&open_opts);
+
+	return err != 0;
+}
