@@ -50,3 +50,51 @@ static struct env {
 	bool ipv4_only;
 	bool ipv6_only;
 } env;
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	char *port;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'T':
+		env.time = true;
+		break;
+	case 't':
+		env.timestamp = true;
+		break;
+	case 'p':
+		env.trace_pid = argp_parse_pid(key, arg, state);
+		env.pid = true;
+		break;
+	case 'P':
+		env.port = true;
+		if (!arg) {
+			warning("No ports specified\n");
+			argp_usage(state);
+		}
+		env.target_ports = strdup(arg);
+		port = strtok(arg, ",");
+		while (port) {
+			int port_num = strtol(port, NULL, 10);
+			if (errno || port_num <= 0 || port_num > 65536) {
+				warning("Invalid ports: %s\n", arg);
+				argp_usage(state);
+			}
+			port = strtok(NULL, ",");
+		}
+		break;
+	case '4':
+		env.ipv4_only = true;
+		break;
+	case '6':
+		env.ipv6_only = true;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
