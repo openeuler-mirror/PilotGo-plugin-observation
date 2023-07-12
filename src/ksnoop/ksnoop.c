@@ -699,6 +699,59 @@ static void trace_handler(void *ctx, int cpu, void *data, __u32 data_sz)
 	printf("%16lld %4d %8u %s(\n", trace->time, trace->cpu, trace->pid,
 	       trace->func.name);
 
+	for (i = 0, shown = 0; i < trace->nr_traces; i++) {
+		DECLARE_LIBBPF_OPTS(btf_dump_type_data_opts, opts);
+		bool entry = trace->data_flags & KSNOOP_F_ENTRY;
+		struct value *val = &trace->traces[i];
+		struct trace_data *data = &trace->trace_data[i];
+
+		opts.indent_level = 36;
+		opts.indent_str = " ";
+
+		/*
+		 * skip if it's entry data and trace data is for return, or
+		 * if it's return and trace data is for entry; only exception in
+		 * the latter case is if we stashed data; in such cases we
+		 * want to see it as it's a mix of entry/return data with
+		 * predicates.
+		 */
+		if ((entry && !base_arg_is_entry(val->base_arg)) ||
+		    (!entry && base_arg_is_entry(val->base_arg) &&
+		     !(trace->flags & KSNOOP_F_STASH)))
+			continue;
+
+		if (val->type_id == 0)
+			continue;
+
+		if (shown > 0)
+			printf(",\n");
+		printf("%34s %s = ", "", val->name);
+		if (val->flags & KSNOOP_F_PTR)
+			printf("*(0x%llx)", data->raw_value);
+		printf("\n");
+
+		if (data->err_type_id != 0) {
+			char typestr[MAX_STR];
+
+			printf("%36s /* Cannot show '%s' as '%s%s'; invalid/userspace ptr> */\n",
+			       "",
+			       val->name,
+			       type_id_to_str(trace->btf,
+				              val->type_id,
+					      typestr),
+			       val->flags & KSNOOP_F_PTR ? " *" : "");
+		} else {
+			ret = btf_dump__dump_type_data(trace->dump, val->type_id,
+						       trace->buf + data->buf_offset,
+						       data->buf_len, &opts);
+			/* truncated? */
+			if (ret == -E2BIG)
+				printf("%36s... /* %d bytes of %d */", "",
+				       data->buf_len,
+				       val->size);
+		}
+		shown++;
+	}
 	printf("\n%31s);\n\n", "");
 	fflush(stdout);
 }
