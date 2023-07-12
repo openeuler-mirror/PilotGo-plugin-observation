@@ -92,3 +92,39 @@ int BPF_PROG(sched_wakeup, struct task_struct *p)
 	/* TP_PROTO(struct task_struct *p) */
 	return trace_enqueue(p);
 }
+
+SEC("tp_btf/sched_wakeup_new")
+int BPF_PROG(sched_wakeup_new, struct task_struct *p)
+{
+	/* TP_PROTO(struct task_struct *p) */
+	return trace_enqueue(p);
+}
+
+SEC("tp_btf/sched_switch")
+int BPF_PROG(sched_switch, bool preempt, struct task_struct *prev, struct task_struct *next)
+{
+	/* TP_PROTO(bool preempt, struct task_struct *prev,
+	 *	    struct task_struct *next)
+	 */
+	return handle_switch(ctx, prev, next);
+}
+
+SEC("raw_tp/sched_wakeup")
+int BPF_PROG(handle_sched_wakeup, struct task_struct *p)
+{
+	return trace_enqueue(p);
+}
+
+SEC("raw_tp/sched_wakeup_new")
+int BPF_PROG(handle_sched_wakeup_new, struct task_struct *p)
+{
+	return trace_enqueue(p);
+}
+
+SEC("raw_tp/sched_switch")
+int BPF_PROG(handle_sched_switch, bool preempt, struct task_struct *prev, struct task_struct *next)
+{
+	return handle_switch(ctx, prev, next);
+}
+
+char LICENSE[] SEC("license") = "GPL";
