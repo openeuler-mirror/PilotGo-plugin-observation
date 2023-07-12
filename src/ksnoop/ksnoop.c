@@ -761,3 +761,7 @@ static void lost_handler(void *ctx, int cpu, __u64 cnt)
 	pr_err("\t/* lost %llu events */", cnt);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
