@@ -138,6 +138,55 @@ filter_event(struct sock *sk, __u32 uid, __u32 pid)
 	return false;
 }
 
+static __always_inline int
+enter_tcp_connect(struct pt_regs *ctx, struct sock *sk)
+{
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u32 tid = pid_tgid;
+	__u64 uid_gid = bpf_get_current_uid_gid();
+	__u32 uid = uid_gid;
+
+	if (filter_event(sk, uid, pid))
+		return 0;
+
+	bpf_map_update_elem(&sockets, &tid, &sk, BPF_ANY);
+	return 0;
+}
+
+static __always_inline int
+exit_tcp_connect(struct pt_regs *ctx, int ret, __u16 family)
+{
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u32 tid = pid_tgid;
+	__u64 uid_gid = bpf_get_current_uid_gid();
+	__u32 uid = uid_gid;
+	struct tuple_key_t tuple = {};
+	struct pid_comm_t pid_comm = {};
+	struct sock **skpp;
+	struct sock *sk;
+
+	skpp = bpf_map_lookup_and_delete_elem(&sockets, &tid);
+	if (!skpp)
+		return 0;
+
+	if (ret)
+		return 0;
+
+	sk = *skpp;
+	if (!fill_tuple(&tuple, sk, family))
+		return 0;
+
+	pid_comm.pid = pid;
+	pid_comm.uid = uid;
+	bpf_get_current_comm(&pid_comm.comm, sizeof(pid_comm.comm));
+
+	bpf_map_update_elem(&tuplepid, &tuple, &pid_comm, BPF_ANY);
+
+	return 0;
+}
+
 SEC("kprobe/tcp_v4_connect")
 int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 {
