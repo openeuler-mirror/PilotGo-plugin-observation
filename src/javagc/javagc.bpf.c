@@ -28,3 +28,28 @@ static __always_inline int gc_start(void)
 
 	return 0;
 }
+
+static __always_inline int gc_end(void *ctx)
+{
+	struct data_t *event;
+	struct data_t *p;
+	__u64 val;
+
+	event = reserve_buf(sizeof(*event));
+	if (!event)
+		return 0;
+
+	event->cpu = bpf_get_smp_processor_id();
+	event->pid = bpf_get_current_pid_tgid() >> 32;
+	p = bpf_map_lookup_and_delete_elem(&data_map, &event->pid);
+	if (!p)
+		return 0;
+
+	val = bpf_ktime_get_ns() - p->ts;
+	if (val > time) {
+		event->ts = val;
+		submit_buf(ctx, event, sizeof(*event));
+	}
+
+	return 0;
+}
