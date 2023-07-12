@@ -651,3 +651,36 @@ static int parse_traces(int argc, char *argv[], struct trace **traces)
 	}
 	return i;
 }
+
+static int cmd_info(int argc, char *argv[])
+{
+	struct trace *traces = NULL;
+	char str[MAX_STR];
+	int nr_traces;
+	__u8 i, j;
+
+	nr_traces = parse_traces(argc, argv, &traces);
+	if (nr_traces < 0)
+		return nr_traces;
+
+	for (i = 0; i < nr_traces; i++) {
+		struct func *func = &traces[i].func;
+
+		printf("%s%s(",
+		       value_to_str(traces[i].btf, &func->args[KSNOOP_RETURN],
+			            str),
+		       func->name);
+		for (j = 0; j < func->nr_args; j++) {
+			if (j > 0)
+				printf(", ");
+			printf("%s", value_to_str(traces[i].btf, &func->args[j],
+						  str));
+		}
+		if (func->nr_args > MAX_ARGS)
+			printf(" /* and %d more args that are not traceable */",
+			       func->nr_args - MAX_ARGS);
+		printf(");\n");
+	}
+	free(traces);
+	return 0;
+}
