@@ -75,3 +75,31 @@ int tracepoint_syscall_enter_setresuid(struct trace_event_raw_sys_enter *ctx)
 	bpf_map_update_elem(&birth_setreuid, &tid, &data, BPF_ANY);
 	return 0;
 }
+
+static __always_inline int
+handle_syscall_exit_uid_fsuid(struct trace_event_raw_sys_exit *ctx,
+			      enum UID_TYPE type)
+{
+	struct event *eventp;
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	pid_t tid = pid_tgid;
+	pid_t pid = pid_tgid >> 32;
+
+	struct data1_t *d = bpf_map_lookup_and_delete_elem(&birth_setuid, &tid);
+	if (!d)
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		return 0;
+
+	eventp->pid = pid;
+	bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+	eventp->uid = d->prev_uid;
+	eventp->type = type;
+	eventp->setuid = d->uid;
+	eventp->ret = (int)ctx->ret;
+
+	submit_buf(ctx, eventp, sizeof(*eventp));
+	return 0;
+}
