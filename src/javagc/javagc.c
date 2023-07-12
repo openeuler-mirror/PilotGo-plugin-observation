@@ -67,3 +67,22 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	struct data_t *e = data;
+	char ts[16];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	printf("%-8s %-7d %-7d %-7lld\n", ts, e->cpu, e->pid, e->ts / 1000);
+
+	return 0;
+}
