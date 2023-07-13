@@ -6,22 +6,42 @@
 #include "compat.h"
 #include <sys/param.h>
 
+enum {
+	SORT_ACQ_MAX,
+	SORT_ACQ_COUNT,
+	SORT_ACQ_TOTAL,
+	SORT_HLD_MAX,
+	SORT_HLD_COUNT,
+	SORT_HLD_TOTAL,
+};
+
 static struct prog_env {
-    pid_t pid;
+	pid_t pid;
 	pid_t tid;
 	char *caller;
-    char *lock_name;
+	char *lock_name;
 	unsigned int nr_locks;
 	unsigned int nr_stack_entries;
+	unsigned int sort_acq;
+	unsigned int sort_hld;
 	unsigned int duration;
-    unsigned int interval;
-    unsigned int iterations;
+	unsigned int interval;
+	unsigned int iterations;
 	bool reset;
 	bool timestamp;
 	bool verbose;
 	bool per_thread;
-}
+} env = {
+	.nr_locks = 99999999,
+	.nr_stack_entries = 1,
+	.sort_acq = SORT_ACQ_MAX,
+	.sort_hld = SORT_HLD_MAX,
+	.interval = 99999999,
+	.iterations = 99999999,
+};
 
+const char *argp_program_version = "klockstat 0.2";
+const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 static const char args_doc[] = "FUNCTION";
 static const char argp_program_doc[] =
 "Trace mutex/sem lock acquisition and hold times, in nsec\n"
@@ -185,6 +205,69 @@ struct stack_stat {
 	uint64_t bt[PERF_MAX_STACK_DEPTH];
 };
 
+static bool caller_is_traced(struct ksyms *ksyms, uint64_t caller_pc)
+{
+	const struct ksym *ksym;
+
+	if (!env.caller)
+		return true;
+	ksym = ksyms__map_addr(ksyms, caller_pc);
+	if (!ksym)
+		return true;
+	return strncmp(env.caller, ksym->name, strlen(env.caller)) == 0;
+}
+
+static int larger_first(uint64_t x, uint64_t y)
+{
+	if (x > y)
+		return -1;
+	if (x == y)
+		return 0;
+	return 1;
+}
+
+static int sort_by_acq(const void *x, const void *y)
+{
+	struct stack_stat *ss_x = *(struct stack_stat **)x;
+	struct stack_stat *ss_y = *(struct stack_stat **)y;
+
+	switch (env.sort_acq) {
+	case SORT_ACQ_MAX:
+		return larger_first(ss_x->ls.acq_max_time,
+				    ss_y->ls.acq_max_time);
+	case SORT_ACQ_COUNT:
+		return larger_first(ss_x->ls.acq_count,
+				    ss_y->ls.acq_count);
+	case SORT_ACQ_TOTAL:
+		return larger_first(ss_x->ls.acq_total_time,
+				    ss_y->ls.acq_total_time);
+	}
+
+	warning("Bad sort_acq %d\n", env.sort_acq);
+	return -1;
+}
+
+static int sort_by_hld(const void *x, const void *y)
+{
+	struct stack_stat *ss_x = *(struct stack_stat **)x;
+	struct stack_stat *ss_y = *(struct stack_stat **)y;
+
+	switch (env.sort_hld) {
+	case SORT_HLD_MAX:
+		return larger_first(ss_x->ls.hld_max_time,
+				    ss_y->ls.hld_max_time);
+	case SORT_HLD_COUNT:
+		return larger_first(ss_x->ls.hld_count,
+				    ss_y->ls.hld_count);
+	case SORT_HLD_TOTAL:
+		return larger_first(ss_x->ls.hld_total_time,
+				    ss_y->ls.hld_total_time);
+	}
+
+	warning("Bad sort_hld %d\n", env.sort_hld);
+	return -1;
+}
+
 static char *symname(struct ksyms *ksyms, uint64_t pc, char *buf, size_t n)
 {
 	const struct ksym *ksym = ksyms__map_addr(ksyms, pc);
@@ -236,7 +319,6 @@ static void print_acq_header(void)
 
 	printf(" %9s %8s %10s %12s\n", "Avg wait", "Count", "Max wait", "Total Wait");
 }
-
 
 static void print_acq_stat(struct ksyms *ksyms, struct stack_stat *ss,
 			   int nr_stack_entries)
@@ -544,27 +626,28 @@ static void enable_kprobes(struct klockstat_bpf *obj)
 
 int main(int argc, char *argv[])
 {
-    static struct argp argp = {
+	static struct argp argp = {
 		.options = opts,
 		.parser = parse_arg,
 		.args_doc = args_doc,
 		.doc = argp_program_doc,
 	};
-    struct ksyms *ksyms = NULL;
-    int err;
-    void *lock_addr = NULL;
+	struct klockstat_bpf *obj = NULL;
+	struct ksyms *ksyms = NULL;
+	int err;
+	void *lock_addr = NULL;
 
-    err = argp_parse(&argp, argc, argv, 0, NULL, &env);
+	err = argp_parse(&argp, argc, argv, 0, NULL, &env);
 	if (err)
 		return err;
 
-    if (!bpf_is_root())
+	if (!bpf_is_root())
 		return 1;
 
-    signal(SIGINT, sig_handler);
+	signal(SIGINT, sig_handler);
 	libbpf_set_print(libbpf_print_fn);
 
-    ksyms = ksyms__load();
+	ksyms = ksyms__load();
 	if (!ksyms) {
 		warning("failed to load kallsyms\n");
 		err = 1;
@@ -579,7 +662,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-    obj = klockstat_bpf__open();
+	obj = klockstat_bpf__open();
 	if (!obj) {
 		warning("Failed to open BPF object\n");
 		err = 1;
@@ -596,8 +679,8 @@ int main(int argc, char *argv[])
 		enable_fentry(obj);
 	else
 		enable_kprobes(obj);
-    
-    err = klockstat_bpf__load(obj);
+
+	err = klockstat_bpf__load(obj);
 	if (err) {
 		warning("Failed to load BPF object\n");
 		goto cleanup;
@@ -609,7 +692,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-    printf("Tracing mutex/sem lock events... Hit Ctrl-C to end\n");
+	printf("Tracing mutex/sem lock events... Hit Ctrl-C to end\n");
 
 	for (int i = 0; i < env.iterations && !exiting; i++) {
 		sleep(env.interval);
@@ -630,12 +713,12 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 	}
 
-    printf("Exiting trace of mutex/sem locks\n");
+	printf("Exiting trace of mutex/sem locks\n");
 
 cleanup:
-    if (obj)
-        klockstat_bpf__destroy(obj);
-    ksyms__free(ksyms);
+	if (obj)
+		klockstat_bpf__destroy(obj);
+	ksyms__free(ksyms);
 
-    return err != 0;
+	return err != 0;
 }
