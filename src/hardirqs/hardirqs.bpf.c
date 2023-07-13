@@ -111,3 +111,9 @@ int BPF_PROG(irq_handler_exit_btf, int irq, struct irqaction *action)
 {
 	return handle_exit(irq, action);
 }
+
+SEC("raw_tp/irq_handler_entry")
+int BPF_PROG(irq_handler_entry_raw, int irq, struct irqaction *action)
+{
+	return handle_entry(irq, action);
+}
