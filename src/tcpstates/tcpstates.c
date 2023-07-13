@@ -214,6 +214,21 @@ int main(int argc, char *argv[])
 		printf("%-16s %-7s %-10s %-15s %-5s %-15s %-5s %-11s -> %-11s %s\n",
 		       "SKADDR", "PID", "COMM", "LADDR", "LPORT",
 		       "RADDR", "RPORT", "OLDSTATE", "NEWSTATE", "MS");
+        
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
+cleanup:
+	bpf_buffer__free(buf);
+	tcpstates_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
 
 	return err != 0;
 }
