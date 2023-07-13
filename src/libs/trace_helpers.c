@@ -358,3 +358,53 @@ err_out:
 	close_elf(e, fd);
 	return err;
 }
+
+static int syms__add_dso(struct syms *syms, struct map *map, const char *name)
+{
+	struct dso *dso = NULL;
+	int i, type;
+	void *tmp;
+
+	for (i = 0; i < syms->dso_sz; i++) {
+		if (!strcmp(syms->dsos[i].name, name)) {
+			dso = &syms->dsos[i];
+			break;
+		}
+	}
+
+	if (!dso) {
+		tmp = realloc(syms->dsos, (syms->dso_sz + 1) *
+			      sizeof(*syms->dsos));
+		if (!tmp)
+			return -1;
+		syms->dsos = tmp;
+		dso = &syms->dsos[syms->dso_sz++];
+		memset(dso, 0, sizeof(*dso));
+		dso->name = strdup(name);
+		dso->btf = btf__new_empty();
+	}
+
+	tmp = realloc(dso->ranges, (dso->range_sz + 1) * sizeof(*dso->ranges));
+	if (!tmp)
+		return -1;
+	dso->ranges = tmp;
+	dso->ranges[dso->range_sz].start = map->start_addr;
+	dso->ranges[dso->range_sz].end = map->end_addr;
+	dso->ranges[dso->range_sz].file_off = map->file_off;
+	dso->range_sz++;
+	type = get_elf_type(name);
+	if (type == ET_EXEC) {
+		dso->type = EXEC;
+	} else if (type == ET_DYN) {
+		dso->type = DYN;
+		if (get_elf_text_scn_info(name, &dso->sh_addr, &dso->sh_offset) < 0)
+			return -1;
+	} else if (is_perf_map(name)) {
+		dso->type = PERF_MAP;
+	} else if (is_vdso(name)) {
+		dso->type = VDSO;
+	} else {
+		dso->type = UNKNOWN;
+	}
+	return 0;
+}
