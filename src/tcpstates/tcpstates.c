@@ -184,6 +184,18 @@ int main(int argc, char *argv[])
 			port = strtok(NULL, ",");
 		}
 	}
+        
+	err = tcpstates_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffers\n");
+		goto cleanup;
+	}
 
 	return err != 0;
 }
