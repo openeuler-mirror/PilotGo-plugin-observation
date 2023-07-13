@@ -116,3 +116,93 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	printf("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_args,
+		.doc = argp_program_doc,
+	};
+	struct perf_buffer *pb = NULL;
+	struct runqslower_bpf *bpf_obj;
+	int err;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	bpf_obj = runqslower_bpf__open();
+	if (!bpf_obj) {
+		warning("failed to open and/or load BPF object\n");
+		return 1;
+	}
+
+	/* initialize global data (filtering options) */
+	bpf_obj->rodata->target_pid = env.pid;
+	bpf_obj->rodata->target_tgid = env.tid;
+	bpf_obj->rodata->min_us = env.min_us;
+
+	if (probe_tp_btf("sched_wakeup")) {
+		bpf_program__set_autoload(bpf_obj->progs.handle_sched_wakeup, false);
+		bpf_program__set_autoload(bpf_obj->progs.handle_sched_wakeup_new, false);
+		bpf_program__set_autoload(bpf_obj->progs.handle_sched_switch, false);
+	} else {
+		bpf_program__set_autoload(bpf_obj->progs.sched_wakeup, false);
+		bpf_program__set_autoload(bpf_obj->progs.sched_wakeup_new, false);
+		bpf_program__set_autoload(bpf_obj->progs.sched_switch, false);
+	}
+
+	err = runqslower_bpf__load(bpf_obj);
+	if (err) {
+		warning("failed to load BPF object: %d", err);
+		goto cleanup;
+	}
+
+	err = runqslower_bpf__attach(bpf_obj);
+	if (err) {
+		warning("failed to attach BPF programs\n");
+		goto cleanup;
+	}
+
+	printf("Tracing run queue latency higher than %llu us\n", env.min_us);
+	if (env.previous)
+		printf("%-8s %-16s %-6s %-14s %-16s %-6s\n", "TIME", "COMM", "TID", "LAT(us)", "PREV-COMM", "PREV-TID");
+	else
+		printf("%-8s %-16s %-6s %-14s\n", "TIME", "COMM", "PID", "LAT(us)");
+
+	pb = perf_buffer__new(bpf_map__fd(bpf_obj->maps.events), 64,
+			      handle_event, handle_lost_events, NULL, NULL);
+	if (!pb) {
+		err = -errno;
+		warning("failed to open perf buffer: %d\n", err);
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_int) == SIG_ERR) {
+		warning("can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	while (!exiting) {
+		err = perf_buffer__poll(pb, 100);
+		if (err < 0 && err != -EINTR) {
+			warning("error polling perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
+cleanup:
+	perf_buffer__free(pb);
+	runqslower_bpf__destroy(bpf_obj);
+
+	return err != 0;
+}
