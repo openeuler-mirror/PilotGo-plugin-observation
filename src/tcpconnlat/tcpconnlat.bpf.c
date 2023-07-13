@@ -93,3 +93,27 @@ static int handle_tcp_rcv_state_process(void *ctx, struct sock *sk)
 	submit_buf(ctx, eventp, sizeof(*eventp));
 	return 0;
 }
+
+SEC("kprobe/tcp_v4_connect")
+int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
+{
+	return trace_connect(sk);
+}
+
+SEC("kprobe/tcp_v6_connect")
+int BPF_KPROBE(tcp_v6_connect, struct sock *sk)
+{
+	return trace_connect(sk);
+}
+
+SEC("kprobe/tcp_rcv_state_process")
+int BPF_KPROBE(tcp_rcv_state_process, struct sock *sk)
+{
+	return handle_tcp_rcv_state_process(ctx, sk);
+}
+
+SEC("kprobe/tcp_v4_destroy_sock")
+int BPF_KPROBE(tcp_v4_destroy_sock, struct sock *sk)
+{
+	return cleanup_sock(sk);
+}
