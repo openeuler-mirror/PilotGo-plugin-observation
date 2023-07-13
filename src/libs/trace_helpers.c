@@ -111,3 +111,12 @@ static int ksyms__add_symbol(struct ksyms *ksyms, const char *name, unsigned lon
 
 	return 0;
 }
+
+static int ksym_cmp(const void *p1, const void *p2)
+{
+	const struct ksym *s1 = p1, *s2 = p2;
+
+	if (s1->addr == s2->addr)
+		return strcmp(s1->name, s2->name);
+	return s1->addr < s2->addr ? -1 : 1;
+}
