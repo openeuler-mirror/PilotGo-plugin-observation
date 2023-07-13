@@ -96,3 +96,30 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+static int get_jvmso_path(char *path)
+{
+	char mode[16], line[128], buf[64];
+	size_t seg_start, seg_end, seg_off;
+	FILE *f;
+	int i = 0;
+
+	sprintf(buf, "/proc/%d/maps", env.pid);
+	f = fopen(buf, "r");
+	if (!f)
+		return -1;
+
+	while (fscanf(f, "%zx-%zx %s %zx %*s %*d%[^\n]\n",
+		      &seg_start, &seg_end, mode, &seg_off, line) == 5) {
+		i = 0;
+		while (isblank(line[i]))
+			i++;
+		if (strstr(line + i, "libjvm.so"))
+			break;
+	}
+
+	strcpy(path, line + i);
+	fclose(f);
+
+	return 0;
+}
