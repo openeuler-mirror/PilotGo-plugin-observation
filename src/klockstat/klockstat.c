@@ -291,6 +291,35 @@ static void print_hld_header(void)
 	printf(" %9s %8s %10s %12s\n", "Avg Hold", "Count", "Max Hold", "Total Hold");
 }
 
+static void print_hld_stat(struct ksyms *ksyms, struct stack_stat *ss,
+			   int nr_stack_entries)
+{
+	char buf[40];
+	char avg[40];
+	char max[40];
+	char tot[40];
+
+	printf("%45s %9s %8llu %10s %12s\n",
+		symname(ksyms, ss->bt[0], buf, sizeof(buf)),
+		print_time(avg, sizeof(avg), ss->ls.hld_total_time / ss->ls.hld_count),
+		ss->ls.hld_count,
+		print_time(max, sizeof(max), ss->ls.hld_max_time),
+		print_time(tot, sizeof(tot), ss->ls.hld_total_time));
+
+	for (int i = 1; i < nr_stack_entries; i++) {
+		if (!ss->bt[i] || env.per_thread)
+			break;
+		printf("%45s\n", symname(ksyms, ss->bt[i], buf, sizeof(buf)));
+	}
+
+	if (nr_stack_entries > 1 && !env.per_thread)
+		printf("			Max PID %llu, COMM %s, Lock %s (0x%llx)\n",
+			ss->ls.hld_max_id >> 32,
+			ss->ls.hld_max_comm,
+			get_lock_name(ksyms, ss->ls.hld_max_lock_ptr),
+			ss->ls.hld_max_lock_ptr);
+}
+
 static void print_hld_task(struct stack_stat *ss)
 {
 	char buf[40];
