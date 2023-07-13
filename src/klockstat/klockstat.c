@@ -178,6 +178,63 @@ struct stack_stat {
 	uint64_t bt[PERF_MAX_STACK_DEPTH];
 };
 
+static char *print_caller(char *buf, int size, struct stack_stat *ss)
+{
+	snprintf(buf, size, "%u  %16s", ss->stack_id, ss->ls.acq_max_comm);
+	return buf;
+}
+
+static char *print_time(char *buf, int size, uint64_t nsec)
+{
+	struct {
+		float base;
+		char *unit;
+	} table[] = {
+		{ 1e9 * 3600, "h " },
+		{ 1e9 * 60, "m " },
+		{ 1e9, "s " },
+		{ 1e6, "ms" },
+		{ 1e3, "us" },
+		{ 0, NULL },
+	};
+
+	for (int i = 0; table[i].base; i++) {
+		if (nsec < table[i].base)
+			continue;
+
+		snprintf(buf, size, "%.1f %s", nsec / table[i].base, table[i].unit);
+		return buf;
+	}
+
+	snprintf(buf, size, "%u ns", (unsigned)nsec);
+	return buf;
+}
+
+static void print_acq_header(void)
+{
+	if (env.per_thread)
+		printf("\n%10s %16s", "TID", "COMM");
+	else
+		printf("\n%45s", "Caller");
+
+	printf(" %9s %8s %10s %12s\n", "Avg wait", "Count", "Max wait", "Total Wait");
+}
+
+static void print_acq_task(struct stack_stat *ss)
+{
+	char buf[40];
+	char avg[40];
+	char max[40];
+	char tot[40];
+
+	printf("%28s %9s %8llu %10s %12s\n",
+		print_caller(buf, sizeof(buf), ss),
+		print_time(avg, sizeof(avg), ss->ls.acq_total_time / ss->ls.acq_count),
+		ss->ls.acq_count,
+		print_time(max, sizeof(max), ss->ls.acq_max_time),
+		print_time(tot, sizeof(tot), ss->ls.acq_total_time));
+}
+
 static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 {
 	struct stack_stat **stats, *ss;
