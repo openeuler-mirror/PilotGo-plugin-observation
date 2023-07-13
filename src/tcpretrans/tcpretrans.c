@@ -168,3 +168,25 @@ static void print_count_ipv6(int map_fd)
 		printf("%-20s <-> %-20s %10lld\n", s, d, counts[i]);
 	}
 }
+
+
+static void print_count(int map_fd_ipv4, int map_fd_ipv6)
+{
+	while (!exiting)
+		pause();
+
+	print_count_header();
+
+	if (!env.ipv6_only)
+		print_count_ipv4(map_fd_ipv4);
+	if (!env.ipv4_only)
+		print_count_ipv6(map_fd_ipv6);
+}
+
+static void print_event_header(void)
+{
+	printf("%-8s %-7s %-2s %-20s %1s> %-20s %-4s", "TIME", "PID", "IP",
+						       "LADDR:LPORT", "T",
+						       "RADDR:RPORT", "STATE");
+	printf("\n");
+}
