@@ -322,3 +322,39 @@ static int get_elf_type(const char *path)
 		return -1;
 	return hdr.e_type;
 }
+
+static int get_elf_text_scn_info(const char *path, uint64_t *addr,
+				 uint64_t *offset)
+{
+	Elf_Scn *section = NULL;
+	int fd = -1, err = -1;
+	GElf_Shdr header;
+	size_t stridx;
+	Elf *e = NULL;
+	char *name;
+
+	e = open_elf(path, &fd);
+	if (!e)
+		goto err_out;
+	err = elf_getshdrstrndx(e, &stridx);
+	if (err < 0)
+		goto err_out;
+
+	err = -1;
+	while ((section = elf_nextscn(e, section)) != 0) {
+		if (!gelf_getshdr(section, &header))
+			continue;
+
+		name = elf_strptr(e, stridx, header.sh_name);
+		if (name && !strcmp(name, ".text")) {
+			*addr = (uint64_t)header.sh_addr;
+			*offset = (uint64_t)header.sh_offset;
+			err = 0;
+			break;
+		}
+	}
+
+err_out:
+	close_elf(e, fd);
+	return err;
+}
