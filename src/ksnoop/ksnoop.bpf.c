@@ -174,3 +174,32 @@ static struct trace *get_trace(struct pt_regs *ctx, bool entry)
 	trace->task = task;
 	return trace;
 }
+
+static void output_trace(struct pt_regs *ctx, struct trace *trace)
+{
+	__u16 trace_len;
+
+	if (trace->buf_len == 0)
+		goto skip;
+
+	/* we maybe simply stashing values, and will report later */
+	if (trace->data_flags & KSNOOP_F_STASH) {
+		trace->data_flags &= ~KSNOOP_F_STASH;
+		trace->data_flags |= KSNOOP_F_STASHED;
+		return;
+	}
+	/* we maybe outputting earlier stashed data */
+	if (trace->data_flags & KSNOOP_F_STASHED)
+		trace->data_flags &= ~KSNOOP_F_STASHED;
+
+	/* trim perf event size to only contain data we've recorded */
+	trace_len = sizeof(*trace) + trace->buf_len - MAX_TRACE_BUF;
+
+	if (trace_len <= sizeof(*trace))
+		bpf_perf_event_output(ctx, &ksnoop_perf_map,
+				      BPF_F_CURRENT_CPU,
+				      trace, trace_len);
+
+skip:
+	clear_trace(trace);
+}
