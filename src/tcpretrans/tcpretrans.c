@@ -90,3 +90,81 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static void print_count_header(void)
+{
+	printf("\n%-25s %-25s %-10s\n", "LADDR:LPORT", "RADDR:RPORT",
+				      "RETRANSMITS");
+}
+
+static void print_count_ipv4(int map_fd)
+{
+	static struct ipv4_flow_key_t keys[MAX_ENTRIES];
+	__u32 value_size = sizeof(__u64);
+	__u32 key_size = sizeof(keys[0]);
+	static struct ipv4_flow_key_t zero;
+	static __u64 counts[MAX_ENTRIES];
+	char s[INET_ADDRPORTSTRLEN];
+	char d[INET_ADDRPORTSTRLEN];
+	__u32 n = MAX_ENTRIES;
+	struct in_addr src, dst;
+
+	if (dump_hash(map_fd, keys, key_size, counts, value_size, &n, &zero)) {
+		warning("Dump_hash: %s", strerror(errno));
+		return;
+	}
+
+	for (int i = 0; i < n; i++) {
+		src.s_addr = keys[i].saddr;
+		dst.s_addr = keys[i].daddr;
+
+		sprintf(s, "%s:%d", inet_ntop(AF_INET, &src, s, sizeof(s)),
+				    keys[i].lport);
+		sprintf(d, "%s:%d", inet_ntop(AF_INET, &dst, d, sizeof(d)),
+				    ntohs(keys[i].dport));
+
+		printf("%-20s <-> %-20s %10lld\n", s, d, counts[i]);
+	}
+}
+
+static void print_count_ipv6(int map_fd)
+{
+	static struct ipv6_flow_key_t keys[MAX_ENTRIES];
+	__u32 value_size = sizeof(__u64);
+	__u32 key_size = sizeof(keys[0]);
+	static struct ipv6_flow_key_t zero;
+	static __u64 counts[MAX_ENTRIES];
+	char s[INET6_ADDRPORTSTRLEN];
+	char d[INET6_ADDRPORTSTRLEN];
+	struct in6_addr src, dst;
+	__u32 n = MAX_ENTRIES;
+
+	if (dump_hash(map_fd, keys, key_size, counts, value_size, &n, &zero)) {
+		warning("dump_hash: %s\n", strerror(errno));
+		return;
+	}
+
+	for (int i = 0; i < n; i++) {
+		memcpy(src.s6_addr, keys[i].saddr, sizeof(src.s6_addr));
+		memcpy(dst.s6_addr, keys[i].daddr, sizeof(dst.s6_addr));
+
+		sprintf(s, "%s:%d", inet_ntop(AF_INET6, &src, s, sizeof(s)),
+				    keys[i].lport);
+		sprintf(d, "%s:%d", inet_ntop(AF_INET6, &dst, d, sizeof(d)),
+				    ntohs(keys[i].dport));
+
+		printf("%-20s <-> %-20s %10lld\n", s, d, counts[i]);
+	}
+}
