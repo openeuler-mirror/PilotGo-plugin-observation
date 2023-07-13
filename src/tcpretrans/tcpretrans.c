@@ -190,3 +190,79 @@ static void print_event_header(void)
 						       "RADDR:RPORT", "STATE");
 	printf("\n");
 }
+
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	char time_now[16];
+	const struct event *event = data;
+	char src[INET6_ADDRPORTSTRLEN], dst[INET6_ADDRPORTSTRLEN];
+	union {
+		struct in_addr  x4;
+		struct in6_addr x6;
+	} s, d;
+
+	if (env.ipv4_only && event->af == AF_INET6)
+		return 0;
+
+	if (env.ipv6_only && event->af == AF_INET)
+		return 0;
+
+	if (event->af == AF_INET) {
+		s.x4.s_addr = event->saddr_v4;
+		d.x4.s_addr = event->daddr_v4;
+	} else if (event->af == AF_INET6) {
+		memcpy(&s.x6.s6_addr, event->saddr_v6, sizeof(s.x6.s6_addr));
+		memcpy(&d.x6.s6_addr, event->daddr_v6, sizeof(d.x6.s6_addr));
+	}
+
+	strftime_now(time_now, sizeof(time_now), "%H:%M:%S");
+	sprintf(src, "%s:%d", inet_ntop(event->af, &s, src, sizeof(src)),
+			      event->lport);
+	sprintf(dst, "%s:%d", inet_ntop(event->af, &d, dst, sizeof(dst)),
+			      ntohs(event->dport));
+
+	printf("%-8s %-7d %-2lld %-20s %1s> %-20s %-4s ",
+	       time_now,
+	       event->pid,
+	       event->ip,
+	       src,
+	       tcp_type[event->type],
+	       dst,
+	       tcp_state[event->state]);
+
+	printf("\n");
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static int print_events(struct bpf_buffer *buf)
+{
+	int err;
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer: %d\n", err);
+		return err;
+	}
+
+	print_event_header();
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %s\n",
+				strerror(-err));
+			break;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
+	return err;
+}
