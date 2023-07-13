@@ -158,6 +158,33 @@ int main(int argc, char *argv[])
 	else
 		bpf_program__set_autoload(obj->progs.inet_sock_set_state, false);
 
+        err = tcpstates_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	if (env.target_sports) {
+		int port_map_fd = bpf_map__fd(obj->maps.sports);
+		char *port = strtok(env.target_sports, ",");
+
+		while (port) {
+			int port_num = strtol(port, NULL, 10);
+			bpf_map_update_elem(port_map_fd, &port_num, &port_num, BPF_ANY);
+			port = strtok(NULL, ",");
+		}
+	}
+	if (env.target_dports) {
+		int port_map_fd = bpf_map__fd(obj->maps.dports);
+		char *port = strtok(env.target_dports, ",");
+
+		while (port) {
+			int port_num = strtol(port, NULL, 10);
+			bpf_map_update_elem(port_map_fd, &port_num, &port_num, BPF_ANY);
+			port = strtok(NULL, ",");
+		}
+	}
+
 	return err != 0;
 }
 
