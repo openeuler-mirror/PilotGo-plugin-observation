@@ -101,6 +101,14 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -116,6 +124,11 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
+
+        if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
 
 	return err != 0;
 }
