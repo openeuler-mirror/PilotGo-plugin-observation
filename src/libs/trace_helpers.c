@@ -293,3 +293,13 @@ static bool is_file_backed(const char *mapname)
 		STARTS_WITH(mapname, "[uprobes]") ||
 		STARTS_WITH(mapname, "[vsyscall]"));
 }
+
+static bool is_perf_map(const char *path)
+{
+	return false;
+}
+
+static bool is_vdso(const char *path)
+{
+	return !strcmp(path, "[vdso]");
+}
