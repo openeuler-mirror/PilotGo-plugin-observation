@@ -86,3 +86,13 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
 	return 0;
 }
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu event on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
