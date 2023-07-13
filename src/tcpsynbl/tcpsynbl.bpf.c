@@ -50,3 +50,17 @@ int BPF_KPROBE(tcp_v6_sync_recv_kprobe, struct sock *sk)
 	return do_entry(sk);
 }
 
+SEC("fentry/tcp_v4_sync_recv_sock")
+int BPF_PROG(tcp_v4_sync_recv_fentry, struct sock *sk)
+{
+	return do_entry(sk);
+}
+
+SEC("fentry/tcp_v6_sync_recv_sock")
+int BPF_PROG(tcp_v6_sync_recv_fentry, struct sock *sk)
+{
+	return do_entry(sk);
+}
+
+char LICENSE[] SEC("license") = "GPL";
+
