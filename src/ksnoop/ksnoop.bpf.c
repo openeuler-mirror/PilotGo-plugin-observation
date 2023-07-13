@@ -276,3 +276,137 @@ static __u64 get_arg(struct pt_regs *ctx, enum arg argnum)
 	}
 }
 
+static int ksnoop(struct pt_regs *ctx, bool entry)
+{
+	void *data_ptr = NULL;
+	struct trace *trace;
+	__u64 data;
+	__u32 currpid;
+	int ret;
+
+	trace = get_trace(ctx, entry);
+	if (!trace)
+		return 0;
+
+	/* make sure we want events from this pid */
+	currpid = bpf_get_current_pid_tgid();
+	if (trace->filter_pid && trace->filter_pid != currpid)
+		return 0;
+	trace->pid = currpid;
+	trace->cpu = bpf_get_smp_processor_id();
+	trace->time = bpf_ktime_get_ns();
+	trace->data_flags &= ~(KSNOOP_F_ENTRY | KSNOOP_F_RETURN);
+	if (entry)
+		trace->data_flags |= KSNOOP_F_ENTRY;
+	else
+		trace->data_flags |= KSNOOP_F_RETURN;
+
+	for (int i = 0; i < MAX_TRACES; i++) {
+		struct trace_data *currdata;
+		struct value *currtrace;
+		char *buf_offset = NULL;
+		__u32 tracesize;
+
+		currdata = &trace->trace_data[i];
+		currtrace = &trace->traces[i];
+
+		if ((entry && !base_arg_is_entry(currtrace->base_arg)) ||
+		    (!entry && base_arg_is_entry(currtrace->base_arg)))
+			continue;
+
+		/* skip void (unused) trace arguments, ensuring not to
+		 * skip "void *".
+		 */
+		if (currtrace->type_id == 0 &&
+		    !(currtrace->flags & KSNOOP_F_PTR))
+			continue;
+
+		data = get_arg(ctx, currtrace->base_arg);
+
+		/* lookup member value and read into data field */
+		if (currtrace->flags & KSNOOP_F_MEMBER) {
+			if (currtrace->offset)
+				data += currtrace->offset;
+
+			/* member is a pointer; read it in */
+			if (currtrace->flags & KSNOOP_F_PTR) {
+				void *dataptr = (void *)data;
+
+				ret = bpf_core_read(&data, sizeof(data), dataptr);
+				if (ret) {
+					currdata->err_type_id = currtrace->type_id;
+					currdata->err = ret;
+					continue;
+				}
+				currdata->raw_value = data;
+			} else if (currtrace->size <= sizeof(currdata->raw_value)) {
+				bpf_core_read(&currdata->raw_value, currtrace->size, (void *)data);
+			}
+		} else {
+			currdata->raw_value = data;
+		}
+
+		/* simple predicate evaluation: if any predicate fails,
+		 * skip all tracing for this function.
+		 */
+		if (currtrace->flags & KSNOOP_F_PREDICATE_MASK) {
+			bool ok = false;
+
+			if (currtrace->flags & KSNOOP_F_PREDICATE_EQ &&
+			    currdata->raw_value == currtrace->predicate_value)
+				ok = true;
+			if (currtrace->flags & KSNOOP_F_PREDICATE_NOTEQ &&
+			    currdata->raw_value != currtrace->predicate_value)
+				ok = true;
+			if (currtrace->flags & KSNOOP_F_PREDICATE_GT &&
+			    currdata->raw_value > currtrace->predicate_value)
+				ok = true;
+			if (currtrace->flags & KSNOOP_F_PREDICATE_LT &&
+			    currdata->raw_value < currtrace->predicate_value)
+				ok = true;
+
+			if (!ok) {
+				clear_trace(trace);
+				return 0;
+			}
+		}
+
+		if (currtrace->flags & (KSNOOP_F_PTR | KSNOOP_F_MEMBER))
+			data_ptr = (void *)data;
+		else
+			data_ptr = &data;
+
+		if (trace->buf_len + MAX_TRACE_DATA >= MAX_TRACE_BUF)
+			break;
+
+		buf_offset = &trace->buf[trace->buf_len];
+		if (buf_offset > &trace->buf[MAX_TRACE_BUF]) {
+			currdata->err_type_id = currtrace->type_id;
+			currdata->err = -ENOSPC;
+			continue;
+		}
+		currdata->buf_offset = trace->buf_len;
+
+		tracesize = currtrace->size;
+		if (tracesize > MAX_TRACE_DATA)
+			tracesize = MAX_TRACE_DATA;
+		ret = bpf_core_read(buf_offset, tracesize, data_ptr);
+		if (ret < 0) {
+			currdata->err_type_id = currtrace->type_id;
+			currdata->err = ret;
+			continue;
+		} else {
+			currdata->buf_len = tracesize;
+			trace->buf_len += tracesize;
+		}
+	}
+
+	/* show accumulated stashed traces (if any) */
+	if ((entry && trace->prev_ip && !trace->next_ip) ||
+	    (!entry && trace->next_ip && !trace->prev_ip))
+		output_stashed_traces(ctx, trace, entry);
+	else
+		output_trace(ctx, trace);
+
+	return 0;
+}
