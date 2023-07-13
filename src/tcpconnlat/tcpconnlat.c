@@ -132,3 +132,39 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
 	return 0;
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct bpf_buffer *buf = NULL;
+	struct tcpconnlat_bpf *obj;
+	int err;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	obj = tcpconnlat_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	obj->rodata->target_min_us = env.min_us;
+	obj->rodata->target_tgid = env.pid;
+
+cleanup:
+	bpf_buffer__free(buf);
+	tcpconnlat_bpf__destroy(obj);
+
+	return err != 0;
+}
