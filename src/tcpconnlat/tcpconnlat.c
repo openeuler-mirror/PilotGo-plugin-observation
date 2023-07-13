@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 	obj->rodata->target_min_us = env.min_us;
 	obj->rodata->target_tgid = env.pid;
 
-if (fentry_can_attach("tcp_v4_connect", NULL)) {
+    if (fentry_can_attach("tcp_v4_connect", NULL)) {
 		bpf_program__set_autoload(obj->progs.tcp_v4_connect, false);
 		bpf_program__set_autoload(obj->progs.tcp_v6_connect, false);
 		bpf_program__set_autoload(obj->progs.tcp_rcv_state_process, false);
@@ -199,6 +199,33 @@ if (fentry_can_attach("tcp_v4_connect", NULL)) {
 	if (err) {
 		warning("Failed to open ring/perf buffer\n");
 		goto cleanup;
+	}
+
+    /* print header */
+	if (env.timestamp)
+		printf("%-9s ", "TIME(s)");
+	if (env.lport)
+		printf("%-6s %-16s %-2s %-16s %-6s %-16s %-5s %s\n",
+		       "PID", "COMM", "IP", "SADDR", "LPORT", "DADDR", "DPORT", "LAT(ms)");
+	else
+		printf("%-6s %-16s %-2s %-16s %-16s %-5s %s\n",
+		       "PID", "COMM", "IP", "SADDR", "DADDR", "DPORT", "LAT(ms)");
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	/* main poll */
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
 	}
 
 cleanup:
