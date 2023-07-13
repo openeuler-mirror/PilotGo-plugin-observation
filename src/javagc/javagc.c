@@ -142,4 +142,27 @@ int main(int argc, char *argv[])
 
 	if (!bpf_is_root())
 		return 1;
+	/*
+	 * libbpf will auto load the so if it in /usr/lib64 /usr/lib etc,
+	 * but the jvmso not there.
+	 */
+	err = get_jvmso_path(binary_path);
+	if (err)
+		return err;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	obj = javagc_bpf__open();
+	if (!obj) {
+		warning("Failed to open BPF object\n");
+		return 1;
+	}
+
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		warning("Failed to create ring/perf buffer\n");
+		return 1;
+	}
+
+	err = javagc_bpf__load(obj);
 }
