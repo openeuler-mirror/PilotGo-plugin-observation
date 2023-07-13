@@ -98,3 +98,29 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 	return 0;
 }
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+			   va_list args)
+{
+	if (level == LIBBPF_DEBUG)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
+
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static void print_header(void)
+{
+	if (env.time)
+		printf("%-9s", "TIME");
+
+	if (env.timestamp)
+		printf("%-9s", "TIME(s)");
+
+	printf("%-7s %-12s %-2s %-16s %-5s %-16s %-5s",
+	       "PID", "COMM", "IP", "RADDR", "RPORT", "LADDR", "LPORT");
+	printf("\n");
+}
