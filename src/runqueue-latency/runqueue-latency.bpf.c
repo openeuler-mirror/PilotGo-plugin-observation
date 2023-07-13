@@ -40,3 +40,45 @@ struct {
 	__type(key, u32);
 	__type(value, struct hist);
 } hists SEC(".maps");
+
+
+static bool filter_memcg_fn(void)
+{
+	return filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0);
+}
+
+static int trace_enqueue(u32 tgid, u32 pid)
+{
+	u64 ts;
+
+	if (filter_memcg_fn())
+		return 0;
+
+	if (!pid)
+		return 0;
+	if (target_tgid && target_tgid != tgid)
+		return 0;
+
+	ts = bpf_ktime_get_ns();
+	bpf_map_update_elem(&start, &pid, &ts, BPF_ANY);
+
+	return 0;
+}
+
+static unsigned int pid_namespace(struct task_struct *task)
+{
+	struct pid *pid;
+	unsigned int level;
+	struct upid upid;
+	unsigned int inum;
+
+	/* get the pid namespace by following task_active_pid_ns(),
+	 * pid->numbers[pid->level].ns
+	 */
+	pid = BPF_CORE_READ(task, thread_pid);
+	level = BPF_CORE_READ(pid, level);
+	bpf_core_read(&upid, sizeof(upid), &pid->numbers[level]);
+	inum = BPF_CORE_READ(upid.ns, ns.inum);
+
+	return inum;
+}
