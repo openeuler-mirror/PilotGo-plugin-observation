@@ -38,3 +38,15 @@ static int do_entry(struct sock *sk)
 	return 0;
 }
 
+SEC("kprobe/tcp_v4_syn_recv_sock")
+int BPF_KPROBE(tcp_v4_sync_recv_kprobe, struct sock *sk)
+{
+	return do_entry(sk);
+}
+
+SEC("kprobe/tcp_v6_sync_recv_sock")
+int BPF_KPROBE(tcp_v6_sync_recv_kprobe, struct sock *sk)
+{
+	return do_entry(sk);
+}
+
