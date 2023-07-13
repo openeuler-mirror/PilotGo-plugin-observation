@@ -53,3 +53,39 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+
+	if (env.timestamp) {
+		char ts[16];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%-8s ", ts);
+	}
+
+	printf("%-6d %-16s %-6d ", e->pid, e->comm, e->uid);
+
+	switch (e->type) {
+	case UID:
+		printf("%-9s uid=%d (%d)\n", "setuid", e->setuid, e->ret);
+		break;
+	case FSUID:
+		printf("%-9s uid=%d (prevuid=%d)\n", "setfsuid", e->setuid, e->ret);
+		break;
+	case REUID:
+		printf("%-9s ruid=%d euid=%d suid=%d (%d)\n", "setreuid",
+		       e->ruid, e->euid, e->suid, e->ret);
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu event on CPU #%d!\n", lost_cnt, cpu);
+}
