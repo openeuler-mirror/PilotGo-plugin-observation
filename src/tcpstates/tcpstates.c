@@ -130,6 +130,12 @@ int main(int argc, char *argv[])
 
 	libbpf_set_print(libbpf_print_fn);
 
+        err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+		return 1;
+	}
+
 	return err != 0;
 }
 
