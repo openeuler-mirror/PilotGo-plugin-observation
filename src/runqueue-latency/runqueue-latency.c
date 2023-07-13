@@ -160,3 +160,114 @@ static int print_log2_hists(struct bpf_map *hists)
 
 	return 0;
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+
+	struct runqueue_latency_bpf *bpf_obj;
+	char ts[32];
+	int err;
+	int idx, cg_map_fd;
+	int cgfd = -1;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	if ((env.per_thread && (env.per_process || env.per_pidns)) ||
+	    (env.per_process && env.per_pidns)) {
+		warning("pidnss, pids, tids cann't be used together.\n");
+		return 1;
+	}
+
+	libbpf_set_print(libbpf_print_fn);
+
+	bpf_obj = runqueue_latency_bpf__open();
+	if (!bpf_obj) {
+		warning("failed to open BPF object\n");
+		return 1;
+	}
+
+	/* initialize global data (filtering options) */
+	bpf_obj->rodata->target_per_process = env.per_process;
+	bpf_obj->rodata->target_per_thread = env.per_thread;
+	bpf_obj->rodata->target_per_pidns = env.per_pidns;
+	bpf_obj->rodata->target_ms = env.milliseconds;
+	bpf_obj->rodata->target_tgid = env.pid;
+	bpf_obj->rodata->filter_memcg = env.cg;
+
+	if (probe_tp_btf("sched_wakeup")) {
+		bpf_program__set_autoload(bpf_obj->progs.sched_wakeup_raw, false);
+		bpf_program__set_autoload(bpf_obj->progs.sched_wakeup_new_raw, false);
+		bpf_program__set_autoload(bpf_obj->progs.sched_switch_raw, false);
+	} else {
+		bpf_program__set_autoload(bpf_obj->progs.sched_wakeup_btf, false);
+		bpf_program__set_autoload(bpf_obj->progs.sched_wakeup_new_btf, false);
+		bpf_program__set_autoload(bpf_obj->progs.sched_switch_btf, false);
+	}
+
+	err = runqueue_latency_bpf__load(bpf_obj);
+	if (err) {
+		warning("failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	/* update cgroup path to map */
+	if (env.cg) {
+		idx = 0;
+		cg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
+		cgfd = open(env.cgroupspath, O_RDONLY);
+		if (cgfd < 0) {
+			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+			goto cleanup;
+		}
+		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map");
+			goto cleanup;
+		}
+	}
+
+	err = runqueue_latency_bpf__attach(bpf_obj);
+	if (err) {
+		warning("Failed to attach BPF programs");
+		goto cleanup;
+	}
+
+	printf("Tracing run queue lantency... Hit Ctrl-C to end.\n");
+
+	signal(SIGINT, sig_handler);
+
+	/* main loop */
+	for (;;) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		err = print_log2_hists(bpf_obj->maps.hists);
+		if (err)
+			break;
+
+		if (exiting || --env.times == 0)
+			break;
+	}
+
+cleanup:
+	runqueue_latency_bpf__destroy(bpf_obj);
+	if (cgfd > 0)
+		close(cgfd);
+
+	return err != 0;
+}
+
