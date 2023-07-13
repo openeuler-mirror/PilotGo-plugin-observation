@@ -168,3 +168,34 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
 	return 0;
 }
+
+static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static int print_events(struct bpf_buffer *buf)
+{
+	int err;
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer: %d\n", err);
+		return err;
+	}
+
+	print_header();
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %s\n",
+				strerror(-err));
+			break;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
+	return err;
+}
