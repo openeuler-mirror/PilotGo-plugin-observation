@@ -133,3 +133,33 @@ cleanup:
 	bpf_map_delete_elem(&start, &pid);
 	return 0;
 }
+
+SEC("tp_btf/sched_wakeup")
+int BPF_PROG(sched_wakeup_btf, struct task_struct *p)
+{
+	return trace_enqueue(p->tgid, p->pid);
+}
+
+SEC("tp_btf/sched_wakeup_new")
+int BPF_PROG(sched_wakeup_new_btf, struct task_struct *p)
+{
+	return trace_enqueue(p->tgid, p->pid);
+}
+
+SEC("tp_btf/sched_switch")
+int BPF_PROG(sched_switch_btf, bool preempt, struct task_struct *prev, struct task_struct *next)
+{
+	return handle_switch(preempt, prev, next);
+}
+
+SEC("raw_tp/sched_wakeup")
+int BPF_PROG(sched_wakeup_raw, struct task_struct *p)
+{
+	return trace_enqueue(BPF_CORE_READ(p, tgid), BPF_CORE_READ(p, pid));
+}
+
+SEC("raw_tp/sched_wakeup_new")
+int BPF_PROG(sched_wakeup_new_raw, struct task_struct *p)
+{
+	return trace_enqueue(BPF_CORE_READ(p, tgid), BPF_CORE_READ(p, pid));
+}
