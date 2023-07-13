@@ -165,4 +165,76 @@ int main(int argc, char *argv[])
 	}
 
 	err = javagc_bpf__load(obj);
+if (err) {
+		warning("Failed to load and verify BPF object\n");
+		goto cleanup;
+	}
+
+	if (!obj->bss) {
+		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+		goto cleanup;
+	}
+	obj->bss->time = env.time * 100;
+
+	obj->links.handle_mem_pool_gc_start = bpf_program__attach_usdt(obj->progs.handle_mem_pool_gc_start,
+								       env.pid,
+								       binary_path,
+								       "hotspot",
+								       "mem__pool__gc_begin",
+								       NULL);
+	if (!obj->links.handle_mem_pool_gc_start) {
+		err = errno;
+		warning("attach usdt mem__pool__gc__begin failed: %s\n", strerror(err));
+		goto cleanup;
+	}
+
+	obj->links.handle_mem_pool_gc_end = bpf_program__attach_usdt(obj->progs.handle_mem_pool_gc_end,
+								     env.pid,
+								     binary_path,
+								     "hotspot",
+								     "mem__pool__gc__end",
+								     NULL);
+	if (!obj->links.handle_mem_pool_gc_end) {
+		err = errno;
+		warning("attach usdt mem__pool__gc_end failed: %s\n", strerror(err));
+		goto cleanup;
+	}
+
+	obj->links.handle_gc_start = bpf_program__attach_usdt(obj->progs.handle_gc_start,
+							      env.pid,
+							      binary_path,
+							      "hotspot",
+							      "gc__begin", NULL);
+	if (!obj->links.handle_gc_start) {
+		err = errno;
+		warning("attach usdt gc__begin failed: %s\n", strerror(err));
+		goto cleanup;
+	}
+
+	obj->links.handle_gc_end = bpf_program__attach_usdt(obj->progs.handle_gc_end,
+							    env.pid,
+							    binary_path,
+							    "hostspot",
+							    "gc__end", NULL);
+	if (!obj->links.handle_gc_end) {
+		err = errno;
+		warning("attch usdt gc__end failed: %s\n", strerror(err));
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(-errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	printf("Tracing javagc time... Hit Ctrl-C to end.\n");
+	printf("%-8s %-7s %-7s %-7s\n",
+	       "TIME", "CPU", "PID", "GC TIME");
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer\n");
+		goto cleanup;
+	}
 }
