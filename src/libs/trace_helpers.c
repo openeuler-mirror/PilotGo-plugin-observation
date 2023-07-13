@@ -46,3 +46,68 @@ struct ksyms {
 	int modules_sz;
 	int modules_cap;
 };
+
+static int ksyms__add_symbol(struct ksyms *ksyms, const char *name, unsigned long addr,
+			     const char *module)
+{
+	size_t new_cap, name_len = strlen(name) + 1, module_len;
+	struct ksym *ksym;
+	void *tmp;
+
+	if (ksyms->strs_sz + name_len > ksyms->strs_cap) {
+		new_cap = ksyms->strs_cap * 4 / 3;
+		if (new_cap < ksyms->strs_sz + name_len)
+			new_cap = ksyms->strs_sz + name_len;
+		if (new_cap < 1024)
+			new_cap = 1024;
+		tmp = realloc(ksyms->strs, new_cap);
+		if (!tmp)
+			return -1;
+		ksyms->strs = tmp;
+		ksyms->strs_cap = new_cap;
+	}
+	if (ksyms->syms_sz + 1 > ksyms->syms_cap) {
+		new_cap = ksyms->syms_cap * 4 / 3;
+		if (new_cap < 1024)
+			new_cap = 1024;
+		tmp = realloc(ksyms->syms, sizeof(*ksyms->syms) * new_cap);
+		if (!tmp)
+			return -1;
+		ksyms->syms = tmp;
+		ksyms->syms_cap = new_cap;
+	}
+
+	if (module) {
+		module_len = strlen(module) + 1;
+		if (ksyms->modules_sz + module_len > ksyms->modules_cap) {
+			new_cap = ksyms->modules_cap * 4 / 3;
+			if (new_cap < 1024)
+				new_cap = 1024;
+			tmp = realloc(ksyms->modules, sizeof(*ksyms->modules) * new_cap);
+			if (!tmp)
+				return -1;
+			ksyms->modules = tmp;
+			ksyms->modules_cap = new_cap;
+		}
+	}
+
+	ksym = &ksyms->syms[ksyms->syms_sz];
+	/* while constructing, re-use pointer as just a plain offset */
+	ksym->name = (void *)(unsigned long)ksyms->strs_sz;
+	ksym->addr = addr;
+
+	memcpy(ksyms->strs + ksyms->strs_sz, name, name_len);
+	ksyms->strs_sz += name_len;
+	ksyms->syms_sz++;
+
+	if (module) {
+		ksym->module = (void *)(unsigned long)ksyms->modules_sz;
+		memcpy(ksyms->modules + ksyms->modules_sz, module, module_len);
+		ksyms->modules_sz += module_len;
+	} else {
+		/* Not module, init to invalid pointer */
+		ksym->module = (void *)-1;
+	}
+
+	return 0;
+}
