@@ -124,3 +124,39 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+static int print_log2_hists(struct bpf_map *hists)
+{
+	const char *units = env.milliseconds ? "msecs" : "usecs";
+	int err, fd = bpf_map__fd(hists);
+	__u32 lookup_key = -2, next_key;
+	struct hist hist;
+
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_lookup_elem(fd, &next_key, &hist);
+		if (err < 0) {
+			warning("Failed to lookup list: %d\n", err);
+			return -1;
+		}
+		if (env.per_process)
+			printf("\npid = %d %s\n", next_key, hist.comm);
+		else if (env.per_thread)
+			printf("\ntid = %d %s\n", next_key, hist.comm);
+		else if (env.per_pidns)
+			printf("\npidns = %u %s\n", next_key, hist.comm);
+		print_log2_hist(hist.slots, MAX_SLOTS, units);
+		lookup_key = next_key;
+	}
+
+	lookup_key = -2;
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_delete_elem(fd, &next_key);
+		if (err < 0) {
+			warning("Failed to cleanup list : %d\n", err);
+			return -1;
+		}
+		lookup_key = next_key;
+	}
+
+	return 0;
+}
