@@ -203,3 +203,55 @@ static void output_trace(struct pt_regs *ctx, struct trace *trace)
 skip:
 	clear_trace(trace);
 }
+
+static void output_stashed_traces(struct pt_regs *ctx,
+				  struct trace *currtrace,
+				  bool entry)
+{
+	struct func_stack *func_stack;
+	struct trace *trace = NULL;
+	__u64 task = 0;
+
+	task = bpf_get_current_task();
+	func_stack = bpf_map_lookup_elem(&ksnoop_func_stack, &task);
+	if (!func_stack)
+		return;
+
+	if (entry) {
+		/* iterate from bottom to top of stack, outputting stashed
+		 * data we find. This corresponds to the set of functions
+		 * we called before the current functions.
+		 */
+		for (int i = 0;
+		     i < func_stack->stack_depth - 1 && i < FUNC_MAX_STACK_DEPTH;
+		     i++) {
+			trace = bpf_map_lookup_elem(&ksnoop_func_map,
+						    &func_stack->ips[i]);
+			if (!trace || !(trace->data_flags & KSNOOP_F_STASHED))
+				break;
+			if (trace->task != task)
+				return;
+			output_trace(ctx, trace);
+		}
+	} else {
+		/* iterate from top to bottom of stack, outputting stashed
+		 * data we find. This corresponds to the set of functions
+		 * that returned prior to the current returning function.
+		 */
+		for (int i = FUNC_MAX_STACK_DEPTH; i > 0; i--) {
+			__u64 ip;
+
+			ip = func_stack->ips[i];
+			if (!ip)
+				continue;
+			trace = bpf_map_lookup_elem(&ksnoop_func_map, &ip);
+			if (!trace || !(trace->data_flags & KSNOOP_F_STASHED))
+				break;
+			if (trace->task != task)
+				return;
+			output_trace(ctx, trace);
+		}
+	}
+	/* finally output the current trace info */
+	output_trace(ctx, currtrace);
+}
