@@ -91,3 +91,44 @@ static void sig_handler(int sig)
 {
 	exiting = 1;
 }
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	char src[INET6_ADDRSTRLEN];
+	char dst[INET6_ADDRSTRLEN];
+	union {
+		struct in_addr  x4;
+		struct in6_addr x6;
+	} s, d;
+
+	if (env.timestamp)
+		printf("%-9.3f ", time_since_start());
+
+	if (e->af == AF_INET) {
+		s.x4.s_addr = e->saddr_v4;
+		d.x4.s_addr = e->daddr_v4;
+	} else if (e->af == AF_INET6) {
+		memcpy(&s.x6.s6_addr, e->saddr_v6, sizeof(s.x6.s6_addr));
+		memcpy(&d.x6.s6_addr, e->daddr_v6, sizeof(d.x6.s6_addr));
+	} else {
+		warning("broken event: event->af=%d", e->af);
+		return 1;
+	}
+
+	if (env.lport) {
+		printf("%-6d %-16.16s v%d %-16s %-6d %-16s %-5d %.2f\n", e->tgid,
+		       e->comm, e->af == AF_INET ? 4 : 6,
+		       inet_ntop(e->af, &s, src, sizeof(src)), e->lport,
+		       inet_ntop(e->af, &d, dst, sizeof(dst)), ntohs(e->dport),
+		       e->delta_us / 1000.0);
+	} else {
+		printf("%-6d %-16.16s v%d %-16s %-16s %-5d %.2f\n", e->tgid, e->comm,
+		       e->af == AF_INET ? 4 : 6,
+		       inet_ntop(e->af, &s, src, sizeof(src)),
+		       inet_ntop(e->af, &d, dst, sizeof(dst)), ntohs(e->dport),
+		       e->delta_us / 1000.0);
+	}
+
+	return 0;
+}
