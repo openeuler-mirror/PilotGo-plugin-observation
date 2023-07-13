@@ -255,3 +255,24 @@ static void output_stashed_traces(struct pt_regs *ctx,
 	/* finally output the current trace info */
 	output_trace(ctx, currtrace);
 }
+
+static __u64 get_arg(struct pt_regs *ctx, enum arg argnum)
+{
+	switch (argnum) {
+	case KSNOOP_ARG1:
+		return PT_REGS_PARM1_CORE(ctx);
+	case KSNOOP_ARG2:
+		return PT_REGS_PARM2_CORE(ctx);
+	case KSNOOP_ARG3:
+		return PT_REGS_PARM3_CORE(ctx);
+	case KSNOOP_ARG4:
+		return PT_REGS_PARM4_CORE(ctx);
+	case KSNOOP_ARG5:
+		return PT_REGS_PARM5_CORE(ctx);
+	case KSNOOP_RETURN:
+		return PT_REGS_RC_CORE(ctx);
+	default:
+		return 0;
+	}
+}
+
