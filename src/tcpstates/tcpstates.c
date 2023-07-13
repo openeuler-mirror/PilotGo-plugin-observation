@@ -18,6 +18,22 @@ static struct env {
 	bool verbose;
 } env;
 
+static const char *tcp_states[] = {
+	[1] = "ESTABLISHED",
+	[2] = "SYN_SENT",
+	[3] = "SYN_RECV",
+	[4] = "FIN_WAIT1",
+	[5] = "FIN_WAIT2",
+	[6] = "TIME_WAIT",
+	[7] = "CLOSE",
+	[8] = "CLOSE_WAIT",
+	[9] = "LAST_ACK",
+	[10] = "LISTEN",
+	[11] = "CLOSING",
+	[12] = "NEW_SYN_RECV",
+	[13] = "UNKNOWN",
+};
+
 const char *argp_program_version = "tcpstates 1.0";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
