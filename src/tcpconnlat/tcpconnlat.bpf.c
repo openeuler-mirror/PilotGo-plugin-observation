@@ -26,3 +26,24 @@ struct {
 	__type(key, struct sock *);
 	__type(value, struct piddata);
 } start SEC(".maps");
+
+static int trace_connect(struct sock *sock)
+{
+	u32 tgid = bpf_get_current_pid_tgid() >> 32;
+	struct piddata piddata = {};
+
+	if (target_tgid && target_tgid != tgid)
+		return 0;
+
+	bpf_get_current_comm(&piddata.comm, sizeof(piddata.comm));
+	piddata.ts = bpf_ktime_get_ns();
+	piddata.tgid = tgid;
+	bpf_map_update_elem(&start, &sock, &piddata, BPF_ANY);
+	return 0;
+}
+
+static int cleanup_sock(struct sock *sock)
+{
+	bpf_map_delete_elem(&start, &sock);
+	return 0;
+}
