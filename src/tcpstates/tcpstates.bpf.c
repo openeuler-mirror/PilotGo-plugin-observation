@@ -35,3 +35,35 @@ struct {
 	__type(key, struct sock *);
 	__type(value, __u64);
 } timestamps SEC(".maps");
+
+static __always_inline int
+handle_set_state(void *ctx, const struct sock *sk,
+		 const int oldstate, const int newstate)
+{
+	__u64 delta_us;
+
+	if (BPF_CORE_READ(sk, sk_protocol) != IPPROTO_TCP)
+		return 0;
+
+	__u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	if (target_family && target_family != family)
+		return 0;
+
+	struct inet_sock *inet_sock = (struct inet_sock *)sk;
+
+	__u16 sport = bpf_ntohs(BPF_CORE_READ(inet_sock, inet_sport));
+	if (filter_by_sport && !bpf_map_lookup_elem(&sports, &sport))
+		return 0;
+
+	__u16 dport = bpf_ntohs(BPF_CORE_READ(inet_sock, sk.__sk_common.skc_dport));
+	if (filter_by_dport && !bpf_map_lookup_elem(&dports, &dport))
+		return 0;
+
+	__u64 *tsp = bpf_map_lookup_elem(&timestamps, &sk);
+	__u64 ts = bpf_ktime_get_ns();
+
+	if (!tsp)
+		delta_us = 0;
+	else
+		delta_us = (ts - *tsp) / 1000;
+}
