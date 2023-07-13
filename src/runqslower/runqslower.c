@@ -85,3 +85,34 @@ static error_t parse_args(int key, char *arg, struct argp_state *state)
 	}
 	return 0;
 }
+
+int libbpf_print_fn(enum libbpf_print_level level,
+		    const char *format, va_list args)
+{
+	if (level == LIBBPF_DEBUG && !env.verbose)
+		return 0;
+
+	return vfprintf(stderr, format, args);
+}
+
+static void sig_int(int signo)
+{
+	exiting = 1;
+}
+
+void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+	const struct runq_event *e = data;
+	char ts[32];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	if (env.previous)
+		printf("%-8s %-16s %-6d %-14llu %-16s %-6d\n", ts, e->task, e->pid, e->delta_us, e->prev_task, e->prev_pid);
+	else
+		printf("%-8s %-16s %-6d %-14llu\n", ts, e->task, e->pid, e->delta_us);
+}
+
+void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
+{
+	printf("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
