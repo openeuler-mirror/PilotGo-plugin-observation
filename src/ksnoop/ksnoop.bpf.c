@@ -52,3 +52,10 @@ struct {
 	__uint(value_size, sizeof(u32));
 	__uint(key_size, sizeof(u32));
 } ksnoop_perf_map SEC(".maps");
+
+static void clear_trace(struct trace *trace)
+{
+	__builtin_memset(&trace->trace_data, 0, sizeof(trace->trace_data));
+	trace->data_flags = 0;
+	trace->buf_len = 0;
+}
