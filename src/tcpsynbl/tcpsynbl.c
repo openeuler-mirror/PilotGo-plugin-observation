@@ -93,6 +93,66 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void sig_handler(int sig)
+{
+	exiting = 1;
+}
+
+static void disable_all_progs(struct tcpsynbl_bpf *obj)
+{
+	bpf_program__set_autoload(obj->progs.tcp_v4_sync_recv_kprobe, false);
+	bpf_program__set_autoload(obj->progs.tcp_v6_sync_recv_kprobe, false);
+	bpf_program__set_autoload(obj->progs.tcp_v4_sync_recv_fentry, false);
+	bpf_program__set_autoload(obj->progs.tcp_v6_sync_recv_fentry, false);
+}
+
+static void set_autoload_progs(struct tcpsynbl_bpf *obj, int version)
+{
+	if (version == 4) {
+		if (fentry_can_attach("tcp_v4_sync_recv_sock", NULL))
+			bpf_program__set_autoload(obj->progs.tcp_v4_sync_recv_fentry, true);
+		else
+			bpf_program__set_autoload(obj->progs.tcp_v4_sync_recv_kprobe, true);
+	}
+
+	if (version == 6) {
+		if (fentry_can_attach("tcp_v6_sync_recv_sock", NULL))
+			bpf_program__set_autoload(obj->progs.tcp_v6_sync_recv_fentry, true);
+		else
+			bpf_program__set_autoload(obj->progs.tcp_v6_sync_recv_kprobe, true);
+	}
+}
+
+static int print_log2_hists(int fd)
+{
+	__u64 lookup_key = -1, next_key;
+	struct hist hist;
+	int err;
+
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_lookup_elem(fd, &next_key, &hist);
+		if (err) {
+			warning("Failed to lookup hist: %d\n", err);
+			return -1;
+		}
+		printf("backlog_max = %lld\n", next_key);
+		print_log2_hist(hist.slots, MAX_SLOTS, "backlog");
+		lookup_key = next_key;
+	}
+
+	lookup_key = -1;
+	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+		err = bpf_map_delete_elem(fd, &next_key);
+		if (err) {
+			warning("Failed to cleanup hist : %d\n", err);
+			return -1;
+		}
+		lookup_key = next_key;
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -107,13 +167,13 @@ int main(int argc, char *argv[])
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
 		return err;
-        
+
 	if (!bpf_is_root())
 		return 1;
 
 	libbpf_set_print(libbpf_print_fn);
-        
-        err = ensure_core_btf(&open_opts);
+
+	err = ensure_core_btf(&open_opts);
 	if (err) {
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
@@ -124,7 +184,7 @@ int main(int argc, char *argv[])
 		warning("Failed to open BPF object\n");
 		return 1;
 	}
-	
+
 	disable_all_progs(obj);
 
 	if (env.ipv4) {
@@ -135,13 +195,13 @@ int main(int argc, char *argv[])
 		set_autoload_progs(obj, 4);
 		set_autoload_progs(obj, 6);
 	}
-        
+
 	err = tcpsynbl_bpf__load(obj);
 	if (err) {
 		warning("Failed to load BPF object: %d\n", err);
 		goto cleanup;
 	}
-	
+
 	signal(SIGINT, sig_handler);
 
 	printf("Tracing SYN backlog size. Ctrl-C to end.\n");
@@ -171,3 +231,4 @@ cleanup:
 
 	return err != 0;
 }
+
