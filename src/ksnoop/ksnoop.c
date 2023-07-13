@@ -918,3 +918,12 @@ struct cmd cmds[] = {
 	{ "help",	cmd_help },
 	{ NULL,		NULL },
 };
+
+static int cmd_select(int argc, char *argv[])
+{
+	for (int i = 0; cmds[i].cmd; i++) {
+		if (strncmp(argv[0], cmds[i].cmd, strlen(argv[0])) == 0)
+			return cmds[i].func(argc - 1, argv + 1);
+	}
+	return cmd_trace(argc, argv);
+}
