@@ -442,3 +442,37 @@ static int dso__load_sym_table_from_perf_map(struct dso *dso)
 {
 	return -1;
 }
+
+static int dso__add_sym(struct dso *dso, const char *name, uint64_t start,
+			uint64_t size)
+{
+	struct sym *sym;
+	size_t new_cap;
+	void *tmp;
+	int off;
+
+	off = btf__add_str(dso->btf, name);
+	if (off < 0)
+		return off;
+
+	if (dso->syms_sz + 1 > dso->syms_cap) {
+		new_cap = dso->syms_cap * 4 / 3;
+		if (new_cap < 1024)
+			new_cap = 1024;
+		tmp = realloc(dso->syms, sizeof(*dso->syms) * new_cap);
+		if (!tmp)
+			return -1;
+		dso->syms = tmp;
+		dso->syms_cap = new_cap;
+	}
+
+	sym = &dso->syms[dso->syms_sz++];
+	/* while constructing, re-use pointer as just a plain offset */
+	sym->name = (void*)(unsigned long)off;
+	sym->start = start;
+	sym->size = size;
+	sym->offset = 0;
+
+	return 0;
+}
+
