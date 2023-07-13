@@ -100,3 +100,11 @@ handle_set_state(void *ctx, const struct sock *sk,
 
 	return 0;
 }
+
+SEC("tp_btf/inet_sock_set_state")
+int BPF_PROG(inet_sock_set_state, const struct sock *sk, const int oldstate,
+	     const int newstate)
+{
+	return handle_set_state(ctx, sk, oldstate, newstate);
+}
+
