@@ -196,6 +196,24 @@ int main(int argc, char *argv[])
 		warning("Failed to open ring/perf buffers\n");
 		goto cleanup;
 	}
+        
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	if (env.emit_timestamp)
+		printf("%-8s ", "TIME(s)");
+
+	if (env.wide_output)
+		printf("%-16s %-7s %-16s %-2s %-26s %-5s %-26s %-5s %-11s -> %-11s %s\n",
+		       "SKADDR", "PID", "COMM", "IP", "LADDR", "LPORT",
+		       "RADDR", "RPORT", "OLDSTATE", "NEWSTATE", "MS");
+	else
+		printf("%-16s %-7s %-10s %-15s %-5s %-15s %-5s %-11s -> %-11s %s\n",
+		       "SKADDR", "PID", "COMM", "LADDR", "LPORT",
+		       "RADDR", "RPORT", "OLDSTATE", "NEWSTATE", "MS");
 
 	return err != 0;
 }
