@@ -73,3 +73,48 @@ tcp_ipv4_trace(void *ctx, struct sock *sk, __u32 pid, __u16 lport,
 
 	submit_buf(ctx, data4, sizeof(*data4));
 }
+
+static __always_inline void
+tcp_ipv6_count(struct sock *sk, __u16 lport, __u16 dport)
+{
+	struct ipv6_flow_key_t flow_key = {};
+	static const __u64 zero;
+	__u64 *val;
+
+	BPF_CORE_READ_INTO(&flow_key.saddr, sk,
+			   __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+	BPF_CORE_READ_INTO(&flow_key.daddr, sk,
+			   __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	flow_key.lport = lport;
+	flow_key.dport = dport;
+
+	val = bpf_map_lookup_or_try_init(&ipv6_count, &flow_key, &zero);
+	if (!val)
+		return;
+	__atomic_add_fetch(val, 1, __ATOMIC_RELAXED);
+}
+
+static __always_inline void
+tcp_ipv6_trace(void *ctx, struct sock *sk, __u32 pid, __u16 lport,
+	       __u16 dport, __u8 state, __u64 type)
+{
+	struct event *data6;
+
+	data6 = reserve_buf(sizeof(*data6));
+	if (!data6)
+		return;
+
+	data6->af = AF_INET6;
+	data6->pid = pid;
+	data6->lport = lport;
+	data6->dport = dport;
+	data6->type = type;
+	data6->ip = 6;
+	data6->state = state;
+	BPF_CORE_READ_INTO(&data6->saddr_v6, sk,
+			   __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+	BPF_CORE_READ_INTO(&data6->daddr_v6, sk,
+			   __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+
+	submit_buf(ctx, data6, sizeof(*data6));
+}
