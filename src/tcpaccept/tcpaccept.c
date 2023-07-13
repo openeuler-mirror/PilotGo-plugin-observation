@@ -247,6 +247,41 @@ int main(int argc, char *argv[])
 
 	obj->rodata->filter_by_port = env.port;
 
+	err = tcpaccept_bpf__load(obj);
+	if (err) {
+		warning("failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	if (env.port) {
+		int port_map_fd = bpf_map__fd(obj->maps.ports);
+		char *port = strtok(env.target_ports, ",");
+
+		while (port) {
+			int port_num = strtol(port, NULL, 10);
+
+			bpf_map_update_elem(port_map_fd, &port_num,
+					    &port_num, BPF_ANY);
+			port = strtok(NULL, ",");
+		}
+	}
+
+	err = tcpaccept_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %s\n", strerror(-err));
+		goto cleanup;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		err = 1;
+		goto cleanup;
+	}
+
+	printf("Tracing accept ... Hit Ctrl-C to end\n");
+
+	err = print_events(buf);
+	
 cleanup:
 	tcpaccept_bpf__destroy(obj);
 	cleanup_core_btf(&open_opts);
