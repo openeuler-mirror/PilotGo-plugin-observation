@@ -199,3 +199,57 @@ static int print_events(struct bpf_buffer *buf)
 
 	return err;
 }
+
+int main(int argc, char *argv[])
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	struct tcpaccept_bpf *obj;
+	struct bpf_buffer *buf = NULL;
+	int err;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+
+	libbpf_set_print(libbpf_print_fn);
+
+	err = ensure_core_btf(&open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n",
+			strerror(-err));
+		return -1;
+	}
+
+	obj = tcpaccept_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF objects\n");
+		err = 1;
+		goto cleanup;
+	}
+
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		warning("Failed to create ring/perf buffer\n");
+		err = -errno;
+		goto cleanup;
+	}
+
+	if (env.pid)
+		obj->rodata->trace_pid = env.trace_pid;
+
+	obj->rodata->filter_by_port = env.port;
+
+cleanup:
+	tcpaccept_bpf__destroy(obj);
+	cleanup_core_btf(&open_opts);
+
+	return err != 0;
+}
