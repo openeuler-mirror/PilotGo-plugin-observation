@@ -148,6 +148,15 @@ int main(int argc, char *argv[])
 		err = 1;
 		goto cleanup;
 	}
+        
+	obj->rodata->filter_by_sport = env.target_sports != NULL;
+	obj->rodata->filter_by_dport = env.target_dports != NULL;
+	obj->rodata->target_family = env.target_family;
+
+	if (probe_tp_btf("inet_sock_set_state"))
+		bpf_program__set_autoload(obj->progs.inet_sock_set_state_raw, false);
+	else
+		bpf_program__set_autoload(obj->progs.inet_sock_set_state, false);
 
 	return err != 0;
 }
