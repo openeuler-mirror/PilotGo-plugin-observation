@@ -935,3 +935,57 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 		return 0;
 	return vfprintf(stderr, format, args);
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct option options[] = {
+		{ "debug",	no_argument,		NULL,	'd' },
+		{ "verbose",	no_argument,		NULL,	'v' },
+		{ "help",	no_argument,		NULL,	'h' },
+		{ "version",	no_argument,		NULL,	'V' },
+		{ "pages",	required_argument,	NULL,	'P' },
+		{ "pid",	required_argument,	NULL,	'p' },
+		{}
+	};
+	int opt;
+
+	bin_name = argv[0];
+
+	while ((opt = getopt_long(argc, argv, "dvhp:P:sV", options, NULL)) >= 0) {
+		switch (opt) {
+		case 'v':
+		case 'd':
+			verbose = true;
+			log_level = DEBUG;
+			break;
+		case 'h':
+			return cmd_help(argc, argv);
+		case 'V':
+			return do_version(argc, argv);
+		case 'p':
+			filter_pid = atoi(optarg);
+			if (!do_process_running(filter_pid))
+				usage();
+			break;
+		case 'P':
+			pages = atoi(optarg);
+			break;
+		case 's':
+			stack_mode = true;
+			break;
+		default:
+			pr_err("Unrecognized option '%s'", argv[optind - 1]);
+			usage();
+		}
+	}
+	if (argc == 1)
+		usage();
+	argc -= optind;
+	argv += optind;
+	if (argc <= 0)
+		usage();
+
+	libbpf_set_print(libbpf_print_fn);
+
+	return cmd_select(argc, argv);
+}
