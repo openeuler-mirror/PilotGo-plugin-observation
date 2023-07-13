@@ -47,3 +47,49 @@ static int cleanup_sock(struct sock *sock)
 	bpf_map_delete_elem(&start, &sock);
 	return 0;
 }
+
+static int handle_tcp_rcv_state_process(void *ctx, struct sock *sk)
+{
+	struct piddata *piddatap;
+	struct event *eventp;
+	s64 delta;
+	u64 ts;
+
+	if (BPF_CORE_READ(sk, __sk_common.skc_state) != TCP_SYN_SENT)
+		return 0;
+
+	piddatap = bpf_map_lookup_and_delete_elem(&start, &sk);
+	if (!piddatap)
+		return 0;
+
+	ts = bpf_ktime_get_ns();
+	delta = (s64)(ts - piddatap->ts);
+	if (delta < 0)
+		return 0;
+
+	if (target_min_us && delta / 1000U < target_min_us)
+		return 0;
+
+	eventp = reserve_buf(sizeof(*eventp));
+	if (!eventp)
+		return 0;
+
+	eventp->delta_us = delta / 1000U;
+	__builtin_memcpy(&eventp->comm, piddatap->comm,
+			 sizeof(eventp->comm));
+	eventp->tgid = piddatap->tgid;
+	eventp->lport = BPF_CORE_READ(sk, __sk_common.skc_num);
+	eventp->dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
+	eventp->af = BPF_CORE_READ(sk, __sk_common.skc_family);
+	if (eventp->af == AF_INET) {
+		eventp->saddr_v4 = BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
+		eventp->daddr_v4 = BPF_CORE_READ(sk, __sk_common.skc_daddr);
+	} else {
+		BPF_CORE_READ_INTO(&eventp->saddr_v6, sk,
+				   __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&eventp->daddr_v6, sk,
+				   __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	}
+	submit_buf(ctx, eventp, sizeof(*eventp));
+	return 0;
+}
