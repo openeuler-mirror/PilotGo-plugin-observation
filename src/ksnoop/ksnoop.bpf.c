@@ -59,3 +59,118 @@ static void clear_trace(struct trace *trace)
 	trace->data_flags = 0;
 	trace->buf_len = 0;
 }
+
+static struct trace *get_trace(struct pt_regs *ctx, bool entry)
+{
+	__u8 stack_depth, last_stack_depth;
+	struct func_stack *func_stack, new_stack = {};
+	__u64 ip, last_ip = 0, task;
+	struct trace *trace;
+
+	task = bpf_get_current_task();
+
+	new_stack.task = task;
+	func_stack = bpf_map_lookup_or_try_init(&ksnoop_func_stack, &task, &new_stack);
+	if (!func_stack)
+		return NULL;
+
+	stack_depth = func_stack->stack_depth;
+	if (stack_depth > FUNC_MAX_STACK_DEPTH)
+		return NULL;
+
+	if (entry) {
+		if (stack_depth >= FUNC_MAX_STACK_DEPTH - 1)
+			return NULL;
+
+		/* verifier doesn't like using "stack_depth - 1" as array index
+		 * directly.
+		 */
+		last_stack_depth = stack_depth - 1;
+		/* get address of last function we called */
+		if (last_stack_depth >= 0 &&
+		    last_stack_depth < FUNC_MAX_STACK_DEPTH)
+			last_ip = func_stack->ips[last_stack_depth];
+		/* push ip onto stack. return will pop it. */
+		ip = KSNOOP_IP_FIX(PT_REGS_IP_CORE(ctx));
+		func_stack->ips[stack_depth] = ip;
+		/* mask used in case bounds checks are optimized out */
+		stack_depth = (stack_depth + 1) & FUNC_STACK_DEPTH_MASK;
+		func_stack->stack_depth = stack_depth;
+		/* rather than zero stack entries on poping, we zero the
+		 * (stack_depth + 1)'th entry when pushing the current
+		 * entry. The reason we take this approach is that when
+		 * tracking the set of functions we returned from, we want
+		 * the history of functions we returned from to be preserved.
+		 */
+		if (stack_depth < FUNC_MAX_STACK_DEPTH)
+			func_stack->ips[stack_depth] = 0;
+	} else {
+		if (stack_depth == 0 || stack_depth >= FUNC_MAX_STACK_DEPTH)
+			return NULL;
+		/* get address of last function we returned from */
+		last_ip = func_stack->ips[stack_depth];
+		stack_depth = (stack_depth - 1) & FUNC_STACK_DEPTH_MASK;
+		/* retrieve ip from stack as IP in pt_regs is
+		 * bpf kretprobe trampoline address.
+		 */
+		ip = func_stack->ips[stack_depth];
+		func_stack->stack_depth = stack_depth;
+	}
+
+	trace = bpf_map_lookup_elem(&ksnoop_func_map, &ip);
+	if (!trace)
+		return NULL;
+
+	/* we may stash data on entry since predicates are a mix
+	 * of entry/return; in such cases, trace->flags specifies
+	 * KSNOOP_F_STASH, and we will output stashed data on return.
+	 * If returning, make sure we don't clear our stashed data.
+	 */
+	if (!entry && (trace->flags & KSNOOP_F_STASH)) {
+		/* skip clearing trace data */
+		if (!(trace->data_flags & KSNOOP_F_STASHED)) {
+			/* predicate must have failed */
+			return NULL;
+		}
+		/* skip clearing trace data */
+	} else {
+		/* clear trace data before starting */
+		clear_trace(trace);
+	}
+
+	if (entry) {
+		/* if in stack mode, check if previous fn matches */
+		if (trace->prev_ip && trace->prev_ip != last_ip)
+			return NULL;
+		/* if tracing intermediate fn in stack of fns, stash data. */
+		if (trace->next_ip)
+			trace->data_flags |= KSNOOP_F_STASH;
+		/* we may stash data on entry since predicates are a mix
+		 * of entry/return; in such cases, trace->flags specifies
+		 * KSNOOP_F_STASH, and we will output stashed data on return.
+		 */
+		if (trace->flags & KSNOOP_F_STASH)
+			trace->data_flags |= KSNOOP_F_STASH;
+		/* otherwise the data is outputted (because we've reached
+		 * the last fn in the set of fns specified).
+		 */
+	} else {
+		/* In stack mode, check if next fn matches the last fn
+		 * we returned from; i.e. "a" called "b", and now
+		 * we're at "a", was the last fn we returned from "b"?
+		 * If so, stash data for later display (when we reach the
+		 * first fn in the set of stack fns)
+		 */
+		if (trace->next_ip && trace->next_ip != last_ip)
+			return NULL;
+		if (trace->prev_ip)
+			trace->data_flags |= KSNOOP_F_STASH;
+		/* If there is no "prev" function, i.e. we are at the
+		 * first function in a set of stack functions, the trace
+		 * info is shown (along with any stashed info associated
+		 * with callers).
+		 */
+	}
+	trace->task = task;
+	return trace;
+}
