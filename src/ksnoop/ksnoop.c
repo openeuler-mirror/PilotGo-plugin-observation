@@ -828,3 +828,81 @@ static int attach_traces(struct ksnoop_bpf *obj, struct trace *traces,
 	}
 	return 0;
 }
+
+static int cmd_trace(int argc, char *argv[])
+{
+	struct bpf_map *perf_map, *func_map;
+	struct perf_buffer *pb = NULL;
+	struct ksnoop_bpf *obj;
+	int i, nr_traces, ret = -1;
+	struct trace *traces = NULL;
+
+	nr_traces = parse_traces(argc, argv, &traces);
+	if (nr_traces < 0)
+		return nr_traces;
+
+	obj = ksnoop_bpf__open_and_load();
+	if (!obj) {
+		ret = -errno;
+		pr_err("Could not load ksnoop BPF: %s", strerror(-ret));
+		return 1;
+	}
+
+	perf_map = obj->maps.ksnoop_perf_map;
+	if (!perf_map) {
+		pr_err("Could not found 'ksnoop_perf_map'");
+		goto cleanup;
+	}
+	func_map = obj->maps.ksnoop_func_map;
+	if (!func_map) {
+		pr_err("Cound not found 'ksnoop_func_map'");
+		goto cleanup;
+	}
+
+	if (add_traces(func_map, traces, nr_traces)) {
+		pr_err("Could not add traces to 'ksnoop_func_map'");
+		goto cleanup;
+	}
+
+	if (attach_traces(obj, traces, nr_traces)) {
+		pr_err("Could not attach %d traces", nr_traces);
+		goto cleanup;
+	}
+
+	pb = perf_buffer__new(bpf_map__fd(perf_map), pages,
+			      trace_handler, lost_handler, NULL, NULL);
+	if (!pb) {
+		ret = -errno;
+		pr_err("Could not create perf buffer: %s", strerror(-ret));
+		goto cleanup;
+	}
+
+	printf("%16s %4s %8s %s\n", "TIME", "CPU", "PID", "FUNCTION/ARGS");
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		warning("Can't set signal handler: %s\n", strerror(errno));
+		ret = 1;
+		goto cleanup;
+	}
+
+	while (!exiting) {
+		ret = perf_buffer__poll(pb, 1);
+		if (ret < 0 && ret != -EINTR) {
+			warning("Error polling perf buffer: %s\n", strerror(-ret));
+			goto cleanup;
+		}
+		/* reset ret to return 0 if exiting */
+		ret = 0;
+	}
+
+cleanup:
+	for (i = 0; i < nr_traces; i++) {
+		bpf_link__destroy(traces[i].links[0]);
+		bpf_link__destroy(traces[i].links[1]);
+	}
+	free(traces);
+	perf_buffer__free(pb);
+	ksnoop_bpf__destroy(obj);
+
+	return ret;
+}
