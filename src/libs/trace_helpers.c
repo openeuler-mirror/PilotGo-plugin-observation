@@ -408,3 +408,33 @@ static int syms__add_dso(struct syms *syms, struct map *map, const char *name)
 	}
 	return 0;
 }
+
+static struct dso *syms__find_dso(const struct syms *syms, unsigned long addr,
+				  uint64_t *offset)
+{
+	struct load_range *range;
+	struct dso *dso;
+	int i, j;
+
+	for (i = 0; i < syms->dso_sz; i++) {
+		dso = &syms->dsos[i];
+		for (j = 0; j < dso->range_sz; j++) {
+			range = &dso->ranges[j];
+			if (addr <= range->start || addr >= range->end)
+				continue;
+			if (dso->type == DYN || dso->type == VDSO) {
+				/* Offset within the mmap */
+				*offset = addr - range->start + range->file_off;
+				/* Offset within the ELF for dyn symbol lookup */
+				*offset += dso->sh_addr - dso->sh_offset;
+			} else {
+				*offset = addr;
+			}
+
+			return dso;
+		}
+	}
+
+	return NULL;
+}
+
