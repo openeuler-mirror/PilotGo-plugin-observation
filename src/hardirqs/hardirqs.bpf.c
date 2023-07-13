@@ -105,3 +105,9 @@ int BPF_PROG(irq_handler_entry_btf, int irq, struct irqaction *action)
 {
 	return handle_entry(irq, action);
 }
+
+SEC("tp_btf/irq_handler_exit")
+int BPF_PROG(irq_handler_exit_btf, int irq, struct irqaction *action)
+{
+	return handle_exit(irq, action);
+}
