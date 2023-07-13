@@ -476,3 +476,11 @@ static int dso__add_sym(struct dso *dso, const char *name, uint64_t start,
 	return 0;
 }
 
+static int sym_cmp(const void *p1, const void *p2)
+{
+	const struct sym *s1 = p1, *s2 = p2;
+
+	if (s1->start == s2->start)
+		return strcmp(s1->name, s2->name);
+	return s1->start < s2->start ? -1 : 1;
+}
