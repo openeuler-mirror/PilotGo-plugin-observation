@@ -135,3 +135,23 @@ int BPF_PROG(fentry_tcp_v6_connect, struct sock *sk)
 {
 	return trace_connect(sk);
 }
+
+SEC("fentry/tcp_rcv_state_process")
+int BPF_PROG(fentry_tcp_rcv_state_process, struct sock *sk)
+{
+	return handle_tcp_rcv_state_process(ctx, sk);
+}
+
+SEC("fentry/tcp_v4_destroy_sock")
+int BPF_PROG(fentry_tcp_v4_destroy_sock, struct sock *sk)
+{
+	return cleanup_sock(sk);
+}
+
+SEC("fentry/tcp_v6_destroy_sock")
+int BPF_PROG(fentry_tcp_v6_destroy_sock, struct sock *sk)
+{
+	return cleanup_sock(sk);
+}
+
+char LICENSE[] SEC("license") = "GPL";
