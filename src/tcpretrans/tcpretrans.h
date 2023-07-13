@@ -21,3 +21,23 @@ struct ipv6_flow_key_t {
 	__u16 lport;
 	__u16 dport;
 };
+
+struct event {
+	union {
+		__u32 saddr_v4;
+		__u8 saddr_v6[16];
+	};
+	union {
+		__u32 daddr_v4;
+		__u8 daddr_v6[16];
+	};
+	__u32 af;
+	__u32 pid;
+	__u16 lport;
+	__u16 dport;
+	__u8 state;
+	__u64 type;
+	__u64 ip;
+};
+
+#endif
