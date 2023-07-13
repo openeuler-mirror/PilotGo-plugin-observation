@@ -237,4 +237,19 @@ if (err) {
 		warning("Failed to open ring/perf buffer\n");
 		goto cleanup;
 	}
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling perf buffer: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		/* reset err to return 0 if exiting */
+		err = 0;
+	}
+
+cleanup:
+	bpf_buffer__free(buf);
+	javagc_bpf__destroy(obj);
+
+	return err != 0;
 }
