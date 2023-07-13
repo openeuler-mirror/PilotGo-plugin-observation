@@ -438,3 +438,7 @@ static struct dso *syms__find_dso(const struct syms *syms, unsigned long addr,
 	return NULL;
 }
 
+static int dso__load_sym_table_from_perf_map(struct dso *dso)
+{
+	return -1;
+}
