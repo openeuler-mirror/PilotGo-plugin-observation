@@ -108,3 +108,12 @@ int BPF_PROG(inet_sock_set_state, const struct sock *sk, const int oldstate,
 	return handle_set_state(ctx, sk, oldstate, newstate);
 }
 
+SEC("raw_tp/inet_sock_set_state")
+int BPF_PROG(inet_sock_set_state_raw, const struct sock *sk, const int oldstate,
+	     const int newstate)
+{
+	return handle_set_state(ctx, sk, oldstate, newstate);
+}
+
+char LICENSE[] SEC("license") = "GPL";
+
