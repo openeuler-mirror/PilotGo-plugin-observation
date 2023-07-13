@@ -163,3 +163,11 @@ int BPF_PROG(sched_wakeup_new_raw, struct task_struct *p)
 {
 	return trace_enqueue(BPF_CORE_READ(p, tgid), BPF_CORE_READ(p, pid));
 }
+
+SEC("raw_tp/sched_switch")
+int BPF_PROG(sched_switch_raw, bool preempt, struct task_struct *prev, struct task_struct *next)
+{
+	return handle_switch(preempt, prev, next);
+}
+
+char LICENSE[] SEC("license") = "GPL";
