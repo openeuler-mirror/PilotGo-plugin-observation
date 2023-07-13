@@ -135,6 +135,19 @@ int main(int argc, char *argv[])
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
 	}
+        
+	obj = tcpstates_bpf__open_opts(&open_opts);
+	if (!obj) {
+		warning("Failed to open BPF objects\n");
+		return 1;
+	}
+
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		warning("Failed to create ring/perf buffer\n");
+		err = 1;
+		goto cleanup;
+	}
 
 	return err != 0;
 }
