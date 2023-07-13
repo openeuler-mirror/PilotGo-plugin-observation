@@ -17,3 +17,26 @@ const volatile bool target_per_thread = false;
 const volatile bool target_per_pidns = false;
 const volatile bool target_ms = false;
 const volatile pid_t target_tgid = 0;
+
+struct {
+	__uint(type, BPF_MAP_TYPE_CGROUP_ARRAY);
+	__type(key, u32);
+	__type(value, u32);
+	__uint(max_entries, 1);
+} cgroup_map SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, u32);
+	__type(value, u64);
+} start SEC(".maps");
+
+static struct hist zero;
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, u32);
+	__type(value, struct hist);
+} hists SEC(".maps");
