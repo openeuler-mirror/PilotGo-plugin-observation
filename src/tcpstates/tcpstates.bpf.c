@@ -66,4 +66,37 @@ handle_set_state(void *ctx, const struct sock *sk,
 		delta_us = 0;
 	else
 		delta_us = (ts - *tsp) / 1000;
+
+	struct event *event;
+
+	event = reserve_buf(sizeof(*event));
+	if (!event)
+		return 0;
+
+	event->skaddr = (__u64)sk;
+	event->delta_us = delta_us;
+	event->pid = bpf_get_current_pid_tgid() >> 32;
+	event->oldstate = oldstate;
+	event->newstate = newstate;
+	event->family = family;
+	event->sport = sport;
+	event->dport = dport;
+	bpf_get_current_comm(&event->task, sizeof(event->task));
+
+	if (family == AF_INET) {
+		BPF_CORE_READ_INTO(&event->saddr, sk, __sk_common.skc_rcv_saddr);
+		BPF_CORE_READ_INTO(&event->daddr, sk, __sk_common.skc_daddr);
+	} else {
+		BPF_CORE_READ_INTO(&event->saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&event->daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	}
+
+	submit_buf(ctx, event, sizeof(*event));
+
+	if (newstate == TCP_CLOSE)
+		bpf_map_delete_elem(&timestamps, &sk);
+	else
+		bpf_map_update_elem(&timestamps, &sk, &ts, BPF_ANY);
+
+	return 0;
 }
