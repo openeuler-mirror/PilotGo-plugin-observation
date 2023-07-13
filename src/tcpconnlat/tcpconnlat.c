@@ -162,6 +162,45 @@ int main(int argc, char *argv[])
 	obj->rodata->target_min_us = env.min_us;
 	obj->rodata->target_tgid = env.pid;
 
+if (fentry_can_attach("tcp_v4_connect", NULL)) {
+		bpf_program__set_autoload(obj->progs.tcp_v4_connect, false);
+		bpf_program__set_autoload(obj->progs.tcp_v6_connect, false);
+		bpf_program__set_autoload(obj->progs.tcp_rcv_state_process, false);
+		bpf_program__set_autoload(obj->progs.tcp_v4_destroy_sock, false);
+		bpf_program__set_autoload(obj->progs.tcp_v6_destroy_sock, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.fentry_tcp_v4_connect, false);
+		bpf_program__set_autoload(obj->progs.fentry_tcp_v6_connect, false);
+		bpf_program__set_autoload(obj->progs.fentry_tcp_rcv_state_process, false);
+		bpf_program__set_autoload(obj->progs.fentry_tcp_v4_destroy_sock, false);
+		bpf_program__set_autoload(obj->progs.fentry_tcp_v6_destroy_sock, false);
+	}
+
+	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	if (!buf) {
+		warning("Failed to create ring/perf buffer\n");
+		err = -errno;
+		goto cleanup;
+	}
+
+	err = tcpconnlat_bpf__load(obj);
+	if (err) {
+		warning("Failed to load BPF object: %d\n", err);
+		goto cleanup;
+	}
+
+	err = tcpconnlat_bpf__attach(obj);
+	if (err) {
+		warning("Failed to attach BPF programs: %d\n", err);
+		goto cleanup;
+	}
+
+	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	if (err) {
+		warning("Failed to open ring/perf buffer\n");
+		goto cleanup;
+	}
+
 cleanup:
 	bpf_buffer__free(buf);
 	tcpconnlat_bpf__destroy(obj);
