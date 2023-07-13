@@ -124,3 +124,47 @@ static void print_header(void)
 	       "PID", "COMM", "IP", "RADDR", "RPORT", "LADDR", "LPORT");
 	printf("\n");
 }
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	char time_now[16];
+	const struct data_t *event = data;
+	char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
+	union {
+		struct in_addr  x4;
+		struct in6_addr x6;
+	} s, d;
+
+	if (env.ipv4_only && event->af == AF_INET6)
+		return 0;
+
+	if (env.ipv6_only && event->af == AF_INET)
+		return 0;
+
+	if (event->af == AF_INET) {
+		s.x4.s_addr = event->saddr_v4;
+		d.x4.s_addr = event->daddr_v4;
+	} else if (event->af == AF_INET6) {
+		memcpy(&s.x6.s6_addr, event->saddr_v6, sizeof(s.x6.s6_addr));
+		memcpy(&d.x6.s6_addr, event->daddr_v6, sizeof(d.x6.s6_addr));
+	}
+
+	if (env.time) {
+		strftime_now(time_now, sizeof(time_now), "%H:%M:%S");
+		printf("%-8s ", time_now);
+	}
+
+	if (env.timestamp)
+		printf("%-8.3f ", time_since_start());
+
+	printf("%-7d %-12.12s %-2lld %-16s %-5d %-16s %-5d\n",
+	       event->pid,
+	       event->task,
+	       event->ip,
+	       inet_ntop(event->af, &d, dst, sizeof(dst)),
+	       ntohs(event->dport),
+	       inet_ntop(event->af, &s, src, sizeof(src)),
+	       event->lport);
+
+	return 0;
+}
