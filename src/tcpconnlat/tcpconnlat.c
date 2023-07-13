@@ -40,3 +40,41 @@ static const struct argp_option opts[] = {
 	{ NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help" },
 	{}
 };
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	static int pos_args;
+
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'v':
+		env.verbose = true;
+		break;
+	case 'p':
+		env.pid = argp_parse_pid(key, arg, state);
+		break;
+	case 't':
+		env.timestamp = true;
+		break;
+	case 'L':
+		env.lport = true;
+		break;
+	case ARGP_KEY_ARG:
+		if (pos_args++) {
+			warning("Unrecognized positional argument: %s\n", arg);
+			argp_usage(state);
+		}
+		errno = 0;
+		env.min_us = strtod(arg, NULL) * 1000;
+		if (errno || env.min_us <= 0) {
+			warning("Invalid delay (in us) %s\n", arg);
+			argp_usage(state);
+		}
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
