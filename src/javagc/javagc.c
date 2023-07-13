@@ -123,3 +123,23 @@ static int get_jvmso_path(char *path)
 
 	return 0;
 }
+
+int main(int argc, char *argv[])
+{
+	static const struct argp argp = {
+		.options = opts,
+		.parser = parse_arg,
+		.doc = argp_program_doc,
+	};
+	char binary_path[BINARY_PATH_SIZE] = {};
+	struct javagc_bpf *obj = NULL;
+	int err;
+	struct bpf_buffer *buf = NULL;
+
+	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	if (err)
+		return err;
+
+	if (!bpf_is_root())
+		return 1;
+}
