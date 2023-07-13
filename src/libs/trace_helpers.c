@@ -303,3 +303,22 @@ static bool is_vdso(const char *path)
 {
 	return !strcmp(path, "[vdso]");
 }
+
+static int get_elf_type(const char *path)
+{
+	GElf_Ehdr hdr;
+	void *res;
+	Elf *e;
+	int fd;
+
+	if (is_vdso(path))
+		return -1;
+	e = open_elf(path, &fd);
+	if (!e)
+		return -1;
+	res = gelf_getehdr(e, &hdr);
+	close_elf(e, fd);
+	if (!res)
+		return -1;
+	return hdr.e_type;
+}
