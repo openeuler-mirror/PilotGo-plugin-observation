@@ -120,3 +120,64 @@ static int ksym_cmp(const void *p1, const void *p2)
 		return strcmp(s1->name, s2->name);
 	return s1->addr < s2->addr ? -1 : 1;
 }
+
+struct ksyms *ksyms__load(void)
+{
+	char sym_type, sym_name[256], module_name[256];
+	struct ksyms *ksyms;
+	unsigned long sym_addr;
+	int i, ret;
+	FILE *f;
+
+	f = fopen("/proc/kallsyms", "r");
+	if (!f)
+		return NULL;
+
+	ksyms = calloc(1, sizeof(*ksyms));
+	if (!ksyms)
+		goto err_out;
+
+	while (true) {
+		char mod_info[256];
+		const char *module_info;
+
+		ret = fscanf(f, "%lx %c %s%[^\n]\n",
+			     &sym_addr, &sym_type, sym_name, mod_info);
+		if (ret == EOF && feof(f))
+			break;
+		if (ret < 3)
+			goto err_out;
+		if (ret == 4) {
+			if (sscanf(mod_info, "%*[\t ][%[^]]", module_name) < 1)
+				goto err_out;
+			module_info = module_name;
+		} else {
+			module_info = NULL;
+		}
+
+		if (ksyms__add_symbol(ksyms, sym_name, sym_addr, module_info))
+			goto err_out;
+	}
+
+	/* now when strings are finalized, adjust pointers properly */
+	for (i = 0; i < ksyms->syms_sz; i++) {
+		ksyms->syms[i].name += (unsigned long)ksyms->strs;
+
+		/* -1 mean not module */
+		if (ksyms->syms[i].module != (void *)-1)
+			ksyms->syms[i].module += (unsigned long)ksyms->modules;
+		else
+			/* reset to NULL, if it isn't module */
+			ksyms->syms[i].module = NULL;
+	}
+
+	qsort(ksyms->syms, ksyms->syms_sz, sizeof(*ksyms->syms), ksym_cmp);
+
+	fclose(f);
+	return ksyms;
+
+err_out:
+	ksyms__free(ksyms);
+	fclose(f);
+	return NULL;
+}
