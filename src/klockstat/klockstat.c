@@ -281,6 +281,31 @@ static void print_acq_task(struct stack_stat *ss)
 		print_time(tot, sizeof(tot), ss->ls.acq_total_time));
 }
 
+static void print_hld_header(void)
+{
+	if (env.per_thread)
+		printf("\n%10s %16s", "TID", "COMM");
+	else
+		printf("\n%45s", "Caller");
+
+	printf(" %9s %8s %10s %12s\n", "Avg Hold", "Count", "Max Hold", "Total Hold");
+}
+
+static void print_hld_task(struct stack_stat *ss)
+{
+	char buf[40];
+	char avg[40];
+	char max[40];
+	char tot[40];
+
+	printf("%28s %9s %8llu %10s %12s\n",
+		print_caller(buf, sizeof(buf), ss),
+		print_time(avg, sizeof(avg), ss->ls.hld_total_time / ss->ls.hld_count),
+		ss->ls.hld_count,
+		print_time(max, sizeof(max), ss->ls.hld_max_time),
+		print_time(tot, sizeof(tot), ss->ls.hld_total_time));
+}
+
 static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 {
 	struct stack_stat **stats, *ss;
