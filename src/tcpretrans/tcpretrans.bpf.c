@@ -118,3 +118,49 @@ tcp_ipv6_trace(void *ctx, struct sock *sk, __u32 pid, __u16 lport,
 
 	submit_buf(ctx, data6, sizeof(*data6));
 }
+static __always_inline int
+trace_event(void *ctx, struct sock *sk, __u64 type)
+{
+	if (sk == NULL)
+		return 0;
+
+	__u32 pid = bpf_get_current_pid_tgid() >> 32;
+	__u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	__u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);
+	__u16 dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
+	__u8 state = BPF_CORE_READ(sk, __sk_common.skc_state);
+
+	if (family == AF_INET) {
+		if (do_count)
+			tcp_ipv4_count(sk, lport, dport);
+		else
+			tcp_ipv4_trace(ctx, sk, pid, lport, dport, state, type);
+	} else if (family == AF_INET6) {
+		if (do_count)
+			tcp_ipv6_count(sk, lport, dport);
+		else
+			tcp_ipv6_trace(ctx, sk, pid, lport, dport, state, type);
+	}
+
+	return 0;
+}
+
+SEC("tracepoint/tcp/tcp_retransmit_skb")
+int tcp_retransmit_skb_entry(struct trace_event_raw_sys_enter *ctx)
+{
+	return trace_event(ctx, (struct sock *)ctx->args[0], RETRANSMIT);
+}
+
+SEC("kprobe/tcp_retransmit_skb")
+int BPF_KPROBE(tcp_retransmit_skb_kprobe, struct sock *sk)
+{
+	return trace_event(ctx, sk, RETRANSMIT);
+}
+
+SEC("kprobe/tcp_send_loss_probe")
+int BPF_KPROBE(tcp_send_loss_probe_kprobe, struct sock *sk)
+{
+	return trace_event(ctx, sk, TLP);
+}
+
+char LICENSE[] SEC("license") = "GPL";
