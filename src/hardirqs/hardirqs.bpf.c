@@ -61,3 +61,41 @@ static int handle_entry(int irq, struct irqaction *action)
 
 	return 0;
 }
+
+static int handle_exit(int irq, struct irqaction *action)
+{
+	irq_key_t ikey = {};
+	info_t *info;
+	u32 key = 0;
+	u64 delta;
+	u64 *tsp;
+
+	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return 0;
+
+	tsp = bpf_map_lookup_elem(&start, &key);
+	if (!tsp)
+		return 0;
+
+	delta = bpf_ktime_get_ns() - *tsp;
+	if (!target_ns)
+		delta /= 1000U;
+
+	bpf_probe_read_kernel_str(&ikey.name, sizeof(ikey.name), BPF_CORE_READ(action, name));
+	info = bpf_map_lookup_or_try_init(&infos, &ikey, &zero);
+	if (!info)
+		return 0;
+
+	if (!target_dist) {
+		info->count += delta;
+	} else {
+		u64 slot;
+
+		slot = log2(delta);
+		if (slot >= MAX_SLOTS)
+			slot = MAX_SLOTS - 1;
+		info->slots[slot]++;
+	}
+
+	return 0;
+}
