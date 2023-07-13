@@ -49,3 +49,44 @@ const char *tcp_type[] = {
 	[1] = "R",
 	[2] = "L",
 };
+static const struct argp_option opts[] = {
+	{ "lossprobe", 'l', NULL, 0, "include tail loss probe attempts" },
+	{ "count", 'c', NULL, 0, "count occurred retransmits per flow" },
+	{ "ipv4", '4', NULL, 0, "trace IPv4 family only" },
+	{ "ipv6", '6', NULL, 0, "trace IPv6 family only" },
+	{ "help", 'h', NULL, 0, "Show this help message and exit" },
+	{}
+};
+
+static struct env {
+	bool args_count;
+	bool lossprobe;
+	bool count;
+	bool ipv4_only;
+	bool ipv6_only;
+} env;
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	switch (key) {
+	case 'h':
+		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+		break;
+	case 'l':
+		env.lossprobe = true;
+		break;
+	case 'c':
+		env.count = true;
+		break;
+	case '4':
+		env.ipv4_only = true;
+		break;
+	case '6':
+		env.ipv6_only = true;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
