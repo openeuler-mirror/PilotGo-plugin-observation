@@ -80,6 +80,13 @@ static void *get_lock_addr(struct ksyms *ksyms, const char *lock_name)
 	return ksym ? (void *)ksym->addr : parse_lock_addr(lock_name);
 }
 
+static const char *get_lock_name(struct ksyms *ksyms, unsigned long addr)
+{
+	const struct ksym *ksym = ksyms__map_addr(ksyms, addr);
+
+	return (ksym && ksym->addr == addr) ? ksym->name : "no-ksym";
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	struct prog_env *env = state->input;
@@ -178,6 +185,16 @@ struct stack_stat {
 	uint64_t bt[PERF_MAX_STACK_DEPTH];
 };
 
+static char *symname(struct ksyms *ksyms, uint64_t pc, char *buf, size_t n)
+{
+	const struct ksym *ksym = ksyms__map_addr(ksyms, pc);
+
+	if (!ksym)
+		return "Unknown";
+	snprintf(buf, n, "%s+0x%lx", ksym->name, pc - ksym->addr);
+	return buf;
+}
+
 static char *print_caller(char *buf, int size, struct stack_stat *ss)
 {
 	snprintf(buf, size, "%u  %16s", ss->stack_id, ss->ls.acq_max_comm);
@@ -218,6 +235,35 @@ static void print_acq_header(void)
 		printf("\n%45s", "Caller");
 
 	printf(" %9s %8s %10s %12s\n", "Avg wait", "Count", "Max wait", "Total Wait");
+}
+
+
+static void print_acq_stat(struct ksyms *ksyms, struct stack_stat *ss,
+			   int nr_stack_entries)
+{
+	char buf[40];
+	char avg[40];
+	char max[40];
+	char tot[40];
+
+	printf("%45s %9s %8llu %10s %12s\n",
+		symname(ksyms, ss->bt[0], buf, sizeof(buf)),
+		print_time(avg, sizeof(avg), ss->ls.acq_total_time / ss->ls.acq_count),
+		ss->ls.acq_count,
+		print_time(max, sizeof(max), ss->ls.acq_max_time),
+		print_time(tot, sizeof(tot), ss->ls.acq_total_time));
+	for (int i = 1; i < nr_stack_entries; i++) {
+		if (!ss->bt[i] || env.per_thread)
+			break;
+		printf("%45s\n", symname(ksyms, ss->bt[i], buf, sizeof(buf)));
+	}
+
+	if (nr_stack_entries > 1 && env.per_thread)
+		printf("				Max PID %llu, COMM %s, Lock %s (0x%llx)\n",
+			ss->ls.acq_max_id >> 32,
+			ss->ls.acq_max_comm,
+			get_lock_name(ksyms, ss->ls.acq_max_lock_ptr),
+			ss->ls.acq_max_lock_ptr);
 }
 
 static void print_acq_task(struct stack_stat *ss)
