@@ -21,3 +21,10 @@ struct {
 	__type(key, __u16);
 	__type(value, __u16);
 } sports SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, __u16);
+	__type(value, __u16);
+} dports SEC(".maps");
