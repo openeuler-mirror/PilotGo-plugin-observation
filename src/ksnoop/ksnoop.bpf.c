@@ -410,3 +410,17 @@ static int ksnoop(struct pt_regs *ctx, bool entry)
 
 	return 0;
 }
+
+SEC("kprobe/foo")
+int BPF_KPROBE(kprobe_entry)
+{
+	return ksnoop(ctx, true);
+}
+
+SEC("kretprobe/foo")
+int BPF_KRETPROBE(kprobe_return)
+{
+	return ksnoop(ctx, false);
+}
+
+char LICENSE[] SEC("license") = "GPL";
