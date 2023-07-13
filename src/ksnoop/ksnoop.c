@@ -906,3 +906,15 @@ cleanup:
 
 	return ret;
 }
+
+struct cmd {
+	const char *cmd;
+	int (*func)(int argc, char *argv[]);
+};
+
+struct cmd cmds[] = {
+	{ "info",	cmd_info },
+	{ "trace",	cmd_trace },
+	{ "help",	cmd_help },
+	{ NULL,		NULL },
+};
