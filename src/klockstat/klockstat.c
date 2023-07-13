@@ -172,6 +172,94 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
+struct stack_stat {
+	uint32_t stack_id;
+	struct lock_stat ls;
+	uint64_t bt[PERF_MAX_STACK_DEPTH];
+};
+
+static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
+{
+	struct stack_stat **stats, *ss;
+	size_t stat_idx = 0;
+	size_t stats_sz = 1;
+	uint32_t lookup_key = 0;
+	uint32_t stack_id;
+	int ret;
+	int nr_stack_entries;
+
+	stats = calloc(stats_sz, sizeof(void *));
+	if (!stats) {
+		warning("Out of memory\n");
+		return -1;
+	}
+
+	while (!bpf_map_get_next_key(stat_map, &lookup_key, &stack_id)) {
+		if (stat_idx == stats_sz) {
+			stats_sz *= 2;
+			stats = libbpf_reallocarray(stats, stats_sz, sizeof(void *));
+			if (!stats) {
+				warning("Out of memory\n");
+				return -1;
+			}
+		}
+		ss = malloc(sizeof(struct stack_stat));
+		if (!ss) {
+			warning("Out of memory\n");
+			return -1;
+		}
+
+		lookup_key = ss->stack_id = stack_id;
+		ret = bpf_map_lookup_elem(stat_map, &stack_id, &ss->ls);
+		if (ret) {
+			free(ss);
+			continue;
+		}
+
+		if (!env.per_thread && bpf_map_lookup_elem(stack_map, &stack_id, &ss->bt)) {
+			/* can still report the results without a backtrace. */
+			warning("Failed to lookup stack_id %u\n", stack_id);
+		}
+		if (!env.per_thread && !caller_is_traced(ksyms, ss->bt[0])) {
+			free(ss);
+			continue;
+		}
+		stats[stat_idx++] = ss;
+	}
+
+	nr_stack_entries = MIN(env.nr_stack_entries, PERF_MAX_STACK_DEPTH);
+	qsort(stats, stat_idx, sizeof(void *), sort_by_acq);
+	for (int i = 0; i < MIN(env.nr_locks, stat_idx); i++) {
+		if (i == 0 || env.nr_stack_entries > 1)
+			print_acq_header();
+
+		if (env.per_thread)
+			print_acq_task(stats[i]);
+		else
+			print_acq_stat(ksyms, stats[i], nr_stack_entries);
+	}
+
+	qsort(stats, stat_idx, sizeof(void *), sort_by_hld);
+	for (int i = 0; i < MIN(env.nr_locks, stat_idx); i++) {
+		if (i == 0 || env.nr_stack_entries > 1)
+			print_hld_header();
+
+		if (env.per_thread)
+			print_hld_task(stats[i]);
+		else
+			print_hld_stat(ksyms, stats[i], nr_stack_entries);
+	}
+
+	for (int i = 0; i < stat_idx; i++) {
+		if (env.reset)
+			bpf_map_delete_elem(stat_map, &ss->stack_id);
+		free(stats[i]);
+	}
+	free(stats);
+
+	return 0;
+}
+
 static volatile sig_atomic_t exiting;
 
 static void sig_handler(int sig)
