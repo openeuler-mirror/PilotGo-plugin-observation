@@ -100,3 +100,18 @@ struct jump_entry {
 	s32 target;
 	long int key;
 };
+
+struct static_key_mod;
+
+struct static_key {
+	atomic_t enabled;
+	union {
+		long unsigned int type;
+		struct jump_entry *entries;
+		struct static_key_mod *next;
+	};
+};
+
+struct static_key_false {
+	struct static_key key;
+};
