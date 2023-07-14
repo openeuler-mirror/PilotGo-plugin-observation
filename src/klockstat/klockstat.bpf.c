@@ -223,3 +223,181 @@ static void lock_released(void *lock)
 
 	bpf_map_delete_elem(&lockholder_map, &tl);
 }
+
+SEC("fentry/mutex_lock")
+int BPF_PROG(mutex_lock, struct mutex *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/mutex_lock")
+int BPF_PROG(mutex_lock_exit, struct mutex *lock)
+{
+	lock_acquired(lock);
+	return 0;
+}
+
+SEC("fexit/mutex_trylock")
+int BPF_PROG(mutex_trylock_exit, struct mutex *lock, long ret)
+{
+	if (ret) {
+		lock_contended(ctx, lock);
+		lock_acquired(lock);
+	}
+	return 0;
+}
+
+SEC("fentry/mutex_lock_interruptible")
+int BPF_PROG(mutex_lock_interruptible, struct mutex *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/mutex_lock_interruptible")
+int BPF_PROG(mutex_lock_interruptible_exit, struct mutex *lock, long ret)
+{
+	if (ret)
+		lock_aborted(lock);
+	else
+		lock_acquired(lock);
+	return 0;
+}
+
+SEC("fentry/mutex_lock_killable")
+int BPF_PROG(mutex_lock_killable, struct mutex *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/mutex_lock_killable")
+int BPF_PROG(mutex_lock_killable_exit, struct mutex *lock, long ret)
+{
+	if (ret)
+		lock_aborted(lock);
+	else
+		lock_acquired(lock);
+	return 0;
+}
+
+SEC("fentry/mutex_unlock")
+int BPF_PROG(mutex_unlock, struct mutex *lock)
+{
+	lock_released(lock);
+	return 0;
+}
+
+SEC("fentry/down_read")
+int BPF_PROG(down_read, struct rw_semaphore *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/down_read")
+int BPF_PROG(down_read_exit, struct rw_semaphore *lock, long ret)
+{
+	lock_acquired(lock);
+	return 0;
+}
+
+SEC("fexit/down_read_trylock")
+int BPF_PROG(down_read_trylock_exit, struct rw_semaphore *lock, long ret)
+{
+	if (ret == 1) {
+		lock_contended(ctx, lock);
+		lock_acquired(lock);
+	}
+	return 0;
+}
+
+SEC("fentry/down_read_interruptible")
+int BPF_PROG(down_read_interruptible, struct rw_semaphore *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/down_read_interruptible")
+int BPF_PROG(down_read_interruptible_exit, struct rw_semaphore *lock, long ret)
+{
+	if (ret)
+		lock_aborted(lock);
+	else
+		lock_acquired(lock);
+	return 0;
+}
+
+SEC("fentry/down_read_killable")
+int BPF_PROG(down_read_killable, struct rw_semaphore *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/down_read_killable")
+int BPF_PROG(down_read_killable_exit, struct rw_semaphore *lock, long ret)
+{
+	if (ret)
+		lock_aborted(lock);
+	else
+		lock_acquired(lock);
+	return 0;
+}
+
+SEC("fentry/up_read")
+int BPF_PROG(up_read, struct rw_semaphore *lock)
+{
+	lock_released(lock);
+	return 0;
+}
+
+SEC("fentry/down_write")
+int BPF_PROG(down_write, struct rw_semaphore *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/down_write")
+int BPF_PROG(down_write_exit, struct rw_semaphore *lock, long ret)
+{
+	lock_acquired(lock);
+	return 0;
+}
+
+SEC("fexit/down_write_trylock")
+int BPF_PROG(down_write_trylock_exit, struct rw_semaphore *lock, long ret)
+{
+	if (ret == 1) {
+		lock_contended(ctx, lock);
+		lock_acquired(lock);
+	}
+	return 0;
+}
+
+SEC("fentry/down_write_killable")
+int BPF_PROG(down_write_killable, struct rw_semaphore *lock)
+{
+	lock_contended(ctx, lock);
+	return 0;
+}
+
+SEC("fexit/down_write_killable")
+int BPF_PROG(down_write_killable_exit, struct rw_semaphore *lock, long ret)
+{
+	if (ret)
+		lock_aborted(lock);
+	else
+		lock_acquired(lock);
+	return 0;
+}
+
+SEC("fentry/up_write")
+int BPF_PROG(up_write, struct rw_semaphore *lock)
+{
+	lock_released(lock);
+	return 0;
+}
