@@ -107,6 +107,50 @@ static const char *get_lock_name(struct ksyms *ksyms, unsigned long addr)
 	return (ksym && ksym->addr == addr) ? ksym->name : "no-ksym";
 }
 
+static bool parse_one_sort(struct prog_env *env, const char *sort)
+{
+	const char *field = sort + 4;
+
+	if (!strncmp(sort, "acq_", 4)) {
+		if (!strcmp(field, "max")) {
+			env->sort_acq = SORT_ACQ_MAX;
+			return true;
+		} else if (!strcmp(field, "total")) {
+			env->sort_acq = SORT_ACQ_TOTAL;
+			return true;
+		} else if (!strcmp(field, "count")) {
+			env->sort_acq = SORT_ACQ_COUNT;
+			return true;
+		}
+	} else if (!strncmp(sort, "hld_", 4)) {
+		if (!strcmp(field, "max")) {
+			env->sort_hld = SORT_HLD_MAX;
+			return true;
+		} else if (!strcmp(field, "total")) {
+			env->sort_hld = SORT_HLD_TOTAL;
+			return true;
+		} else if (!strcmp(field, "count")) {
+			env->sort_hld = SORT_HLD_COUNT;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool parse_sorts(struct prog_env *env, char *arg)
+{
+	char *comma = strchr(arg, ',');
+
+	if (comma) {
+		*comma = '\0';
+		comma++;
+		if (!parse_one_sort(env, comma))
+			return false;
+	}
+	return parse_one_sort(env, arg);
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	struct prog_env *env = state->input;
