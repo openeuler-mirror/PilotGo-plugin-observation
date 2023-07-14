@@ -65,3 +65,16 @@ typedef __kernel_size_t size_t;
 typedef unsigned int gfp_t;
 
 typedef u64 phys_addr_t;
+
+typedef struct {
+	int counter;
+} atomic_t;
+
+typedef struct {
+	s64 counter;
+} atomic64_t;
+
+struct list_head {
+	struct list_head *next;
+	struct list_head *prev;
+};
