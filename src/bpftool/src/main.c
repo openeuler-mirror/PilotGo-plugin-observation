@@ -112,6 +112,16 @@ last_do_help = do_help;
 		case 'p':
 			pretty_output = true;
 			/* fall through */
+					case 'j':
+			if (!json_output) {
+				json_wtr = jsonw_new(stdout);
+				if (!json_wtr) {
+					p_err("failed to create JSON writer");
+					return -1;
+				}
+				json_output = true;
+			}
+			break;
 	}
 
 	return 0

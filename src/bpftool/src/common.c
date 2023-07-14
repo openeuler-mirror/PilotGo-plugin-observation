@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/* Copyright (C) 2017-2018 Netronome Systems, Inc. */
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <ftw.h>
+#include <libgen.h>
+#include <mntent.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <net/if.h>
+#include <sys/mount.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/vfs.h>
+
+#include <linux/filter.h>
+#include <linux/limits.h>
+#include <linux/magic.h>
+#include <linux/unistd.h>
+
+#include <bpf/bpf.h>
+#include <bpf/hashmap.h>
+#include <bpf/libbpf.h> /* libbpf_num_possible_cpus */
+#include <bpf/btf.h>
+
+#include "main.h"
+
+#ifndef BPF_FS_MAGIC
+#define BPF_FS_MAGIC		0xcafe4a11
+#endif
+
+void p_err(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	if (json_output) {
+		jsonw_start_object(json_wtr);
+		jsonw_name(json_wtr, "error");
+		jsonw_vprintf_enquote(json_wtr, fmt, ap);
+		jsonw_end_object(json_wtr);
+	} else {
+		fprintf(stderr, "Error: ");
+		vfprintf(stderr, fmt, ap);
+		fprintf(stderr, "\n");
+	}
+	va_end(ap);
+}
+
