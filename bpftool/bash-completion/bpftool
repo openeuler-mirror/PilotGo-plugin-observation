@@ -248,3 +248,64 @@ _bpftool_map_update_get_name()
             ;;
     esac
 }
+
+_bpftool()
+{
+    local cur prev words objword json=0
+    _init_completion || return
+
+    # Deal with options
+    if [[ ${words[cword]} == -* ]]; then
+        local c='--version --json --pretty --bpffs --mapcompat --debug \
+            --use-loader --base-btf'
+        COMPREPLY=( $( compgen -W "$c" -- "$cur" ) )
+        return 0
+    fi
+    if _bpftool_search_list -j --json -p --pretty; then
+        json=1
+    fi
+
+    # Deal with simplest keywords
+    case $prev in
+        help|hex)
+            return 0
+            ;;
+        tag)
+            _bpftool_get_prog_tags
+            return 0
+            ;;
+        dev)
+            _sysfs_get_netdevs
+            return 0
+            ;;
+        file|pinned|-B|--base-btf)
+            _filedir
+            return 0
+            ;;
+        batch)
+            COMPREPLY=( $( compgen -W 'file' -- "$cur" ) )
+            return 0
+            ;;
+    esac
+
+    # Remove all options so completions don't have to deal with them.
+    local i
+    for (( i=1; i < ${#words[@]}; )); do
+        if [[ ${words[i]::1} == - ]] &&
+            [[ ${words[i]} != "-B" ]] && [[ ${words[i]} != "--base-btf" ]]; then
+            words=( "${words[@]:0:i}" "${words[@]:i+1}" )
+            [[ $i -le $cword ]] && cword=$(( cword - 1 ))
+        else
+            i=$(( ++i ))
+        fi
+    done
+    cur=${words[cword]}
+    prev=${words[cword - 1]}
+    pprev=${words[cword - 2]}
+
+    local object=${words[1]} command=${words[2]}
+
+} &&
+complete -F _bpftool bpftool
+
+# ex: ts=4 sw=4 et filetype=sh
