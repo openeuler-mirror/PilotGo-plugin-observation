@@ -10,7 +10,7 @@
 const volatile pid_t target_pid = 0;
 const volatile pid_t target_tgid = 0;
 void *const volatile target_lock = NULL;
-
+const volatile bool per_thread = false;
 
 struct {
 	__uint(type, BPF_MAP_TYPE_STACK_TRACE);
@@ -57,6 +57,13 @@ struct {
 	__type(key, s32);
 	__type(value, struct lock_stat);
 } stat_map SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, u32);
+	__type(value, void *);
+} locks SEC(".maps");
 
 static bool tracing_task(u64 task_id)
 {
@@ -143,4 +150,76 @@ static void lock_acquired(void *lock)
 		return;
 
 	li->acq_at = bpf_ktime_get_ns();
+}
+
+static void account(struct lockholder_info *li)
+{
+	struct lock_stat *ls;
+	u64 delta;
+	u32 key = li->stack_id;
+
+	if (per_thread)
+		key = li->task_id;
+
+	ls = bpf_map_lookup_elem(&stat_map, &key);
+	if (!ls) {
+		struct lock_stat fresh = {};
+
+		bpf_map_update_elem(&stat_map, &key, &fresh, BPF_ANY);
+		ls = bpf_map_lookup_elem(&stat_map, &key);
+		if (!ls)
+			return;
+		if (per_thread)
+			bpf_get_current_comm(ls->acq_max_comm, TASK_COMM_LEN);
+	}
+
+	delta = li->acq_at - li->try_at;
+	__sync_fetch_and_add(&ls->acq_count, 1);
+	__sync_fetch_and_add(&ls->acq_total_time, delta);
+	if (delta > READ_ONCE(ls->acq_max_time)) {
+		WRITE_ONCE(ls->acq_max_time, delta);
+		WRITE_ONCE(ls->acq_max_id, li->task_id);
+		WRITE_ONCE(ls->acq_max_lock_ptr, li->lock_ptr);
+		/*
+		 * Potentially racy, if multiple threads think they are the max,
+		 * so you may get a clobbered write.
+		 */
+		if (!per_thread)
+			bpf_get_current_comm(ls->acq_max_comm, TASK_COMM_LEN);
+	}
+
+	delta = li->rel_at - li->acq_at;
+	__sync_fetch_and_add(&ls->hld_count, 1);
+	__sync_fetch_and_add(&ls->hld_total_time, delta);
+	if (delta > READ_ONCE(ls->hld_max_time)) {
+		WRITE_ONCE(ls->hld_max_time, delta);
+		WRITE_ONCE(ls->hld_max_id, li->task_id);
+		WRITE_ONCE(ls->hld_max_lock_ptr, li->lock_ptr);
+		if (!per_thread)
+			bpf_get_current_comm(ls->hld_max_comm, TASK_COMM_LEN);
+	}
+}
+
+static void lock_released(void *lock)
+{
+	u64 task_id;
+	struct lockholder_info *li;
+	struct task_lock tl = {};
+
+	if (target_lock && target_lock != lock)
+		return;
+
+	task_id = bpf_get_current_pid_tgid();
+	if (!tracing_task(task_id))
+		return;
+	tl.task_id = task_id;
+	tl.lock_ptr = (u64)lock;
+	li = bpf_map_lookup_elem(&lockholder_map, &tl);
+	if (!li)
+		return;
+
+	li->rel_at = bpf_ktime_get_ns();
+	account(li);
+
+	bpf_map_delete_elem(&lockholder_map, &tl);
 }
