@@ -33,3 +33,35 @@ enum {
 	false = 0,
 	true = 1,
 };
+
+typedef long int __kernel_long_t;
+
+typedef long unsigned int __kernel_ulong_t;
+
+typedef int __kernel_pid_t;
+
+typedef unsigned int __kernel_uid32_t;
+
+typedef __kernel_ulong_t __kernel_size_t;
+
+typedef long long int __kernel_time64_t;
+
+typedef __kernel_long_t __kernel_clock_t;
+
+typedef int __kernel_timer_t;
+
+typedef int __kernel_clockid_t;
+
+typedef __kernel_pid_t pid_t;
+
+typedef __kernel_clockid_t clockid_t;
+
+typedef _Bool bool;
+
+typedef __kernel_uid32_t uid_t;
+
+typedef __kernel_size_t size_t;
+
+typedef unsigned int gfp_t;
+
+typedef u64 phys_addr_t;
