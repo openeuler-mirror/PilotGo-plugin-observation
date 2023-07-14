@@ -121,7 +121,10 @@ last_do_help = do_help;
 				}
 				json_output = true;
 			}
-						jsonw_pretty(json_wtr, pretty_output);
+			jsonw_pretty(json_wtr, pretty_output);
+			break;
+		case 'f':
+			show_pinned = true;
 			break;
 	}
 
