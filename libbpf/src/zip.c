@@ -103,3 +103,22 @@ struct cd_file_header {
 	 */
 	__u32 offset;
 } __attribute__((packed));
+
+#define LOCAL_FILE_HEADER_MAGIC 0x04034b50
+
+/* See section 4.3.7 of the spec. */
+struct local_file_header {
+	/* Magic value equal to LOCAL_FILE_HEADER_MAGIC. */
+	__u32 magic;
+	/* Minimum zip version needed to extract the file. */
+	__u16 min_version;
+	__u16 flags;
+	__u16 compression;
+	__u16 last_modified_time;
+	__u16 last_modified_date;
+	__u32 crc;
+	__u32 compressed_size;
+	__u32 uncompressed_size;
+	__u16 file_name_length;
+	__u16 extra_field_length;
+} __attribute__((packed));
