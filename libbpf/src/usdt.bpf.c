@@ -76,3 +76,17 @@ struct {
 
 extern const _Bool LINUX_HAS_BPF_COOKIE __kconfig;
 
+static __always_inline
+int __bpf_usdt_spec_id(struct pt_regs *ctx)
+{
+	if (!LINUX_HAS_BPF_COOKIE) {
+		long ip = PT_REGS_IP(ctx);
+		int *spec_id_ptr;
+
+		spec_id_ptr = bpf_map_lookup_elem(&__bpf_usdt_ip_to_spec_id, &ip);
+		return spec_id_ptr ? *spec_id_ptr : -ESRCH;
+	}
+
+	return bpf_get_attach_cookie(ctx);
+}
+
