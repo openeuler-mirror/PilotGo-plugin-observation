@@ -160,3 +160,49 @@ _bpftool_map_guess_map_type()
         command sed -n 's/.*"type": "\(.*\)",$/\1/p')
     [[ -n $type ]] && printf $type
 }
+
+_bpftool_map_update_get_id()
+{
+    local command="$1"
+
+    # Is it the map to update, or a map to insert into the map to update?
+    # Search for "value" keyword.
+    local idx value
+    for (( idx=7; idx < ${#words[@]}-1; idx++ )); do
+        if [[ ${words[idx]} == "value" ]]; then
+            value=1
+            break
+        fi
+    done
+    if [[ $value -eq 0 ]]; then
+        case "$command" in
+            push)
+                _bpftool_get_map_ids_for_type stack
+                ;;
+            enqueue)
+                _bpftool_get_map_ids_for_type queue
+                ;;
+            *)
+                _bpftool_get_map_ids
+                ;;
+        esac
+        return 0
+    fi
+
+    # Id to complete is for a value. It can be either prog id or map id. This
+    # depends on the type of the map to update.
+    local type=$(_bpftool_map_guess_map_type)
+    case $type in
+        array_of_maps|hash_of_maps)
+            _bpftool_get_map_ids
+            return 0
+            ;;
+        prog_array)
+            _bpftool_get_prog_ids
+            return 0
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
