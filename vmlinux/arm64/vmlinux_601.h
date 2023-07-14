@@ -78,3 +78,25 @@ struct list_head {
 	struct list_head *next;
 	struct list_head *prev;
 };
+
+struct hlist_node;
+
+struct hlist_head {
+	struct hlist_node *first;
+};
+
+struct hlist_node {
+	struct hlist_node *next;
+	struct hlist_node **pprev;
+};
+
+struct callback_head {
+	struct callback_head *next;
+	void (*func)(struct callback_head *);
+};
+
+struct jump_entry {
+	s32 code;
+	s32 target;
+	long int key;
+};
