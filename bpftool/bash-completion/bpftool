@@ -1,0 +1,24 @@
+# bpftool(8) bash completion                               -*- shell-script -*-
+#
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright (C) 2017-2018 Netronome Systems, Inc.
+#
+# Author: Quentin Monnet <quentin.monnet@netronome.com>
+
+# Takes a list of words in argument; each one of them is added to COMPREPLY if
+# it is not already present on the command line. Returns no value.
+_bpftool_once_attr()
+{
+    local w idx found
+    for w in $*; do
+        found=0
+        for (( idx=3; idx < ${#words[@]}-1; idx++ )); do
+            if [[ $w == ${words[idx]} ]]; then
+                found=1
+                break
+            fi
+        done
+        [[ $found -eq 0 ]] && \
+            COMPREPLY+=( $( compgen -W "$w" -- "$cur" ) )
+    done
+}
