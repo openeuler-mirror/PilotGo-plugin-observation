@@ -16,6 +16,53 @@
 
 #include "main.h"
 
+#define BATCH_LINE_LEN_MAX 65536
+#define BATCH_ARG_NB_MAX 4096
+
+const char *bin_name;
+static int last_argc;
+static char **last_argv;
+static int (*last_do_help)(int argc, char **argv);
+json_writer_t *json_wtr;
+bool pretty_output;
+bool json_output;
+bool show_pinned;
+bool block_mount;
+bool verifier_logs;
+bool relaxed_maps;
+bool use_loader;
+struct btf *base_btf;
+struct hashmap *refs_table;
+
+void usage(void)
+{
+	last_do_help(last_argc - 1, last_argv + 1);
+
+	clean_and_exit(-1);
+}
+
+static int do_help(int argc, char **argv)
+{
+	if (json_output) {
+		jsonw_null(json_wtr);
+		return 0;
+	}
+
+	fprintf(stderr,
+		"Usage: %s [OPTIONS] OBJECT { COMMAND | help }\n"
+		"       %s batch file FILE\n"
+		"       %s version\n"
+		"\n"
+		"       OBJECT := { prog | map | link | cgroup | perf | net | feature | btf | gen | struct_ops | iter }\n"
+		"       " HELP_SPEC_OPTIONS " |\n"
+		"                    {-V|--version} }\n"
+		"",
+		bin_name, bin_name, bin_name);
+
+	return 0;
+}
+
+
 int main(int argc, char **argv)
 {
 	static const struct option options[] = {
@@ -45,6 +92,27 @@ int main(int argc, char **argv)
 	 */
 	errno = 0;
 #endif
+
+last_do_help = do_help;
+	pretty_output = false;
+	json_output = false;
+	show_pinned = false;
+	block_mount = false;
+	bin_name = "bpftool";
+
+	opterr = 0;
+	while ((opt = getopt_long(argc, argv, "VhpjfLmndB:l",
+				  options, NULL)) >= 0) {
+		switch (opt) {
+		case 'V':
+			version_requested = true;
+			break;
+		case 'h':
+			return do_help(argc, argv);
+		case 'p':
+			pretty_output = true;
+			/* fall through */
+	}
 
 	return 0
 }
