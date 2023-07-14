@@ -140,6 +140,38 @@ static void *check_access(struct zip_archive *archive, __u32 offset, __u32 size)
 	return archive->data + offset;
 }
 
+/* Returns 0 on success, -EINVAL on error and -ENOTSUP if the eocd indicates the
+ * archive uses features which are not supported.
+ */
+static int try_parse_end_of_cd(struct zip_archive *archive, __u32 offset)
+{
+	__u16 comment_length, cd_records;
+	struct end_of_cd_record *eocd;
+	__u32 cd_offset, cd_size;
+
+	eocd = check_access(archive, offset, sizeof(*eocd));
+	if (!eocd || eocd->magic != END_OF_CD_RECORD_MAGIC)
+		return -EINVAL;
+
+	comment_length = eocd->comment_length;
+	if (offset + sizeof(*eocd) + comment_length != archive->size)
+		return -EINVAL;
+
+	cd_records = eocd->cd_records;
+	if (eocd->this_disk != 0 || eocd->cd_disk != 0 || eocd->cd_records_total != cd_records)
+		/* This is a valid eocd, but we only support single-file non-ZIP64 archives. */
+		return -ENOTSUP;
+
+	cd_offset = eocd->cd_offset;
+	cd_size = eocd->cd_size;
+	if (!check_access(archive, cd_offset, cd_size))
+		return -EINVAL;
+
+	archive->cd_offset = cd_offset;
+	archive->cd_records = cd_records;
+	return 0;
+}
+
 struct zip_archive *zip_archive_open(const char *path)
 {
 	struct zip_archive *archive;
