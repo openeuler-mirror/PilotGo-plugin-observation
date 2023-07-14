@@ -86,3 +86,34 @@ struct bpf_cgroup_storage_key {
 	__u64	cgroup_inode_id;	/* cgroup inode id */
 	__u32	attach_type;		/* program attach type (enum bpf_attach_type) */
 };
+
+enum bpf_cgroup_iter_order {
+	BPF_CGROUP_ITER_ORDER_UNSPEC = 0,
+	BPF_CGROUP_ITER_SELF_ONLY,		/* process only a single object. */
+	BPF_CGROUP_ITER_DESCENDANTS_PRE,	/* walk descendants in pre-order. */
+	BPF_CGROUP_ITER_DESCENDANTS_POST,	/* walk descendants in post-order. */
+	BPF_CGROUP_ITER_ANCESTORS_UP,		/* walk ancestors upward. */
+};
+
+union bpf_iter_link_info {
+	struct {
+		__u32	map_fd;
+	} map;
+	struct {
+		enum bpf_cgroup_iter_order order;
+
+		/* At most one of cgroup_fd and cgroup_id can be non-zero. If
+		 * both are zero, the walk starts from the default cgroup v2
+		 * root. For walking v1 hierarchy, one should always explicitly
+		 * specify cgroup_fd.
+		 */
+		__u32	cgroup_fd;
+		__u64	cgroup_id;
+	} cgroup;
+	/* Parameters of task iterators. */
+	struct {
+		__u32	tid;
+		__u32	pid;
+		__u32	pid_fd;
+	} task;
+};
