@@ -292,3 +292,65 @@ enum bpf_attach_type {
 	BPF_STRUCT_OPS,
 	__MAX_BPF_ATTACH_TYPE
 };
+
+#define MAX_BPF_ATTACH_TYPE __MAX_BPF_ATTACH_TYPE
+
+enum bpf_link_type {
+	BPF_LINK_TYPE_UNSPEC = 0,
+	BPF_LINK_TYPE_RAW_TRACEPOINT = 1,
+	BPF_LINK_TYPE_TRACING = 2,
+	BPF_LINK_TYPE_CGROUP = 3,
+	BPF_LINK_TYPE_ITER = 4,
+	BPF_LINK_TYPE_NETNS = 5,
+	BPF_LINK_TYPE_XDP = 6,
+	BPF_LINK_TYPE_PERF_EVENT = 7,
+	BPF_LINK_TYPE_KPROBE_MULTI = 8,
+	BPF_LINK_TYPE_STRUCT_OPS = 9,
+
+	MAX_BPF_LINK_TYPE,
+};
+
+#define BPF_F_ALLOW_OVERRIDE	(1U << 0)
+#define BPF_F_ALLOW_MULTI	(1U << 1)
+#define BPF_F_REPLACE		(1U << 2)
+#define BPF_F_STRICT_ALIGNMENT	(1U << 0)
+#define BPF_F_ANY_ALIGNMENT	(1U << 1)
+#define BPF_F_TEST_RND_HI32	(1U << 2)
+#define BPF_F_TEST_STATE_FREQ	(1U << 3)
+#define BPF_F_SLEEPABLE		(1U << 4)
+#define BPF_F_XDP_HAS_FRAGS	(1U << 5)
+#define BPF_F_XDP_DEV_BOUND_ONLY	(1U << 6)
+#define BPF_F_KPROBE_MULTI_RETURN	(1U << 0)
+#define BPF_PSEUDO_MAP_FD	1
+#define BPF_PSEUDO_MAP_IDX	5
+#define BPF_PSEUDO_MAP_VALUE		2
+#define BPF_PSEUDO_BTF_ID	3
+#define BPF_PSEUDO_FUNC		4
+#define BPF_PSEUDO_CALL		1
+#define BPF_PSEUDO_KFUNC_CALL	2
+
+/* flags for BPF_MAP_UPDATE_ELEM command */
+enum {
+	BPF_ANY		= 0, /* create new element or update existing */
+	BPF_NOEXIST	= 1, /* create new element if it didn't exist */
+	BPF_EXIST	= 2, /* update existing element */
+	BPF_F_LOCK	= 4, /* spin_lock-ed map_lookup/map_update */
+};
+
+/* flags for BPF_MAP_CREATE command */
+enum {
+	BPF_F_NO_PREALLOC	= (1U << 0),
+	BPF_F_NO_COMMON_LRU	= (1U << 1),
+	BPF_F_NUMA_NODE		= (1U << 2),
+	BPF_F_RDONLY		= (1U << 3),
+	BPF_F_WRONLY		= (1U << 4),
+	BPF_F_STACK_BUILD_ID	= (1U << 5),
+	BPF_F_ZERO_SEED		= (1U << 6),
+	BPF_F_RDONLY_PROG	= (1U << 7),
+	BPF_F_WRONLY_PROG	= (1U << 8),
+	BPF_F_CLONE		= (1U << 9),
+	BPF_F_MMAPABLE		= (1U << 10),
+	BPF_F_PRESERVE_ELEMS	= (1U << 11),
+	BPF_F_INNER_MAP		= (1U << 12),
+	BPF_F_LINK		= (1U << 13),
+};
