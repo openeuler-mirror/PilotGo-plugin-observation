@@ -55,3 +55,9 @@ void p_err(const char *fmt, ...)
 	va_end(ap);
 }
 
+int __printf(2, 0)
+print_all_levels(__maybe_unused enum libbpf_print_level level,
+		 const char *format, va_list args)
+{
+	return vfprintf(stderr, format, args);
+}

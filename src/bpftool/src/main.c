@@ -126,6 +126,16 @@ last_do_help = do_help;
 		case 'f':
 			show_pinned = true;
 			break;
+		case 'm':
+			relaxed_maps = true;
+			break;
+		case 'n':
+			block_mount = true;
+			break;
+		case 'd':
+			libbpf_set_print(print_all_levels);
+			verifier_logs = true;
+			break;
 	}
 
 	return 0
