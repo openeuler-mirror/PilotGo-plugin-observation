@@ -22,3 +22,30 @@ _bpftool_once_attr()
             COMPREPLY+=( $( compgen -W "$w" -- "$cur" ) )
     done
 }
+
+# Takes a list of words as argument; if any of those words is present on the
+# command line, return 0. Otherwise, return 1.
+_bpftool_search_list()
+{
+    local w idx
+    for w in $*; do
+        for (( idx=3; idx < ${#words[@]}-1; idx++ )); do
+            [[ $w == ${words[idx]} ]] && return 0
+        done
+    done
+    return 1
+}
+
+# Takes a list of words in argument; adds them all to COMPREPLY if none of them
+# is already present on the command line. Returns no value.
+_bpftool_one_of_list()
+{
+    _bpftool_search_list $* && return 1
+    COMPREPLY+=( $( compgen -W "$*" -- "$cur" ) )
+}
+
+_bpftool_get_map_ids()
+{
+    COMPREPLY+=( $( compgen -W "$( bpftool -jp map  2>&1 | \
+        command sed -n 's/.*"id": \(.*\),$/\1/p' )" -- "$cur" ) )
+}
