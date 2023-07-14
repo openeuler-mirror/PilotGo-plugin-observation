@@ -51,3 +51,28 @@ struct __bpf_usdt_arg_spec {
 	 */
 	char arg_bitshift;
 };
+
+/* should match USDT_MAX_ARG_CNT in usdt.c exactly */
+#define BPF_USDT_MAX_ARG_CNT 12
+struct __bpf_usdt_spec {
+	struct __bpf_usdt_arg_spec args[BPF_USDT_MAX_ARG_CNT];
+	__u64 usdt_cookie;
+	short arg_cnt;
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, BPF_USDT_MAX_SPEC_CNT);
+	__type(key, int);
+	__type(value, struct __bpf_usdt_spec);
+} __bpf_usdt_specs SEC(".maps") __weak;
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, BPF_USDT_MAX_IP_CNT);
+	__type(key, long);
+	__type(value, __u32);
+} __bpf_usdt_ip_to_spec_id SEC(".maps") __weak;
+
+extern const _Bool LINUX_HAS_BPF_COOKIE __kconfig;
+
