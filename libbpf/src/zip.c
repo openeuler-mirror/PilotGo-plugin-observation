@@ -182,3 +182,9 @@ struct zip_archive *zip_archive_open(const char *path)
 
 	return archive;
 }
+
+void zip_archive_close(struct zip_archive *archive)
+{
+	munmap(archive->data, archive->size);
+	free(archive);
+}
