@@ -18,6 +18,10 @@
 
 #include "json_writer.h"
 
+
+void usage(void) __noreturn;
+
+
 /* Make sure we do not use kernel-only integer typedefs */
 
 int print_all_levels(__maybe_unused enum libbpf_print_level level,

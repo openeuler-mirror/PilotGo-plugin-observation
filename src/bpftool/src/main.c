@@ -34,6 +34,14 @@ bool use_loader;
 struct btf *base_btf;
 struct hashmap *refs_table;
 
+static void __noreturn clean_and_exit(int i)
+{
+	if (json_output)
+		jsonw_destroy(&json_wtr);
+
+	exit(i);
+}
+
 void usage(void)
 {
 	last_do_help(last_argc - 1, last_argv + 1);
@@ -144,6 +152,16 @@ last_do_help = do_help;
 				return -1;
 			}
 			break;
+		case 'L':
+			use_loader = true;
+			break;
+		default:
+			p_err("unrecognized option '%s'", argv[optind - 1]);
+			if (json_output)
+				clean_and_exit(-1);
+			else
+				usage();
+		}
 	}
 
 	return 0
