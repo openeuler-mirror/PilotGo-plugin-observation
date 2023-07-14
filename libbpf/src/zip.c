@@ -73,3 +73,33 @@ struct end_of_cd_record {
 	/* uint8_t comment[comment_length] */
 } __attribute__((packed));
 
+#define CD_FILE_HEADER_MAGIC 0x02014b50
+#define FLAG_ENCRYPTED (1 << 0)
+#define FLAG_HAS_DATA_DESCRIPTOR (1 << 3)
+
+/* See section 4.3.12 of the spec. */
+struct cd_file_header {
+	/* Magic value equal to CD_FILE_HEADER_MAGIC. */
+	__u32 magic;
+	__u16 version;
+	/* Minimum zip version needed to extract the file. */
+	__u16 min_version;
+	__u16 flags;
+	__u16 compression;
+	__u16 last_modified_time;
+	__u16 last_modified_date;
+	__u32 crc;
+	__u32 compressed_size;
+	__u32 uncompressed_size;
+	__u16 file_name_length;
+	__u16 extra_field_length;
+	__u16 file_comment_length;
+	/* Number of the disk where the file starts or 0xFFFF if ZIP64 archive. */
+	__u16 disk;
+	__u16 internal_attributes;
+	__u32 external_attributes;
+	/* Offset from the start of the disk containing the local file header to the
+	 * start of the local file header.
+	 */
+	__u32 offset;
+} __attribute__((packed));
