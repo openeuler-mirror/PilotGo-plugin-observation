@@ -90,3 +90,21 @@ int __bpf_usdt_spec_id(struct pt_regs *ctx)
 	return bpf_get_attach_cookie(ctx);
 }
 
+/* Return number of USDT arguments defined for currently traced USDT. */
+__weak __hidden
+int bpf_usdt_arg_cnt(struct pt_regs *ctx)
+{
+	struct __bpf_usdt_spec *spec;
+	int spec_id;
+
+	spec_id = __bpf_usdt_spec_id(ctx);
+	if (spec_id < 0)
+		return -ESRCH;
+
+	spec = bpf_map_lookup_elem(&__bpf_usdt_specs, &spec_id);
+	if (!spec)
+		return -ESRCH;
+
+	return spec->arg_cnt;
+}
+
