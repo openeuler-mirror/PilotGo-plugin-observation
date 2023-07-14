@@ -26,3 +26,11 @@ void usage(void) __noreturn;
 
 int print_all_levels(__maybe_unused enum libbpf_print_level level,
 		     const char *format, va_list args);
+
+
+
+
+struct cmd {
+	const char *cmd;
+	int (*func)(int argc, char **argv);
+};

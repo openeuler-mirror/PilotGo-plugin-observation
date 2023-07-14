@@ -71,6 +71,46 @@ static int do_help(int argc, char **argv)
 }
 
 
+static int do_version(int argc, char **argv);
+
+static const struct cmd commands[] = {
+};
+
+
+static int do_version(int argc, char **argv)
+{
+#ifdef HAVE_LIBBFD_SUPPORT
+	const bool has_libbfd = true;
+#else
+	const bool has_libbfd = false;
+#endif
+#ifdef HAVE_LLVM_SUPPORT
+	const bool has_llvm = true;
+#else
+	const bool has_llvm = false;
+#endif
+#ifdef BPFTOOL_WITHOUT_SKELETONS
+	const bool has_skeletons = false;
+#else
+	const bool has_skeletons = true;
+#endif
+	bool bootstrap = false;
+	int i;
+
+	for (i = 0; commands[i].cmd; i++) {
+		if (!strcmp(commands[i].cmd, "prog")) {
+			/* Assume we run a bootstrap version if "bpftool prog"
+			 * is not available.
+			 */
+			bootstrap = !commands[i].func;
+			break;
+		}
+	}
+
+
+
+}
+
 int main(int argc, char **argv)
 {
 	static const struct option options[] = {
@@ -120,7 +160,7 @@ last_do_help = do_help;
 		case 'p':
 			pretty_output = true;
 			/* fall through */
-					case 'j':
+		case 'j':
 			if (!json_output) {
 				json_wtr = jsonw_new(stdout);
 				if (!json_wtr) {
@@ -163,6 +203,13 @@ last_do_help = do_help;
 				usage();
 		}
 	}
+	argc -= optind;
+	argv += optind;
+	if (argc < 0)
+		usage();
+	if (version_requested)
+		return do_version(argc, argv);
+
 
 	return 0
 }
