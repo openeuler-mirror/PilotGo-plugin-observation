@@ -139,3 +139,46 @@ static void *check_access(struct zip_archive *archive, __u32 offset, __u32 size)
 
 	return archive->data + offset;
 }
+
+struct zip_archive *zip_archive_open(const char *path)
+{
+	struct zip_archive *archive;
+	int err, fd;
+	off_t size;
+	void *data;
+
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return ERR_PTR(-errno);
+
+	size = lseek(fd, 0, SEEK_END);
+	if (size == (off_t)-1 || size > UINT32_MAX) {
+		close(fd);
+		return ERR_PTR(-EINVAL);
+	}
+
+	data = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	err = -errno;
+	close(fd);
+
+	if (data == MAP_FAILED)
+		return ERR_PTR(err);
+
+	archive = malloc(sizeof(*archive));
+	if (!archive) {
+		munmap(data, size);
+		return ERR_PTR(-ENOMEM);
+	};
+
+	archive->data = data;
+	archive->size = size;
+
+	err = find_cd(archive);
+	if (err) {
+		munmap(data, size);
+		free(archive);
+		return ERR_PTR(err);
+	}
+
+	return archive;
+}
