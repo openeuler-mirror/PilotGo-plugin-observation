@@ -188,3 +188,40 @@ void zip_archive_close(struct zip_archive *archive)
 	munmap(archive->data, archive->size);
 	free(archive);
 }
+
+int zip_archive_find_entry(struct zip_archive *archive, const char *file_name,
+			   struct zip_entry *out)
+{
+	size_t file_name_length = strlen(file_name);
+	__u32 i, offset = archive->cd_offset;
+
+	for (i = 0; i < archive->cd_records; ++i) {
+		__u16 cdfh_name_length, cdfh_flags;
+		struct cd_file_header *cdfh;
+		const char *cdfh_name;
+
+		cdfh = check_access(archive, offset, sizeof(*cdfh));
+		if (!cdfh || cdfh->magic != CD_FILE_HEADER_MAGIC)
+			return -EINVAL;
+
+		offset += sizeof(*cdfh);
+		cdfh_name_length = cdfh->file_name_length;
+		cdfh_name = check_access(archive, offset, cdfh_name_length);
+		if (!cdfh_name)
+			return -EINVAL;
+
+		cdfh_flags = cdfh->flags;
+		if ((cdfh_flags & FLAG_ENCRYPTED) == 0 &&
+		    (cdfh_flags & FLAG_HAS_DATA_DESCRIPTOR) == 0 &&
+		    file_name_length == cdfh_name_length &&
+		    memcmp(file_name, archive->data + offset, file_name_length) == 0) {
+			return get_entry_at_offset(archive, cdfh->offset, out);
+		}
+
+		offset += cdfh_name_length;
+		offset += cdfh->extra_field_length;
+		offset += cdfh->file_comment_length;
+	}
+
+	return -ENOENT;
+}
