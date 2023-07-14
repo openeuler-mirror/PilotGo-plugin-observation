@@ -122,3 +122,20 @@ struct local_file_header {
 	__u16 file_name_length;
 	__u16 extra_field_length;
 } __attribute__((packed));
+
+#pragma GCC diagnostic pop
+
+struct zip_archive {
+	void *data;
+	__u32 size;
+	__u32 cd_offset;
+	__u32 cd_records;
+};
+
+static void *check_access(struct zip_archive *archive, __u32 offset, __u32 size)
+{
+	if (offset + size > archive->size || offset > offset + size)
+		return NULL;
+
+	return archive->data + offset;
+}
