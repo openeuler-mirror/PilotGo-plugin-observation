@@ -126,3 +126,37 @@ _bpftool_get_obj_map_idxs()
 
     COMPREPLY+=( $( compgen -W "$(seq 0 $((nmaps - 1)))" -- "$cur" ) )
 }
+
+_sysfs_get_netdevs()
+{
+    COMPREPLY+=( $( compgen -W "$( ls /sys/class/net 2>/dev/null )" -- \
+        "$cur" ) )
+}
+
+# Retrieve type of the map that we are operating on.
+_bpftool_map_guess_map_type()
+{
+    local keyword ref
+    for (( idx=3; idx < ${#words[@]}-1; idx++ )); do
+        case "${words[$((idx-2))]}" in
+            lookup|update)
+                keyword=${words[$((idx-1))]}
+                ref=${words[$((idx))]}
+                ;;
+            push)
+                printf "stack"
+                return 0
+                ;;
+            enqueue)
+                printf "queue"
+                return 0
+                ;;
+        esac
+    done
+    [[ -z $ref ]] && return 0
+
+    local type
+    type=$(bpftool -jp map show $keyword $ref | \
+        command sed -n 's/.*"type": "\(.*\)",$/\1/p')
+    [[ -n $type ]] && printf $type
+}
