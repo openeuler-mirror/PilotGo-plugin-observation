@@ -1,10 +1,6 @@
-/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
-/* Copyright (C) 2017-2018 Netronome Systems, Inc. */
-
 #ifndef __BPF_TOOL_H
 #define __BPF_TOOL_H
 
-/* BFD and kernel.h both define GCC_VERSION, differently */
 #undef GCC_VERSION
 #include <stdbool.h>
 #include <stdio.h>
@@ -20,9 +16,6 @@
 
 
 void usage(void) __noreturn;
-
-
-/* Make sure we do not use kernel-only integer typedefs */
 
 int print_all_levels(__maybe_unused enum libbpf_print_level level,
 		     const char *format, va_list args);

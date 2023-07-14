@@ -43,13 +43,18 @@ void jsonw_destroy(json_writer_t **self_p)
 	*self_p = NULL;
 }
 
+void jsonw_pretty(json_writer_t *self, bool on)
+{
+	self->pretty = on;
+}
+
 void jsonw_reset(json_writer_t *self)
 {
 	assert(self->depth == 0);
 	self->sep = '\0';
 }
 
-void jsonw_pretty(json_writer_t *self, bool on)
+void jsonw_start_array(json_writer_t *self)
 {
-	self->pretty = on;
+	jsonw_begin(self, '[');
 }
