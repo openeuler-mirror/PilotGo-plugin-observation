@@ -89,3 +89,30 @@ typedef __kernel_loff_t loff_t;
 typedef __kernel_size_t size_t;
 
 typedef __kernel_ssize_t ssize_t;
+
+typedef s32 int32_t;
+
+typedef u32 uint32_t;
+
+typedef u64 sector_t;
+
+typedef u64 blkcnt_t;
+
+typedef unsigned int gfp_t;
+
+typedef unsigned int fmode_t;
+
+typedef u64 phys_addr_t;
+
+typedef struct {
+	int counter;
+} atomic_t;
+
+typedef struct {
+	s64 counter;
+} atomic64_t;
+
+struct list_head {
+	struct list_head *next;
+	struct list_head *prev;
+};
