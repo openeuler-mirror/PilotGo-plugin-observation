@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-/* Copyright (C) 2017-2018 Netronome Systems, Inc. */
-
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -74,6 +71,8 @@ static int do_help(int argc, char **argv)
 static int do_version(int argc, char **argv);
 
 static const struct cmd commands[] = {
+		{ "help",	do_help },
+		{ "batch",	do_batch },
 };
 
 
@@ -99,9 +98,6 @@ static int do_version(int argc, char **argv)
 
 	for (i = 0; commands[i].cmd; i++) {
 		if (!strcmp(commands[i].cmd, "prog")) {
-			/* Assume we run a bootstrap version if "bpftool prog"
-			 * is not available.
-			 */
 			bootstrap = !commands[i].func;
 			break;
 		}
@@ -109,6 +105,44 @@ static int do_version(int argc, char **argv)
 
 
 
+}
+
+static int do_batch(int argc, char **argv)
+{
+	char buf[BATCH_LINE_LEN_MAX], contline[BATCH_LINE_LEN_MAX];
+	char *n_argv[BATCH_ARG_NB_MAX];
+	unsigned int lines = 0;
+	int n_argc;
+	FILE *fp;
+	char *cp;
+	int err = 0;
+	int i;
+
+	if (argc < 2) {
+		p_err("too few parameters for batch");
+		return -1;
+	} else if (argc > 2) {
+		p_err("too many parameters for batch");
+		return -1;
+	} else if (!is_prefix(*argv, "file")) {
+		p_err("expected 'file', got: %s", *argv);
+		return -1;
+	}
+	NEXT_ARG();
+
+	if (!strcmp(*argv, "-"))
+		fp = stdin;
+	else
+		fp = fopen(*argv, "r");
+	if (!fp) {
+		p_err("Can't open file (%s): %s", *argv, strerror(errno));
+		return -1;
+	}
+
+	if (json_output)
+		jsonw_start_array(json_wtr);
+	
+	return err;
 }
 
 int main(int argc, char **argv)
@@ -132,12 +166,6 @@ int main(int argc, char **argv)
 	setlinebuf(stdout);
 
 #ifdef USE_LIBCAP
-	/* Libcap < 2.63 hooks before main() to compute the number of
-	 * capabilities of the running kernel, and doing so it calls prctl()
-	 * which may fail and set errno to non-zero.
-	 * Let's reset errno to make sure this does not interfere with the
-	 * batch mode.
-	 */
 	errno = 0;
 #endif
 
@@ -159,7 +187,6 @@ last_do_help = do_help;
 			return do_help(argc, argv);
 		case 'p':
 			pretty_output = true;
-			/* fall through */
 		case 'j':
 			if (!json_output) {
 				json_wtr = jsonw_new(stdout);
