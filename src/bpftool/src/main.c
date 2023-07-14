@@ -136,6 +136,14 @@ last_do_help = do_help;
 			libbpf_set_print(print_all_levels);
 			verifier_logs = true;
 			break;
+		case 'B':
+			base_btf = btf__parse(optarg, NULL);
+			if (!base_btf) {
+				p_err("failed to parse base BTF at '%s': %d\n",
+				      optarg, -errno);
+				return -1;
+			}
+			break;
 	}
 
 	return 0
