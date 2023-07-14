@@ -45,4 +45,26 @@ struct syms_cache *syms_cache__new(int nr);
 struct syms *syms_cache__get_syms(struct syms_cache *syms_cache, int tgid);
 void syms_cache__free(struct syms_cache *syms_cache);
 
+struct partition {
+	char *name;
+	unsigned int dev;
+};
+
+struct partitions;
+
+struct partitions *partitions__load(void);
+void partitions__free(struct partitions *partitions);
+const struct partition *
+partitions__get_by_dev(const struct partitions *partitions, unsigned int dev);
+const struct partition *
+partitions__get_by_name(const struct partitions *partitions, const char *name);
+
+void print_log2_hist(unsigned int *vals, int vals_size, const char *val_type);
+void print_linear_hist(unsigned int *vals, int vals_size, unsigned int base,
+		unsigned int step, const char *val_type);
+
+unsigned long long get_ktime_ns(void);
+
+bool is_kernel_module(const char *name);
+
 #endif /* __TRACE_HELPERS_H */
