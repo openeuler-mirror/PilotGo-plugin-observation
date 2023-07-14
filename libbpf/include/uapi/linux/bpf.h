@@ -354,3 +354,61 @@ enum {
 	BPF_F_INNER_MAP		= (1U << 12),
 	BPF_F_LINK		= (1U << 13),
 };
+
+/* Flags for BPF_PROG_QUERY. */
+
+#define BPF_F_QUERY_EFFECTIVE	(1U << 0)
+#define BPF_F_TEST_RUN_ON_CPU	(1U << 0)
+#define BPF_F_TEST_XDP_LIVE_FRAMES	(1U << 1)
+
+/* type for BPF_ENABLE_STATS */
+enum bpf_stats_type {
+	/* enabled run_time_ns and run_cnt */
+	BPF_STATS_RUN_TIME = 0,
+};
+
+enum bpf_stack_build_id_status {
+	/* user space need an empty entry to identify end of a trace */
+	BPF_STACK_BUILD_ID_EMPTY = 0,
+	/* with valid build_id and offset */
+	BPF_STACK_BUILD_ID_VALID = 1,
+	/* couldn't get build_id, fallback to ip */
+	BPF_STACK_BUILD_ID_IP = 2,
+};
+
+#define BPF_BUILD_ID_SIZE 20
+struct bpf_stack_build_id {
+	__s32		status;
+	unsigned char	build_id[BPF_BUILD_ID_SIZE];
+	union {
+		__u64	offset;
+		__u64	ip;
+	};
+};
+
+#define BPF_OBJ_NAME_LEN 16U
+
+union bpf_attr {
+	struct { /* anonymous struct used by BPF_MAP_CREATE command */
+		__u32	map_type;	/* one of enum bpf_map_type */
+		__u32	key_size;	/* size of key in bytes */
+		__u32	value_size;	/* size of value in bytes */
+		__u32	max_entries;	/* max number of entries in a map */
+		__u32	map_flags;	/* BPF_MAP_CREATE related
+					 * flags defined above.
+					 */
+		__u32	inner_map_fd;	/* fd pointing to the inner map */
+		__u32	numa_node;	/* numa node (effective only if
+					 * BPF_F_NUMA_NODE is set).
+					 */
+		char	map_name[BPF_OBJ_NAME_LEN];
+		__u32	map_ifindex;	/* ifindex of netdev to create on */
+		__u32	btf_fd;		/* fd pointing to a BTF type data */
+		__u32	btf_key_type_id;	/* BTF type_id of the key */
+		__u32	btf_value_type_id;	/* BTF type_id of the value */
+		__u32	btf_vmlinux_value_type_id;/* BTF type_id of a kernel-
+						   * struct stored as the
+						   * map value
+						   */
+		__u64	map_extra;
+	};
