@@ -256,6 +256,45 @@ static struct local_file_header *local_file_header_at_offset(struct zip_archive 
 	return lfh;
 }
 
+static int get_entry_at_offset(struct zip_archive *archive, __u32 offset, struct zip_entry *out)
+{
+	struct local_file_header *lfh;
+	__u32 compressed_size;
+	const char *name;
+	void *data;
+
+	lfh = local_file_header_at_offset(archive, offset);
+	if (!lfh)
+		return -EINVAL;
+
+	offset += sizeof(*lfh);
+	if ((lfh->flags & FLAG_ENCRYPTED) || (lfh->flags & FLAG_HAS_DATA_DESCRIPTOR))
+		return -EINVAL;
+
+	name = check_access(archive, offset, lfh->file_name_length);
+	if (!name)
+		return -EINVAL;
+
+	offset += lfh->file_name_length;
+	if (!check_access(archive, offset, lfh->extra_field_length))
+		return -EINVAL;
+
+	offset += lfh->extra_field_length;
+	compressed_size = lfh->compressed_size;
+	data = check_access(archive, offset, compressed_size);
+	if (!data)
+		return -EINVAL;
+
+	out->compression = lfh->compression;
+	out->name_length = lfh->file_name_length;
+	out->name = name;
+	out->data = data;
+	out->data_length = compressed_size;
+	out->data_offset = offset;
+
+	return 0;
+}
+
 int zip_archive_find_entry(struct zip_archive *archive, const char *file_name,
 			   struct zip_entry *out)
 {
@@ -292,3 +331,4 @@ int zip_archive_find_entry(struct zip_archive *archive, const char *file_name,
 
 	return -ENOENT;
 }
+
