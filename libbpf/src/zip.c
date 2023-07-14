@@ -172,6 +172,29 @@ static int try_parse_end_of_cd(struct zip_archive *archive, __u32 offset)
 	return 0;
 }
 
+static int find_cd(struct zip_archive *archive)
+{
+	int64_t limit, offset;
+	int rc = -EINVAL;
+
+	if (archive->size <= sizeof(struct end_of_cd_record))
+		return -EINVAL;
+
+	/* Because the end of central directory ends with a variable length array of
+	 * up to 0xFFFF bytes we can't know exactly where it starts and need to
+	 * search for it at the end of the file, scanning the (limit, offset] range.
+	 */
+	offset = archive->size - sizeof(struct end_of_cd_record);
+	limit = (int64_t)offset - (1 << 16);
+
+	for (; offset >= 0 && offset > limit && rc != 0; offset--) {
+		rc = try_parse_end_of_cd(archive, offset);
+		if (rc == -ENOTSUP)
+			break;
+	}
+	return rc;
+}
+
 struct zip_archive *zip_archive_open(const char *path)
 {
 	struct zip_archive *archive;
