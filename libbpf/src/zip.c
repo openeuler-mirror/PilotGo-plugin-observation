@@ -244,6 +244,18 @@ void zip_archive_close(struct zip_archive *archive)
 	free(archive);
 }
 
+static struct local_file_header *local_file_header_at_offset(struct zip_archive *archive,
+							     __u32 offset)
+{
+	struct local_file_header *lfh;
+
+	lfh = check_access(archive, offset, sizeof(*lfh));
+	if (!lfh || lfh->magic != LOCAL_FILE_HEADER_MAGIC)
+		return NULL;
+
+	return lfh;
+}
+
 int zip_archive_find_entry(struct zip_archive *archive, const char *file_name,
 			   struct zip_entry *out)
 {
