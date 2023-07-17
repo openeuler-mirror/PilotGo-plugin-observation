@@ -348,3 +348,60 @@ struct static_call_key {
 		struct static_call_site *sites;
 	};
 };
+
+struct thread_info {
+	long unsigned int flags;
+	long unsigned int syscall_work;
+	u32 status;
+	u32 cpu;
+};
+
+struct refcount_struct {
+	atomic_t refs;
+};
+
+typedef struct refcount_struct refcount_t;
+
+struct llist_node {
+	struct llist_node *next;
+};
+
+struct __call_single_node {
+	struct llist_node llist;
+	union {
+		unsigned int u_flags;
+		atomic_t a_flags;
+	};
+	u16 src;
+	u16 dst;
+};
+
+struct load_weight {
+	long unsigned int weight;
+	u32 inv_weight;
+};
+
+struct rb_node {
+	long unsigned int __rb_parent_color;
+	struct rb_node *rb_right;
+	struct rb_node *rb_left;
+};
+
+struct util_est {
+	unsigned int enqueued;
+	unsigned int ewma;
+};
+
+struct sched_avg {
+	u64 last_update_time;
+	u64 load_sum;
+	u64 runnable_sum;
+	u32 util_sum;
+	u32 period_contrib;
+	long unsigned int load_avg;
+	long unsigned int runnable_avg;
+	long unsigned int util_avg;
+	struct util_est util_est;
+};
+
+struct cfs_rq;
