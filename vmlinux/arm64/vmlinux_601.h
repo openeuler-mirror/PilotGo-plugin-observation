@@ -200,3 +200,21 @@ struct raw_spinlock {
 };
 
 typedef struct raw_spinlock raw_spinlock_t;
+
+struct __kernel_timespec {
+	__kernel_time64_t tv_sec;
+	long long int tv_nsec;
+};
+
+enum timespec_type {
+	TT_NONE = 0,
+	TT_NATIVE = 1,
+	TT_COMPAT = 2,
+};
+
+typedef s32 old_time32_t;
+
+struct old_timespec32 {
+	old_time32_t tv_sec;
+	s32 tv_nsec;
+};
