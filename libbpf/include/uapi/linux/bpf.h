@@ -440,4 +440,38 @@ union bpf_attr {
 		__u64		flags;
 	} batch;
 
+    struct { /* anonymous struct used by BPF_PROG_LOAD command */
+		__u32		prog_type;	/* one of enum bpf_prog_type */
+		__u32		insn_cnt;
+		__aligned_u64	insns;
+		__aligned_u64	license;
+		__u32		log_level;	/* verbosity level of verifier */
+		__u32		log_size;	/* size of user buffer */
+		__aligned_u64	log_buf;	/* user supplied buffer */
+		__u32		kern_version;	/* not used */
+		__u32		prog_flags;
+		char		prog_name[BPF_OBJ_NAME_LEN];
+		__u32		prog_ifindex;	/* ifindex of netdev to prep for */
+		__u32		expected_attach_type;
+		__u32		prog_btf_fd;	/* fd pointing to BTF type data */
+		__u32		func_info_rec_size;	/* userspace bpf_func_info size */
+		__aligned_u64	func_info;	/* func info */
+		__u32		func_info_cnt;	/* number of bpf_func_info records */
+		__u32		line_info_rec_size;	/* userspace bpf_line_info size */
+		__aligned_u64	line_info;	/* line info */
+		__u32		line_info_cnt;	/* number of bpf_line_info records */
+		__u32		attach_btf_id;	/* in-kernel BTF type id to attach to */
+		union {
+			/* valid prog_fd to attach to bpf prog */
+			__u32		attach_prog_fd;
+			/* or valid module BTF object fd or 0 to attach to vmlinux */
+			__u32		attach_btf_obj_fd;
+		};
+		__u32		core_relo_cnt;	/* number of bpf_core_relo */
+		__aligned_u64	fd_array;	/* array of FDs */
+		__aligned_u64	core_relos;
+		__u32		core_relo_rec_size; /* sizeof(struct bpf_core_relo) */
+		__u32		log_true_size;
+	};
+
 } __attribute__((aligned(8)));
