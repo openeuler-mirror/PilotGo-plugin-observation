@@ -131,6 +131,22 @@ LIBBPF_API int bpf_obj_get(const char *pathname);
 LIBBPF_API int bpf_obj_get_opts(const char *pathname,
 				const struct bpf_obj_get_opts *opts);
 
+struct bpf_prog_attach_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	unsigned int flags;
+	int replace_prog_fd;
+};
+#define bpf_prog_attach_opts__last_field replace_prog_fd
+
+LIBBPF_API int bpf_prog_attach(int prog_fd, int attachable_fd,
+			       enum bpf_attach_type type, unsigned int flags);
+LIBBPF_API int bpf_prog_attach_opts(int prog_fd, int attachable_fd,
+				     enum bpf_attach_type type,
+				     const struct bpf_prog_attach_opts *opts);
+LIBBPF_API int bpf_prog_detach(int attachable_fd, enum bpf_attach_type type);
+LIBBPF_API int bpf_prog_detach2(int prog_fd, int attachable_fd,
+				enum bpf_attach_type type);
+
 
 #ifdef __cplusplus
 } /* extern "C" */
