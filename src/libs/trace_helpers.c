@@ -556,3 +556,25 @@ void ksyms__free(struct ksyms *ksyms)
 	free(ksyms->modules);
 	free(ksyms);
 }
+
+const struct ksym *ksyms__map_addr(const struct ksyms *ksyms,
+				   unsigned long addr)
+{
+	int start = 0, end = ksyms->syms_sz - 1, mid;
+	unsigned long sym_addr;
+
+	/* find largest sym_addr <= addr using binary search */
+	while (start < end) {
+		mid = start + (end - start + 1) / 2;
+		sym_addr = ksyms->syms[mid].addr;
+
+		if (sym_addr <= addr)
+			start = mid;
+		else
+			end = mid - 1;
+	}
+
+	if (start == end && ksyms->syms[start].addr <= addr)
+		return &ksyms->syms[start];
+	return NULL;
+}
