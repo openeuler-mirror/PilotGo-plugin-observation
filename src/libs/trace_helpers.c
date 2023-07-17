@@ -591,3 +591,53 @@ const struct ksym *ksyms__get_symbol(const struct ksyms *ksyms,
 
 	return NULL;
 }
+
+struct load_range {
+	uint64_t start;
+	uint64_t end;
+	uint64_t file_off;
+};
+
+enum elf_type {
+	EXEC,
+	DYN,
+	PERF_MAP,
+	VDSO,
+	UNKNOWN,
+};
+
+struct dso {
+	char *name;
+	struct load_range *ranges;
+	int range_sz;
+	/* Dyn's first text section virtual addr at execution */
+	uint64_t sh_addr;
+	/* Dyn's first text section file offset */
+	uint64_t sh_offset;
+	enum elf_type type;
+
+	struct sym *syms;
+	int syms_sz;
+	int syms_cap;
+
+	/*
+	 * libbpf's struct btf is actually a pretty efficient
+	 * "set of strings" data structure, so we create an
+	 * empty one and use it to store symbol names.
+	 */
+	struct btf *btf;
+};
+
+struct map {
+	uint64_t start_addr;
+	uint64_t end_addr;
+	uint64_t file_off;
+	uint64_t dev_major;
+	uint64_t dev_minor;
+	uint64_t inode;
+};
+
+struct syms {
+	struct dso *dsos;
+	int dso_sz;
+};
