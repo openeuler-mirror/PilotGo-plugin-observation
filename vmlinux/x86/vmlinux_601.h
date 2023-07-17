@@ -149,3 +149,47 @@ struct lock_class_key {
 		struct lockdep_subclass_key subkeys[8];
 	};
 };
+
+struct fs_context;
+
+struct fs_parameter_spec;
+
+struct dentry;
+
+struct super_block;
+
+struct module;
+
+struct file_system_type {
+	const char *name;
+	int fs_flags;
+	int (*init_fs_context)(struct fs_context *);
+	const struct fs_parameter_spec *parameters;
+	struct dentry * (*mount)(struct file_system_type *, int, const char *, void *);
+	void (*kill_sb)(struct super_block *);
+	struct module *owner;
+	struct file_system_type *next;
+	struct hlist_head fs_supers;
+	struct lock_class_key s_lock_key;
+	struct lock_class_key s_umount_key;
+	struct lock_class_key s_vfs_rename_key;
+	struct lock_class_key s_writers_key[3];
+	struct lock_class_key i_lock_key;
+	struct lock_class_key i_mutex_key;
+	struct lock_class_key invalidate_lock_key;
+	struct lock_class_key i_mutex_dir_key;
+};
+
+struct qspinlock {
+	union {
+		atomic_t val;
+		struct {
+			u8 locked;
+			u8 pending;
+		};
+		struct {
+			u16 locked_pending;
+			u16 tail;
+		};
+	};
+};
