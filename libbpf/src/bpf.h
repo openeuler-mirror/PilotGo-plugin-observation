@@ -37,7 +37,46 @@ LIBBPF_API int bpf_map_create(enum bpf_map_type map_type,
 			      __u32 max_entries,
 			      const struct bpf_map_create_opts *opts);
 
+struct bpf_prog_load_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
 
+	int attempts;
+
+	enum bpf_attach_type expected_attach_type;
+	__u32 prog_btf_fd;
+	__u32 prog_flags;
+	__u32 prog_ifindex;
+	__u32 kern_version;
+
+	__u32 attach_btf_id;
+	__u32 attach_prog_fd;
+	__u32 attach_btf_obj_fd;
+
+	const int *fd_array;
+
+	/* .BTF.ext func info data */
+	const void *func_info;
+	__u32 func_info_cnt;
+	__u32 func_info_rec_size;
+
+	/* .BTF.ext line info data */
+	const void *line_info;
+	__u32 line_info_cnt;
+	__u32 line_info_rec_size;
+
+	/* verifier log options */
+	__u32 log_level;
+	__u32 log_size;
+	char *log_buf;
+	__u32 log_true_size;
+	size_t :0;
+};
+#define bpf_prog_load_opts__last_field log_true_size
+
+LIBBPF_API int bpf_prog_load(enum bpf_prog_type prog_type,
+			     const char *prog_name, const char *license,
+			     const struct bpf_insn *insns, size_t insn_cnt,
+			     struct bpf_prog_load_opts *opts);
 
 #ifdef __cplusplus
 } /* extern "C" */
