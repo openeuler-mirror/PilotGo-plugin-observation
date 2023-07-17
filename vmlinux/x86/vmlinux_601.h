@@ -243,3 +243,51 @@ struct lockdep_map {
 	u8 wait_type_inner;
 	u8 lock_type;
 };
+
+struct raw_spinlock {
+	arch_spinlock_t raw_lock;
+	unsigned int magic;
+	unsigned int owner_cpu;
+	void *owner;
+	struct lockdep_map dep_map;
+};
+
+typedef struct raw_spinlock raw_spinlock_t;
+
+struct ratelimit_state {
+	raw_spinlock_t lock;
+	int interval;
+	int burst;
+	int printed;
+	int missed;
+	long unsigned int begin;
+	long unsigned int flags;
+};
+
+typedef void *fl_owner_t;
+
+struct file;
+
+struct kiocb;
+
+struct iov_iter;
+
+struct io_comp_batch;
+
+struct dir_context;
+
+struct poll_table_struct;
+
+struct vm_area_struct;
+
+struct inode;
+
+struct file_lock;
+
+struct page;
+
+struct pipe_inode_info;
+
+struct seq_file;
+
+struct io_uring_cmd;
