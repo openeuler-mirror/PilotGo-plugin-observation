@@ -545,3 +545,14 @@ err_out:
 	fclose(f);
 	return NULL;
 }
+
+void ksyms__free(struct ksyms *ksyms)
+{
+	if (!ksyms)
+		return;
+
+	free(ksyms->syms);
+	free(ksyms->strs);
+	free(ksyms->modules);
+	free(ksyms);
+}
