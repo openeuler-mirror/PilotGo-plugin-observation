@@ -188,3 +188,64 @@ int bpf_usdt_arg(struct pt_regs *ctx, __u64 arg_num, long *res)
 	*res = val;
 	return 0;
 }
+
+/* Retrieve user-specified cookie value provided during attach as
+ * bpf_usdt_opts.usdt_cookie. This serves the same purpose as BPF cookie
+ * returned by bpf_get_attach_cookie(). Libbpf's support for USDT is itself
+ * utilizing BPF cookies internally, so user can't use BPF cookie directly
+ * for USDT programs and has to use bpf_usdt_cookie() API instead.
+ */
+__weak __hidden
+long bpf_usdt_cookie(struct pt_regs *ctx)
+{
+	struct __bpf_usdt_spec *spec;
+	int spec_id;
+
+	spec_id = __bpf_usdt_spec_id(ctx);
+	if (spec_id < 0)
+		return 0;
+
+	spec = bpf_map_lookup_elem(&__bpf_usdt_specs, &spec_id);
+	if (!spec)
+		return 0;
+
+	return spec->usdt_cookie;
+}
+
+/* we rely on ___bpf_apply() and ___bpf_narg() macros already defined in bpf_tracing.h */
+#define ___bpf_usdt_args0() ctx
+#define ___bpf_usdt_args1(x) ___bpf_usdt_args0(), ({ long _x; bpf_usdt_arg(ctx, 0, &_x); (void *)_x; })
+#define ___bpf_usdt_args2(x, args...) ___bpf_usdt_args1(args), ({ long _x; bpf_usdt_arg(ctx, 1, &_x); (void *)_x; })
+#define ___bpf_usdt_args3(x, args...) ___bpf_usdt_args2(args), ({ long _x; bpf_usdt_arg(ctx, 2, &_x); (void *)_x; })
+#define ___bpf_usdt_args4(x, args...) ___bpf_usdt_args3(args), ({ long _x; bpf_usdt_arg(ctx, 3, &_x); (void *)_x; })
+#define ___bpf_usdt_args5(x, args...) ___bpf_usdt_args4(args), ({ long _x; bpf_usdt_arg(ctx, 4, &_x); (void *)_x; })
+#define ___bpf_usdt_args6(x, args...) ___bpf_usdt_args5(args), ({ long _x; bpf_usdt_arg(ctx, 5, &_x); (void *)_x; })
+#define ___bpf_usdt_args7(x, args...) ___bpf_usdt_args6(args), ({ long _x; bpf_usdt_arg(ctx, 6, &_x); (void *)_x; })
+#define ___bpf_usdt_args8(x, args...) ___bpf_usdt_args7(args), ({ long _x; bpf_usdt_arg(ctx, 7, &_x); (void *)_x; })
+#define ___bpf_usdt_args9(x, args...) ___bpf_usdt_args8(args), ({ long _x; bpf_usdt_arg(ctx, 8, &_x); (void *)_x; })
+#define ___bpf_usdt_args10(x, args...) ___bpf_usdt_args9(args), ({ long _x; bpf_usdt_arg(ctx, 9, &_x); (void *)_x; })
+#define ___bpf_usdt_args11(x, args...) ___bpf_usdt_args10(args), ({ long _x; bpf_usdt_arg(ctx, 10, &_x); (void *)_x; })
+#define ___bpf_usdt_args12(x, args...) ___bpf_usdt_args11(args), ({ long _x; bpf_usdt_arg(ctx, 11, &_x); (void *)_x; })
+#define ___bpf_usdt_args(args...) ___bpf_apply(___bpf_usdt_args, ___bpf_narg(args))(args)
+
+/*
+ * BPF_USDT serves the same purpose for USDT handlers as BPF_PROG for
+ * tp_btf/fentry/fexit BPF programs and BPF_KPROBE for kprobes.
+ * Original struct pt_regs * context is preserved as 'ctx' argument.
+ */
+#define BPF_USDT(name, args...)						    \
+name(struct pt_regs *ctx);						    \
+static __always_inline typeof(name(0))					    \
+____##name(struct pt_regs *ctx, ##args);				    \
+typeof(name(0)) name(struct pt_regs *ctx)				    \
+{									    \
+        _Pragma("GCC diagnostic push")					    \
+        _Pragma("GCC diagnostic ignored \"-Wint-conversion\"")		    \
+        return ____##name(___bpf_usdt_args(args));			    \
+        _Pragma("GCC diagnostic pop")					    \
+}									    \
+static __always_inline typeof(name(0))					    \
+____##name(struct pt_regs *ctx, ##args)
+
+#endif /* __USDT_BPF_H__ */
+
