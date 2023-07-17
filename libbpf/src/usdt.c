@@ -27,6 +27,64 @@
 #define USDT_NOTE_TYPE 3
 #define USDT_NOTE_NAME "stapsdt"
 
+/* should match exactly enum __bpf_usdt_arg_type from usdt.bpf.h */
+enum usdt_arg_type {
+	USDT_ARG_CONST,
+	USDT_ARG_REG,
+	USDT_ARG_REG_DEREF,
+};
+
+/* should match exactly struct __bpf_usdt_arg_spec from usdt.bpf.h */
+struct usdt_arg_spec {
+	__u64 val_off;
+	enum usdt_arg_type arg_type;
+	short reg_off;
+	bool arg_signed;
+	char arg_bitshift;
+};
+
+/* should match BPF_USDT_MAX_ARG_CNT in usdt.bpf.h */
+#define USDT_MAX_ARG_CNT 12
+
+/* should match struct __bpf_usdt_spec from usdt.bpf.h */
+struct usdt_spec {
+	struct usdt_arg_spec args[USDT_MAX_ARG_CNT];
+	__u64 usdt_cookie;
+	short arg_cnt;
+};
+
+struct usdt_note {
+	const char *provider;
+	const char *name;
+	/* USDT args specification string, e.g.:
+	 * "-4@%esi -4@-24(%rbp) -4@%ecx 2@%ax 8@%rdx"
+	 */
+	const char *args;
+	long loc_addr;
+	long base_addr;
+	long sema_addr;
+};
+
+struct usdt_target {
+	long abs_ip;
+	long rel_ip;
+	long sema_off;
+	struct usdt_spec spec;
+	const char *spec_str;
+};
+
+struct usdt_manager {
+	struct bpf_map *specs_map;
+	struct bpf_map *ip_to_spec_id_map;
+
+	int *free_spec_ids;
+	size_t free_spec_cnt;
+	size_t next_free_spec_id;
+
+	bool has_bpf_cookie;
+	bool has_sema_refcnt;
+};
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
