@@ -78,6 +78,28 @@ LIBBPF_API int bpf_prog_load(enum bpf_prog_type prog_type,
 			     const struct bpf_insn *insns, size_t insn_cnt,
 			     struct bpf_prog_load_opts *opts);
 
+LIBBPF_API int bpf_map_update_elem(int fd, const void *key, const void *value,
+				   __u64 flags);
+
+LIBBPF_API int bpf_map_lookup_elem(int fd, const void *key, void *value);
+LIBBPF_API int bpf_map_lookup_elem_flags(int fd, const void *key, void *value,
+					 __u64 flags);
+LIBBPF_API int bpf_map_lookup_and_delete_elem(int fd, const void *key,
+					      void *value);
+LIBBPF_API int bpf_map_lookup_and_delete_elem_flags(int fd, const void *key,
+						    void *value, __u64 flags);
+LIBBPF_API int bpf_map_delete_elem(int fd, const void *key);
+LIBBPF_API int bpf_map_delete_elem_flags(int fd, const void *key, __u64 flags);
+LIBBPF_API int bpf_map_get_next_key(int fd, const void *key, void *next_key);
+LIBBPF_API int bpf_map_freeze(int fd);
+
+struct bpf_map_batch_opts {
+	size_t sz;
+	__u64 elem_flags;
+	__u64 flags;
+};
+#define bpf_map_batch_opts__last_field flags
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
