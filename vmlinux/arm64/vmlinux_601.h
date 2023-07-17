@@ -144,3 +144,49 @@ struct qrwlock {
 };
 
 typedef struct qrwlock arch_rwlock_t;
+
+struct lockdep_subclass_key {
+	char __one_byte;
+};
+
+struct lock_class_key {
+	union {
+		struct hlist_node hash_entry;
+		struct lockdep_subclass_key subkeys[8];
+	};
+};
+
+struct lock_trace;
+
+struct lock_class {
+	struct hlist_node hash_entry;
+	struct list_head lock_entry;
+	struct list_head locks_after;
+	struct list_head locks_before;
+	const struct lockdep_subclass_key *key;
+	unsigned int subclass;
+	unsigned int dep_gen_id;
+	long unsigned int usage_mask;
+	const struct lock_trace *usage_traces[10];
+	int name_version;
+	const char *name;
+	u8 wait_type_inner;
+	u8 wait_type_outer;
+	u8 lock_type;
+};
+
+struct lock_trace {
+	struct hlist_node hash_entry;
+	u32 hash;
+	u32 nr_entries;
+	long unsigned int entries[0];
+};
+
+struct lockdep_map {
+	struct lock_class_key *key;
+	struct lock_class *class_cache[2];
+	const char *name;
+	u8 wait_type_outer;
+	u8 wait_type_inner;
+	u8 lock_type;
+};
