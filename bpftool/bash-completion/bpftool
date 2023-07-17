@@ -553,6 +553,41 @@ _bpftool()
                             ;;
                     esac
                     ;;
+                run)
+                    if [[ ${#words[@]} -eq 4 ]]; then
+                        COMPREPLY=( $( compgen -W "$PROG_TYPE" -- "$cur" ) )
+                        return 0
+                    fi
+                    case $prev in
+                        id)
+                            _bpftool_get_prog_ids
+                            return 0
+                            ;;
+                        name)
+                            _bpftool_get_prog_names
+                            return 0
+                            ;;
+                        data_in|data_out|ctx_in|ctx_out)
+                            _filedir
+                            return 0
+                            ;;
+                        repeat|data_size_out|ctx_size_out)
+                            return 0
+                            ;;
+                        *)
+                            _bpftool_once_attr 'data_in data_out data_size_out \
+                                ctx_in ctx_out ctx_size_out repeat'
+                            return 0
+                            ;;
+                    esac
+                    ;;
+                *)
+                    [[ $prev == $object ]] && \
+                        COMPREPLY=( $( compgen -W 'dump help pin attach detach \
+                            load loadall show list tracelog run profile' -- "$cur" ) )
+                    ;;
+            esac
+            ;;                    
 } &&
 complete -F _bpftool bpftool
 
