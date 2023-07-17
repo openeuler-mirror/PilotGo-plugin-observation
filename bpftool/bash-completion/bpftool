@@ -434,7 +434,80 @@ _bpftool()
                             ;;
                     esac
                     ;;
+                load|loadall)
+                    local obj
 
+                    # Propose "load/loadall" to complete "bpftool prog load",
+                    # or bash tries to complete "load" as a filename below.
+                    if [[ ${#words[@]} -eq 3 ]]; then
+                        COMPREPLY=( $( compgen -W "load loadall" -- "$cur" ) )
+                        return 0
+                    fi
+
+                    if [[ ${#words[@]} -lt 6 ]]; then
+                        _filedir
+                        return 0
+                    fi
+
+                    obj=${words[3]}
+
+                    if [[ ${words[-4]} == "map" ]]; then
+                        COMPREPLY=( $( compgen -W "id pinned" -- "$cur" ) )
+                        return 0
+                    fi
+                    if [[ ${words[-3]} == "map" ]]; then
+                        if [[ ${words[-2]} == "idx" ]]; then
+                            _bpftool_get_obj_map_idxs $obj
+                        elif [[ ${words[-2]} == "name" ]]; then
+                            _bpftool_get_obj_map_names $obj
+                        fi
+                        return 0
+                    fi
+                    if [[ ${words[-2]} == "map" ]]; then
+                        COMPREPLY=( $( compgen -W "idx name" -- "$cur" ) )
+                        return 0
+                    fi
+
+                    case $prev in
+                        type)
+                            local BPFTOOL_PROG_LOAD_TYPES='socket kprobe \
+                                kretprobe classifier flow_dissector \
+                                action tracepoint raw_tracepoint \
+                                xdp perf_event cgroup/skb cgroup/sock \
+                                cgroup/dev lwt_in lwt_out lwt_xmit \
+                                lwt_seg6local sockops sk_skb sk_msg \
+                                lirc_mode2 cgroup/bind4 cgroup/bind6 \
+                                cgroup/connect4 cgroup/connect6 \
+                                cgroup/getpeername4 cgroup/getpeername6 \
+                                cgroup/getsockname4 cgroup/getsockname6 \
+                                cgroup/sendmsg4 cgroup/sendmsg6 \
+                                cgroup/recvmsg4 cgroup/recvmsg6 \
+                                cgroup/post_bind4 cgroup/post_bind6 \
+                                cgroup/sysctl cgroup/getsockopt \
+                                cgroup/setsockopt cgroup/sock_release struct_ops \
+                                fentry fexit freplace sk_lookup'
+                            COMPREPLY=( $( compgen -W "$BPFTOOL_PROG_LOAD_TYPES" -- "$cur" ) )
+                            return 0
+                            ;;
+                        id)
+                            _bpftool_get_map_ids
+                            return 0
+                            ;;
+                        name)
+                            _bpftool_get_map_names
+                            return 0
+                            ;;
+                        pinned|pinmaps)
+                            _filedir
+                            return 0
+                            ;;
+                        *)
+                            COMPREPLY=( $( compgen -W "map" -- "$cur" ) )
+                            _bpftool_once_attr 'type dev pinmaps autoattach'
+                            return 0
+                            ;;
+                    esac
+                    ;;
 } &&
 complete -F _bpftool bpftool
 
