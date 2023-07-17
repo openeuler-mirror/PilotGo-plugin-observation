@@ -190,3 +190,13 @@ struct lockdep_map {
 	u8 wait_type_inner;
 	u8 lock_type;
 };
+
+struct raw_spinlock {
+	arch_spinlock_t raw_lock;
+	unsigned int magic;
+	unsigned int owner_cpu;
+	void *owner;
+	struct lockdep_map dep_map;
+};
+
+typedef struct raw_spinlock raw_spinlock_t;
