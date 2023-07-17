@@ -100,6 +100,23 @@ struct bpf_map_batch_opts {
 };
 #define bpf_map_batch_opts__last_field flags
 
+LIBBPF_API int bpf_map_delete_batch(int fd, const void *keys,
+				    __u32 *count,
+				    const struct bpf_map_batch_opts *opts);
+
+LIBBPF_API int bpf_map_lookup_batch(int fd, void *in_batch, void *out_batch,
+				    void *keys, void *values, __u32 *count,
+				    const struct bpf_map_batch_opts *opts);
+
+LIBBPF_API int bpf_map_lookup_and_delete_batch(int fd, void *in_batch,
+					void *out_batch, void *keys,
+					void *values, __u32 *count,
+					const struct bpf_map_batch_opts *opts);
+
+LIBBPF_API int bpf_map_update_batch(int fd, const void *keys, const void *values,
+				    __u32 *count,
+				    const struct bpf_map_batch_opts *opts);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
