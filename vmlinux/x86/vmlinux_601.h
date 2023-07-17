@@ -116,3 +116,36 @@ struct list_head {
 	struct list_head *next;
 	struct list_head *prev;
 };
+
+struct hlist_node;
+
+struct hlist_head {
+	struct hlist_node *first;
+};
+
+struct hlist_node {
+	struct hlist_node *next;
+	struct hlist_node **pprev;
+};
+
+struct callback_head {
+	struct callback_head *next;
+	void (*func)(struct callback_head *);
+};
+
+struct kernel_symbol {
+	int value_offset;
+	int name_offset;
+	int namespace_offset;
+};
+
+struct lockdep_subclass_key {
+	char __one_byte;
+};
+
+struct lock_class_key {
+	union {
+		struct hlist_node hash_entry;
+		struct lockdep_subclass_key subkeys[8];
+	};
+};
