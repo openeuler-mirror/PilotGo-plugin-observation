@@ -578,3 +578,16 @@ const struct ksym *ksyms__map_addr(const struct ksyms *ksyms,
 		return &ksyms->syms[start];
 	return NULL;
 }
+
+const struct ksym *ksyms__get_symbol(const struct ksyms *ksyms,
+				     const char *name)
+{
+	int i;
+
+	for (i = 0; i < ksyms->syms_sz; i++) {
+		if (strcmp(ksyms->syms[i].name, name) == 0)
+			return &ksyms->syms[i];
+	}
+
+	return NULL;
+}
