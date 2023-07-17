@@ -341,6 +341,46 @@ _bpftool()
                     ;;
             esac
 
+            local PROG_TYPE='id pinned tag name'
+            local MAP_TYPE='id pinned name'
+            local METRIC_TYPE='cycles instructions l1d_loads llc_misses \
+                itlb_misses dtlb_misses'
+            case $command in
+                show|list)
+                    [[ $prev != "$command" ]] && return 0
+                    COMPREPLY=( $( compgen -W "$PROG_TYPE" -- "$cur" ) )
+                    return 0
+                    ;;
+                dump)
+                    case $prev in
+                        $command)
+                            COMPREPLY+=( $( compgen -W "xlated jited" -- \
+                                "$cur" ) )
+                            return 0
+                            ;;
+                        xlated|jited)
+                            COMPREPLY=( $( compgen -W "$PROG_TYPE" -- \
+                                "$cur" ) )
+                            return 0
+                            ;;
+                        *)
+                            # "file" is not compatible with other keywords here
+                            if _bpftool_search_list 'file'; then
+                                return 0
+                            fi
+                            if ! _bpftool_search_list 'linum opcodes visual'; then
+                                _bpftool_once_attr 'file'
+                            fi
+                            _bpftool_once_attr 'linum opcodes'
+                            if _bpftool_search_list 'xlated' && [[ "$json" == 0 ]]; then
+                                _bpftool_once_attr 'visual'
+                            fi
+                            return 0
+                            ;;
+                    esac
+                    ;;
+
+
 } &&
 complete -F _bpftool bpftool
 
