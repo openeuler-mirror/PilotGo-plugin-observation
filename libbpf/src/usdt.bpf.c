@@ -108,3 +108,83 @@ int bpf_usdt_arg_cnt(struct pt_regs *ctx)
 	return spec->arg_cnt;
 }
 
+/* Fetch USDT argument #*arg_num* (zero-indexed) and put its value into *res.
+ * Returns 0 on success; negative error, otherwise.
+ * On error *res is guaranteed to be set to zero.
+ */
+__weak __hidden
+int bpf_usdt_arg(struct pt_regs *ctx, __u64 arg_num, long *res)
+{
+	struct __bpf_usdt_spec *spec;
+	struct __bpf_usdt_arg_spec *arg_spec;
+	unsigned long val;
+	int err, spec_id;
+
+	*res = 0;
+
+	spec_id = __bpf_usdt_spec_id(ctx);
+	if (spec_id < 0)
+		return -ESRCH;
+
+	spec = bpf_map_lookup_elem(&__bpf_usdt_specs, &spec_id);
+	if (!spec)
+		return -ESRCH;
+
+	if (arg_num >= BPF_USDT_MAX_ARG_CNT)
+		return -ENOENT;
+	barrier_var(arg_num);
+	if (arg_num >= spec->arg_cnt)
+		return -ENOENT;
+
+	arg_spec = &spec->args[arg_num];
+	switch (arg_spec->arg_type) {
+	case BPF_USDT_ARG_CONST:
+		/* Arg is just a constant ("-4@$-9" in USDT arg spec).
+		 * value is recorded in arg_spec->val_off directly.
+		 */
+		val = arg_spec->val_off;
+		break;
+	case BPF_USDT_ARG_REG:
+		/* Arg is in a register (e.g, "8@%rax" in USDT arg spec),
+		 * so we read the contents of that register directly from
+		 * struct pt_regs. To keep things simple user-space parts
+		 * record offsetof(struct pt_regs, <regname>) in arg_spec->reg_off.
+		 */
+		err = bpf_probe_read_kernel(&val, sizeof(val), (void *)ctx + arg_spec->reg_off);
+		if (err)
+			return err;
+		break;
+	case BPF_USDT_ARG_REG_DEREF:
+		/* Arg is in memory addressed by register, plus some offset
+		 * (e.g., "-4@-1204(%rbp)" in USDT arg spec). Register is
+		 * identified like with BPF_USDT_ARG_REG case, and the offset
+		 * is in arg_spec->val_off. We first fetch register contents
+		 * from pt_regs, then do another user-space probe read to
+		 * fetch argument value itself.
+		 */
+		err = bpf_probe_read_kernel(&val, sizeof(val), (void *)ctx + arg_spec->reg_off);
+		if (err)
+			return err;
+		err = bpf_probe_read_user(&val, sizeof(val), (void *)val + arg_spec->val_off);
+		if (err)
+			return err;
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+		val >>= arg_spec->arg_bitshift;
+#endif
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	/* cast arg from 1, 2, or 4 bytes to final 8 byte size clearing
+	 * necessary upper arg_bitshift bits, with sign extension if argument
+	 * is signed
+	 */
+	val <<= arg_spec->arg_bitshift;
+	if (arg_spec->arg_signed)
+		val = ((long)val) >> arg_spec->arg_bitshift;
+	else
+		val = val >> arg_spec->arg_bitshift;
+	*res = val;
+	return 0;
+}
