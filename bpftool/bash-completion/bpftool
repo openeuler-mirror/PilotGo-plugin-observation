@@ -379,7 +379,61 @@ _bpftool()
                             ;;
                     esac
                     ;;
-
+                pin)
+                    if [[ $prev == "$command" ]]; then
+                        COMPREPLY=( $( compgen -W "$PROG_TYPE" -- "$cur" ) )
+                    else
+                        _filedir
+                    fi
+                    return 0
+                    ;;
+                attach|detach)
+                    case $cword in
+                        3)
+                            COMPREPLY=( $( compgen -W "$PROG_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        4)
+                            case $prev in
+                                id)
+                                    _bpftool_get_prog_ids
+                                    ;;
+                                name)
+                                    _bpftool_get_prog_names
+                                    ;;
+                                pinned)
+                                    _filedir
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                        5)
+                            local BPFTOOL_PROG_ATTACH_TYPES='sk_msg_verdict \
+                                sk_skb_verdict sk_skb_stream_verdict sk_skb_stream_parser \
+                                flow_dissector'
+                            COMPREPLY=( $( compgen -W "$BPFTOOL_PROG_ATTACH_TYPES" -- "$cur" ) )
+                            return 0
+                            ;;
+                        6)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        7)
+                            case $prev in
+                                id)
+                                    _bpftool_get_map_ids
+                                    ;;
+                                name)
+                                    _bpftool_get_map_names
+                                    ;;
+                                pinned)
+                                    _filedir
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                    esac
+                    ;;
 
 } &&
 complete -F _bpftool bpftool
