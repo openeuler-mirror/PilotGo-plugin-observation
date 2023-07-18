@@ -558,3 +558,40 @@ enum timespec_type {
 	TT_NATIVE = 1,
 	TT_COMPAT = 2,
 };
+
+struct __kernel_timespec;
+
+struct old_timespec32;
+
+struct pollfd;
+
+struct restart_block {
+	long unsigned int arch_data;
+	long int (*fn)(struct restart_block *);
+	union {
+		struct {
+			u32 *uaddr;
+			u32 val;
+			u32 flags;
+			u32 bitset;
+			u64 time;
+			u32 *uaddr2;
+		} futex;
+		struct {
+			clockid_t clockid;
+			enum timespec_type type;
+			union {
+				struct __kernel_timespec *rmtp;
+				struct old_timespec32 *compat_rmtp;
+			};
+			u64 expires;
+		} nanosleep;
+		struct {
+			struct pollfd *ufds;
+			int nfds;
+			int has_timeout;
+			long unsigned int tv_sec;
+			long unsigned int tv_nsec;
+		} poll;
+	};
+};
