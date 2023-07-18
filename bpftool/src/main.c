@@ -128,7 +128,11 @@ static int do_version(int argc, char **argv)
 		jsonw_bool_field(json_wtr, "llvm", has_llvm);
 		jsonw_bool_field(json_wtr, "skeletons", has_skeletons);
 		jsonw_bool_field(json_wtr, "bootstrap", bootstrap);
-	}
+		jsonw_end_object(json_wtr);	/* features */
+
+		jsonw_end_object(json_wtr);	/* root object */
+	} else {
+		unsigned int nb_features = 0;
 	return 0
 }
 
