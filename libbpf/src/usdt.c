@@ -224,6 +224,56 @@ static int cmp_elf_segs(const void *_a, const void *_b)
 	return a->start < b->start ? -1 : 1;
 }
 
+static int parse_elf_segs(Elf *elf, const char *path, struct elf_seg **segs, size_t *seg_cnt)
+{
+	GElf_Phdr phdr;
+	size_t n;
+	int i, err;
+	struct elf_seg *seg;
+	void *tmp;
+
+	*seg_cnt = 0;
+
+	if (elf_getphdrnum(elf, &n)) {
+		err = -errno;
+		return err;
+	}
+
+	for (i = 0; i < n; i++) {
+		if (!gelf_getphdr(elf, i, &phdr)) {
+			err = -errno;
+			return err;
+		}
+
+		pr_debug("usdt: discovered PHDR #%d in '%s': vaddr 0x%lx memsz 0x%lx offset 0x%lx type 0x%lx flags 0x%lx\n",
+			 i, path, (long)phdr.p_vaddr, (long)phdr.p_memsz, (long)phdr.p_offset,
+			 (long)phdr.p_type, (long)phdr.p_flags);
+		if (phdr.p_type != PT_LOAD)
+			continue;
+
+		tmp = libbpf_reallocarray(*segs, *seg_cnt + 1, sizeof(**segs));
+		if (!tmp)
+			return -ENOMEM;
+
+		*segs = tmp;
+		seg = *segs + *seg_cnt;
+		(*seg_cnt)++;
+
+		seg->start = phdr.p_vaddr;
+		seg->end = phdr.p_vaddr + phdr.p_memsz;
+		seg->offset = phdr.p_offset;
+		seg->is_exec = phdr.p_flags & PF_X;
+	}
+
+	if (*seg_cnt == 0) {
+		pr_warn("usdt: failed to find PT_LOAD program headers in '%s'\n", path);
+		return -ESRCH;
+	}
+
+	qsort(*segs, *seg_cnt, sizeof(**segs), cmp_elf_segs);
+	return 0;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
