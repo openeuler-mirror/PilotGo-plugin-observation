@@ -764,7 +764,79 @@ _bpftool()
                             return 0
                             ;;
                     esac
-                    ;;  
+                    ;; 
+                update|push|enqueue)
+                    case $prev in
+                        $command)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        id)
+                            _bpftool_map_update_get_id $command
+                            return 0
+                            ;;
+                        name)
+                            _bpftool_map_update_get_name $command
+                            return 0
+                            ;;
+                        key)
+                            COMPREPLY+=( $( compgen -W 'hex' -- "$cur" ) )
+                            ;;
+                        value)
+                            # We can have bytes, or references to a prog or a
+                            # map, depending on the type of the map to update.
+                            case "$(_bpftool_map_guess_map_type)" in
+                                array_of_maps|hash_of_maps)
+                                    local MAP_TYPE='id pinned name'
+                                    COMPREPLY+=( $( compgen -W "$MAP_TYPE" \
+                                        -- "$cur" ) )
+                                    return 0
+                                    ;;
+                                prog_array)
+                                    local PROG_TYPE='id pinned tag name'
+                                    COMPREPLY+=( $( compgen -W "$PROG_TYPE" \
+                                        -- "$cur" ) )
+                                    return 0
+                                    ;;
+                                *)
+                                    COMPREPLY+=( $( compgen -W 'hex' \
+                                        -- "$cur" ) )
+                                    return 0
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                        *)
+                            case $(_bpftool_map_guess_map_type) in
+                                queue|stack)
+                                    _bpftool_once_attr 'value'
+                                    return 0;
+                                    ;;
+                            esac
+
+                            _bpftool_once_attr 'key'
+                            local UPDATE_FLAGS='any exist noexist'
+                            for (( idx=3; idx < ${#words[@]}-1; idx++ )); do
+                                if [[ ${words[idx]} == 'value' ]]; then
+                                    # 'value' is present, but is not the last
+                                    # word i.e. we can now have UPDATE_FLAGS.
+                                    _bpftool_one_of_list "$UPDATE_FLAGS"
+                                    return 0
+                                fi
+                            done
+                            for (( idx=3; idx < ${#words[@]}-1; idx++ )); do
+                                if [[ ${words[idx]} == 'key' ]]; then
+                                    # 'key' is present, but is not the last
+                                    # word i.e. we can now have 'value'.
+                                    _bpftool_once_attr 'value'
+                                    return 0
+                                fi
+                            done
+
+                            return 0
+                            ;;
+                    esac
+                    ;; 
 } &&
 complete -F _bpftool bpftool
 
