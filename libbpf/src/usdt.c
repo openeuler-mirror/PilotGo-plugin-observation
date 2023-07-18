@@ -129,6 +129,58 @@ void usdt_manager_free(struct usdt_manager *man)
 	free(man);
 }
 
+static int sanity_check_usdt_elf(Elf *elf, const char *path)
+{
+	GElf_Ehdr ehdr;
+	int endianness;
+
+	if (elf_kind(elf) != ELF_K_ELF) {
+		pr_warn("usdt: unrecognized ELF kind %d for '%s'\n", elf_kind(elf), path);
+		return -EBADF;
+	}
+
+	switch (gelf_getclass(elf)) {
+	case ELFCLASS64:
+		if (sizeof(void *) != 8) {
+			pr_warn("usdt: attaching to 64-bit ELF binary '%s' is not supported\n", path);
+			return -EBADF;
+		}
+		break;
+	case ELFCLASS32:
+		if (sizeof(void *) != 4) {
+			pr_warn("usdt: attaching to 32-bit ELF binary '%s' is not supported\n", path);
+			return -EBADF;
+		}
+		break;
+	default:
+		pr_warn("usdt: unsupported ELF class for '%s'\n", path);
+		return -EBADF;
+	}
+
+	if (!gelf_getehdr(elf, &ehdr))
+		return -EINVAL;
+
+	if (ehdr.e_type != ET_EXEC && ehdr.e_type != ET_DYN) {
+		pr_warn("usdt: unsupported type of ELF binary '%s' (%d), only ET_EXEC and ET_DYN are supported\n",
+			path, ehdr.e_type);
+		return -EBADF;
+	}
+
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	endianness = ELFDATA2LSB;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	endianness = ELFDATA2MSB;
+#else
+# error "Unrecognized __BYTE_ORDER__"
+#endif
+	if (endianness != ehdr.e_ident[EI_DATA]) {
+		pr_warn("usdt: ELF endianness mismatch for '%s'\n", path);
+		return -EBADF;
+	}
+
+	return 0;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
