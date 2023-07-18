@@ -44,6 +44,14 @@ void jsonw_reset(json_writer_t *self)
 	self->sep = '\0';
 }
 
+static void jsonw_eor(json_writer_t *self)
+{
+	if (self->sep != '\0')
+		putc(self->sep, self->out);
+	self->sep = ',';
+}
+
+
 void jsonw_start_array(json_writer_t *self)
 {
 	jsonw_begin(self, '[');
@@ -64,4 +72,14 @@ void jsonw_name(json_writer_t *self, const char *name)
 	putc(':', self->out);
 	if (self->pretty)
 		putc(' ', self->out);
+}
+
+void jsonw_printf(json_writer_t *self, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	jsonw_eor(self);
+	vfprintf(self->out, fmt, ap);
+	va_end(ap);
 }

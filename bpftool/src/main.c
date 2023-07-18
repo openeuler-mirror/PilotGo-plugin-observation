@@ -75,6 +75,11 @@ static const struct cmd commands[] = {
 		{ "batch",	do_batch },
 };
 
+#ifndef BPFTOOL_VERSION
+#define BPFTOOL_MAJOR_VERSION (LIBBPF_MAJOR_VERSION + 6)
+#define BPFTOOL_MINOR_VERSION LIBBPF_MINOR_VERSION
+#define BPFTOOL_PATCH_VERSION 0
+#endif
 
 static int do_version(int argc, char **argv)
 {
@@ -107,6 +112,12 @@ static int do_version(int argc, char **argv)
 		jsonw_start_object(json_wtr);
 
 		jsonw_name(json_wtr, "version");
+#ifdef BPFTOOL_VERSION
+		jsonw_printf(json_wtr, "\"%s\"", BPFTOOL_VERSION);
+#else
+		jsonw_printf(json_wtr, "\"%d.%d.%d\"", BPFTOOL_MAJOR_VERSION,
+			     BPFTOOL_MINOR_VERSION, BPFTOOL_PATCH_VERSION);
+#endif
 	}
 	return 0
 }
