@@ -364,6 +364,44 @@ err_out:
 	return err;
 }
 
+static struct elf_seg *find_elf_seg(struct elf_seg *segs, size_t seg_cnt, long virtaddr)
+{
+	struct elf_seg *seg;
+	int i;
+
+	/* for ELF binaries (both executables and shared libraries), we are
+	 * given virtual address (absolute for executables, relative for
+	 * libraries) which should match address range of [seg_start, seg_end)
+	 */
+	for (i = 0, seg = segs; i < seg_cnt; i++, seg++) {
+		if (seg->start <= virtaddr && virtaddr < seg->end)
+			return seg;
+	}
+	return NULL;
+}
+
+static struct elf_seg *find_vma_seg(struct elf_seg *segs, size_t seg_cnt, long offset)
+{
+	struct elf_seg *seg;
+	int i;
+
+	/* for VMA segments from /proc/<pid>/maps file, provided "address" is
+	 * actually a file offset, so should be fall within logical
+	 * offset-based range of [offset_start, offset_end)
+	 */
+	for (i = 0, seg = segs; i < seg_cnt; i++, seg++) {
+		if (seg->offset <= offset && offset < seg->offset + (seg->end - seg->start))
+			return seg;
+	}
+	return NULL;
+}
+
+static int parse_usdt_note(Elf *elf, const char *path, GElf_Nhdr *nhdr,
+			   const char *data, size_t name_off, size_t desc_off,
+			   struct usdt_note *usdt_note);
+
+static int parse_usdt_spec(struct usdt_spec *spec, const struct usdt_note *note, __u64 usdt_cookie);
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
