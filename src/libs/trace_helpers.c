@@ -641,3 +641,29 @@ struct syms {
 	struct dso *dsos;
 	int dso_sz;
 };
+
+static bool is_file_backed(const char *mapname)
+{
+#define STARTS_WITH(mapname, prefix) \
+	(!strncmp(mapname, prefix, sizeof(prefix) - 1))
+
+	return mapname[0] && !(
+		STARTS_WITH(mapname, "//anon") ||
+		STARTS_WITH(mapname, "/dev/zero") ||
+		STARTS_WITH(mapname, "/anon_hugepage") ||
+		STARTS_WITH(mapname, "[stack") ||
+		STARTS_WITH(mapname, "/SYSV") ||
+		STARTS_WITH(mapname, "[heap]") ||
+		STARTS_WITH(mapname, "[uprobes]") ||
+		STARTS_WITH(mapname, "[vsyscall]"));
+}
+
+static bool is_perf_map(const char *path)
+{
+	return false;
+}
+
+static bool is_vdso(const char *path)
+{
+	return !strcmp(path, "[vdso]");
+}
