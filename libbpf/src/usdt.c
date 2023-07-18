@@ -181,6 +181,49 @@ static int sanity_check_usdt_elf(Elf *elf, const char *path)
 	return 0;
 }
 
+static int find_elf_sec_by_name(Elf *elf, const char *sec_name, GElf_Shdr *shdr, Elf_Scn **scn)
+{
+	Elf_Scn *sec = NULL;
+	size_t shstrndx;
+
+	if (elf_getshdrstrndx(elf, &shstrndx))
+		return -EINVAL;
+
+	/* check if ELF is corrupted and avoid calling elf_strptr if yes */
+	if (!elf_rawdata(elf_getscn(elf, shstrndx), NULL))
+		return -EINVAL;
+
+	while ((sec = elf_nextscn(elf, sec)) != NULL) {
+		char *name;
+
+		if (!gelf_getshdr(sec, shdr))
+			return -EINVAL;
+
+		name = elf_strptr(elf, shstrndx, shdr->sh_name);
+		if (name && strcmp(sec_name, name) == 0) {
+			*scn = sec;
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+
+struct elf_seg {
+	long start;
+	long end;
+	long offset;
+	bool is_exec;
+};
+
+static int cmp_elf_segs(const void *_a, const void *_b)
+{
+	const struct elf_seg *a = _a;
+	const struct elf_seg *b = _b;
+
+	return a->start < b->start ? -1 : 1;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
