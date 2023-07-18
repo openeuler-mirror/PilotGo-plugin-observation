@@ -251,3 +251,24 @@ struct restart_block {
 		} poll;
 	};
 };
+
+typedef atomic64_t atomic_long_t;
+
+struct thread_info {
+	long unsigned int flags;
+	union {
+		u64 preempt_count;
+		struct {
+			u32 count;
+			u32 need_resched;
+		} preempt;
+	};
+	u32 cpu;
+};
+
+struct user_fpsimd_state {
+	__int128 unsigned vregs[32];
+	__u32 fpsr;
+	__u32 fpcr;
+	__u32 __reserved[2];
+};
