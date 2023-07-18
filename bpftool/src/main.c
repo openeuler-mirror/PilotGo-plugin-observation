@@ -103,8 +103,10 @@ static int do_version(int argc, char **argv)
 		}
 	}
 
-
-
+	if (json_output) {
+		jsonw_start_object(json_wtr);	
+	}
+	return 0
 }
 
 static int do_batch(int argc, char **argv)

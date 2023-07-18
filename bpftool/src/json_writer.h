@@ -18,3 +18,5 @@ void jsonw_destroy(json_writer_t **self_p);
 void jsonw_pretty(json_writer_t *self, bool on);
 
 void jsonw_start_array(json_writer_t *self);
+
+void jsonw_start_object(json_writer_t *self);

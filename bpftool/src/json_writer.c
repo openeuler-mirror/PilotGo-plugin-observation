@@ -1,13 +1,3 @@
-// SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
-/*
- * Simple streaming JSON writer
- *
- * This takes care of the annoying bits of JSON syntax like the commas
- * after elements
- *
- * Authors:	Stephen Hemminger <stephen@networkplumber.org>
- */
-
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -57,4 +47,10 @@ void jsonw_reset(json_writer_t *self)
 void jsonw_start_array(json_writer_t *self)
 {
 	jsonw_begin(self, '[');
+}
+
+
+void jsonw_start_object(json_writer_t *self)
+{
+	jsonw_begin(self, '{');
 }
