@@ -694,7 +694,48 @@ _bpftool()
                             return 0
                             ;;
                     esac
-                    ;;      
+                    ;; 
+                create)
+                    case $prev in
+                        $command)
+                            _filedir
+                            return 0
+                            ;;
+                        type)
+                            local BPFTOOL_MAP_CREATE_TYPES="$(bpftool feature list_builtins map_types 2>/dev/null | \
+                                grep -v '^unspec$')"
+                            COMPREPLY=( $( compgen -W "$BPFTOOL_MAP_CREATE_TYPES" -- "$cur" ) )
+                            return 0
+                            ;;
+                        key|value|flags|entries)
+                            return 0
+                            ;;
+                        inner_map)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        id)
+                            _bpftool_get_map_ids
+                            ;;
+                        name)
+                            case $pprev in
+                                inner_map)
+                                    _bpftool_get_map_names
+                                    ;;
+                                *)
+                                    return 0
+                                    ;;
+                            esac
+                            ;;
+                        *)
+                            _bpftool_once_attr 'type key value entries name flags dev'
+                            if _bpftool_search_list 'array_of_maps' 'hash_of_maps'; then
+                                _bpftool_once_attr 'inner_map'
+                            fi
+                            return 0
+                            ;;
+                    esac
+                    ;;     
 } &&
 complete -F _bpftool bpftool
 
