@@ -78,6 +78,27 @@ LIBBPF_API int bpf_prog_load(enum bpf_prog_type prog_type,
 			     const struct bpf_insn *insns, size_t insn_cnt,
 			     struct bpf_prog_load_opts *opts);
 
+#define MAPS_RELAX_COMPAT	0x01
+
+/* Recommended log buffer size */
+#define BPF_LOG_BUF_SIZE (UINT32_MAX >> 8) /* verifier maximum in kernels <= 5.1 */
+
+struct bpf_btf_load_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+
+	/* kernel log options */
+	char *log_buf;
+	__u32 log_level;
+	__u32 log_size;
+
+	__u32 log_true_size;
+	size_t :0;
+};
+#define bpf_btf_load_opts__last_field log_true_size
+
+LIBBPF_API int bpf_btf_load(const void *btf_data, size_t btf_size,
+			    struct bpf_btf_load_opts *opts);
+
 LIBBPF_API int bpf_map_update_elem(int fd, const void *key, const void *value,
 				   __u64 flags);
 
