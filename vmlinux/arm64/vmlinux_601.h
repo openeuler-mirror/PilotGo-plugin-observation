@@ -272,3 +272,21 @@ struct user_fpsimd_state {
 	__u32 fpcr;
 	__u32 __reserved[2];
 };
+
+struct irqtrace_events {
+	unsigned int irq_events;
+	long unsigned int hardirq_enable_ip;
+	long unsigned int hardirq_disable_ip;
+	unsigned int hardirq_enable_event;
+	unsigned int hardirq_disable_event;
+	long unsigned int softirq_disable_ip;
+	long unsigned int softirq_enable_ip;
+	unsigned int softirq_disable_event;
+	unsigned int softirq_enable_event;
+};
+
+struct cpumask {
+	long unsigned int bits[2];
+};
+
+typedef struct cpumask cpumask_t;
