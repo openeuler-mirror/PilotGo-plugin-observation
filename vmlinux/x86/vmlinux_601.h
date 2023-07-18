@@ -405,3 +405,51 @@ struct sched_avg {
 };
 
 struct cfs_rq;
+
+struct sched_entity {
+	struct load_weight load;
+	struct rb_node run_node;
+	struct list_head group_node;
+	unsigned int on_rq;
+	u64 exec_start;
+	u64 sum_exec_runtime;
+	u64 vruntime;
+	u64 prev_sum_exec_runtime;
+	u64 nr_migrations;
+	int depth;
+	struct sched_entity *parent;
+	struct cfs_rq *cfs_rq;
+	struct cfs_rq *my_q;
+	long unsigned int runnable_weight;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct sched_avg avg;
+};
+
+struct sched_rt_entity {
+	struct list_head run_list;
+	long unsigned int timeout;
+	long unsigned int watchdog_stamp;
+	unsigned int time_slice;
+	short unsigned int on_rq;
+	short unsigned int on_list;
+	struct sched_rt_entity *back;
+};
+
+typedef s64 ktime_t;
+
+struct timerqueue_node {
+	struct rb_node node;
+	ktime_t expires;
+};
+
+enum hrtimer_restart {
+	HRTIMER_NORESTART = 0,
+	HRTIMER_RESTART = 1,
+};
+
+struct hrtimer_clock_base;
