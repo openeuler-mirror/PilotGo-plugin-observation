@@ -731,6 +731,151 @@ static int allocate_spec_id(struct usdt_manager *man, struct hashmap *specs_hash
 	return 0;
 }
 
+struct bpf_link *usdt_manager_attach_usdt(struct usdt_manager *man, const struct bpf_program *prog,
+					  pid_t pid, const char *path,
+					  const char *usdt_provider, const char *usdt_name,
+					  __u64 usdt_cookie)
+{
+	int i, fd, err, spec_map_fd, ip_map_fd;
+	LIBBPF_OPTS(bpf_uprobe_opts, opts);
+	struct hashmap *specs_hash = NULL;
+	struct bpf_link_usdt *link = NULL;
+	struct usdt_target *targets = NULL;
+	size_t target_cnt;
+	Elf *elf;
+
+	spec_map_fd = bpf_map__fd(man->specs_map);
+	ip_map_fd = bpf_map__fd(man->ip_to_spec_id_map);
+
+	/* TODO: perform path resolution similar to uprobe's */
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("usdt: failed to open ELF binary '%s': %d\n", path, err);
+		return libbpf_err_ptr(err);
+	}
+
+	elf = elf_begin(fd, ELF_C_READ_MMAP, NULL);
+	if (!elf) {
+		err = -EBADF;
+		pr_warn("usdt: failed to parse ELF binary '%s': %s\n", path, elf_errmsg(-1));
+		goto err_out;
+	}
+
+	err = sanity_check_usdt_elf(elf, path);
+	if (err)
+		goto err_out;
+
+	/* normalize PID filter */
+	if (pid < 0)
+		pid = -1;
+	else if (pid == 0)
+		pid = getpid();
+
+	/* discover USDT in given binary, optionally limiting
+	 * activations to a given PID, if pid > 0
+	 */
+	err = collect_usdt_targets(man, elf, path, pid, usdt_provider, usdt_name,
+				   usdt_cookie, &targets, &target_cnt);
+	if (err <= 0) {
+		err = (err == 0) ? -ENOENT : err;
+		goto err_out;
+	}
+
+	specs_hash = hashmap__new(specs_hash_fn, specs_equal_fn, NULL);
+	if (IS_ERR(specs_hash)) {
+		err = PTR_ERR(specs_hash);
+		goto err_out;
+	}
+
+	link = calloc(1, sizeof(*link));
+	if (!link) {
+		err = -ENOMEM;
+		goto err_out;
+	}
+
+	link->usdt_man = man;
+	link->link.detach = &bpf_link_usdt_detach;
+	link->link.dealloc = &bpf_link_usdt_dealloc;
+
+	link->uprobes = calloc(target_cnt, sizeof(*link->uprobes));
+	if (!link->uprobes) {
+		err = -ENOMEM;
+		goto err_out;
+	}
+
+	for (i = 0; i < target_cnt; i++) {
+		struct usdt_target *target = &targets[i];
+		struct bpf_link *uprobe_link;
+		bool is_new;
+		int spec_id;
+
+		/* Spec ID can be either reused or newly allocated. If it is
+		 * newly allocated, we'll need to fill out spec map, otherwise
+		 * entire spec should be valid and can be just used by a new
+		 * uprobe. We reuse spec when USDT arg spec is identical. We
+		 * also never share specs between two different USDT
+		 * attachments ("links"), so all the reused specs already
+		 * share USDT cookie value implicitly.
+		 */
+		err = allocate_spec_id(man, specs_hash, link, target, &spec_id, &is_new);
+		if (err)
+			goto err_out;
+
+		if (is_new && bpf_map_update_elem(spec_map_fd, &spec_id, &target->spec, BPF_ANY)) {
+			err = -errno;
+			pr_warn("usdt: failed to set USDT spec #%d for '%s:%s' in '%s': %d\n",
+				spec_id, usdt_provider, usdt_name, path, err);
+			goto err_out;
+		}
+		if (!man->has_bpf_cookie &&
+		    bpf_map_update_elem(ip_map_fd, &target->abs_ip, &spec_id, BPF_NOEXIST)) {
+			err = -errno;
+			if (err == -EEXIST) {
+				pr_warn("usdt: IP collision detected for spec #%d for '%s:%s' in '%s'\n",
+				        spec_id, usdt_provider, usdt_name, path);
+			} else {
+				pr_warn("usdt: failed to map IP 0x%lx to spec #%d for '%s:%s' in '%s': %d\n",
+					target->abs_ip, spec_id, usdt_provider, usdt_name,
+					path, err);
+			}
+			goto err_out;
+		}
+
+		opts.ref_ctr_offset = target->sema_off;
+		opts.bpf_cookie = man->has_bpf_cookie ? spec_id : 0;
+		uprobe_link = bpf_program__attach_uprobe_opts(prog, pid, path,
+							      target->rel_ip, &opts);
+		err = libbpf_get_error(uprobe_link);
+		if (err) {
+			pr_warn("usdt: failed to attach uprobe #%d for '%s:%s' in '%s': %d\n",
+				i, usdt_provider, usdt_name, path, err);
+			goto err_out;
+		}
+
+		link->uprobes[i].link = uprobe_link;
+		link->uprobes[i].abs_ip = target->abs_ip;
+		link->uprobe_cnt++;
+	}
+
+	free(targets);
+	hashmap__free(specs_hash);
+	elf_end(elf);
+	close(fd);
+
+	return &link->link;
+
+err_out:
+	if (link)
+		bpf_link__destroy(&link->link);
+	free(targets);
+	hashmap__free(specs_hash);
+	if (elf)
+		elf_end(elf);
+	close(fd);
+	return libbpf_err_ptr(err);
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
