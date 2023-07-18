@@ -64,6 +64,156 @@ int bpf_map_create(enum bpf_map_type map_type,
 	return libbpf_err_errno(fd);
 }
 
+int bpf_prog_load(enum bpf_prog_type prog_type,
+		  const char *prog_name, const char *license,
+		  const struct bpf_insn *insns, size_t insn_cnt,
+		  struct bpf_prog_load_opts *opts)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, log_true_size);
+	void *finfo = NULL, *linfo = NULL;
+	const char *func_info, *line_info;
+	__u32 log_size, log_level, attach_prog_fd, attach_btf_obj_fd;
+	__u32 func_info_rec_size, line_info_rec_size;
+	int fd, attempts;
+	union bpf_attr attr;
+	char *log_buf;
+
+	bump_rlimit_memlock();
+
+	if (!OPTS_VALID(opts, bpf_prog_load_opts))
+		return libbpf_err(-EINVAL);
+
+	attempts = OPTS_GET(opts, attempts, 0);
+	if (attempts < 0)
+		return libbpf_err(-EINVAL);
+	if (attempts == 0)
+		attempts = PROG_LOAD_ATTEMPTS;
+
+	memset(&attr, 0, attr_sz);
+
+	attr.prog_type = prog_type;
+	attr.expected_attach_type = OPTS_GET(opts, expected_attach_type, 0);
+
+	attr.prog_btf_fd = OPTS_GET(opts, prog_btf_fd, 0);
+	attr.prog_flags = OPTS_GET(opts, prog_flags, 0);
+	attr.prog_ifindex = OPTS_GET(opts, prog_ifindex, 0);
+	attr.kern_version = OPTS_GET(opts, kern_version, 0);
+
+	if (prog_name && kernel_supports(NULL, FEAT_PROG_NAME))
+		libbpf_strlcpy(attr.prog_name, prog_name, sizeof(attr.prog_name));
+	attr.license = ptr_to_u64(license);
+
+	if (insn_cnt > UINT_MAX)
+		return libbpf_err(-E2BIG);
+
+	attr.insns = ptr_to_u64(insns);
+	attr.insn_cnt = (__u32)insn_cnt;
+
+	attach_prog_fd = OPTS_GET(opts, attach_prog_fd, 0);
+	attach_btf_obj_fd = OPTS_GET(opts, attach_btf_obj_fd, 0);
+
+	if (attach_prog_fd && attach_btf_obj_fd)
+		return libbpf_err(-EINVAL);
+
+	attr.attach_btf_id = OPTS_GET(opts, attach_btf_id, 0);
+	if (attach_prog_fd)
+		attr.attach_prog_fd = attach_prog_fd;
+	else
+		attr.attach_btf_obj_fd = attach_btf_obj_fd;
+
+	log_buf = OPTS_GET(opts, log_buf, NULL);
+	log_size = OPTS_GET(opts, log_size, 0);
+	log_level = OPTS_GET(opts, log_level, 0);
+
+	if (!!log_buf != !!log_size)
+		return libbpf_err(-EINVAL);
+
+	func_info_rec_size = OPTS_GET(opts, func_info_rec_size, 0);
+	func_info = OPTS_GET(opts, func_info, NULL);
+	attr.func_info_rec_size = func_info_rec_size;
+	attr.func_info = ptr_to_u64(func_info);
+	attr.func_info_cnt = OPTS_GET(opts, func_info_cnt, 0);
+
+	line_info_rec_size = OPTS_GET(opts, line_info_rec_size, 0);
+	line_info = OPTS_GET(opts, line_info, NULL);
+	attr.line_info_rec_size = line_info_rec_size;
+	attr.line_info = ptr_to_u64(line_info);
+	attr.line_info_cnt = OPTS_GET(opts, line_info_cnt, 0);
+
+	attr.fd_array = ptr_to_u64(OPTS_GET(opts, fd_array, NULL));
+
+	if (log_level) {
+		attr.log_buf = ptr_to_u64(log_buf);
+		attr.log_size = log_size;
+		attr.log_level = log_level;
+	}
+
+	fd = sys_bpf_prog_load(&attr, attr_sz, attempts);
+	OPTS_SET(opts, log_true_size, attr.log_true_size);
+	if (fd >= 0)
+		return fd;
+
+	/* After bpf_prog_load, the kernel may modify certain attributes
+	 * to give user space a hint how to deal with loading failure.
+	 * Check to see whether we can make some changes and load again.
+	 */
+	while (errno == E2BIG && (!finfo || !linfo)) {
+		if (!finfo && attr.func_info_cnt &&
+		    attr.func_info_rec_size < func_info_rec_size) {
+			/* try with corrected func info records */
+			finfo = alloc_zero_tailing_info(func_info,
+							attr.func_info_cnt,
+							func_info_rec_size,
+							attr.func_info_rec_size);
+			if (!finfo) {
+				errno = E2BIG;
+				goto done;
+			}
+
+			attr.func_info = ptr_to_u64(finfo);
+			attr.func_info_rec_size = func_info_rec_size;
+		} else if (!linfo && attr.line_info_cnt &&
+			   attr.line_info_rec_size < line_info_rec_size) {
+			linfo = alloc_zero_tailing_info(line_info,
+							attr.line_info_cnt,
+							line_info_rec_size,
+							attr.line_info_rec_size);
+			if (!linfo) {
+				errno = E2BIG;
+				goto done;
+			}
+
+			attr.line_info = ptr_to_u64(linfo);
+			attr.line_info_rec_size = line_info_rec_size;
+		} else {
+			break;
+		}
+
+		fd = sys_bpf_prog_load(&attr, attr_sz, attempts);
+		OPTS_SET(opts, log_true_size, attr.log_true_size);
+		if (fd >= 0)
+			goto done;
+	}
+
+	if (log_level == 0 && log_buf) {
+		/* log_level == 0 with non-NULL log_buf requires retrying on error
+		 * with log_level == 1 and log_buf/log_buf_size set, to get details of
+		 * failure
+		 */
+		attr.log_buf = ptr_to_u64(log_buf);
+		attr.log_size = log_size;
+		attr.log_level = 1;
+
+		fd = sys_bpf_prog_load(&attr, attr_sz, attempts);
+		OPTS_SET(opts, log_true_size, attr.log_true_size);
+	}
+done:
+	/* free() doesn't affect errno, so we don't need to restore it */
+	free(finfo);
+	free(linfo);
+	return libbpf_err_errno(fd);
+}
+
 int bpf_map_update_elem(int fd, const void *key, const void *value,
 			__u64 flags)
 {
