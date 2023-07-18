@@ -875,3 +875,60 @@ union bpf_attr {
 	FN(cgrp_storage_get, 210, ##ctx)		\
 	FN(cgrp_storage_delete, 211, ##ctx)		\
 	/* */
+
+#define __BPF_FUNC_MAPPER_APPLY(name, value, FN) FN(name),
+#define __BPF_FUNC_MAPPER(FN) ___BPF_FUNC_MAPPER(__BPF_FUNC_MAPPER_APPLY, FN)
+#define __BPF_ENUM_FN(x, y) BPF_FUNC_ ## x = y,
+enum bpf_func_id {
+	___BPF_FUNC_MAPPER(__BPF_ENUM_FN)
+	__BPF_FUNC_MAX_ID,
+};
+#undef __BPF_ENUM_FN
+
+/* All flags used by eBPF helper functions, placed here. */
+
+/* BPF_FUNC_skb_store_bytes flags. */
+enum {
+	BPF_F_RECOMPUTE_CSUM		= (1ULL << 0),
+	BPF_F_INVALIDATE_HASH		= (1ULL << 1),
+};
+
+enum {
+	BPF_F_HDR_FIELD_MASK		= 0xfULL,
+};
+
+/* BPF_FUNC_l4_csum_replace flags. */
+enum {
+	BPF_F_PSEUDO_HDR		= (1ULL << 4),
+	BPF_F_MARK_MANGLED_0		= (1ULL << 5),
+	BPF_F_MARK_ENFORCE		= (1ULL << 6),
+};
+
+/* BPF_FUNC_clone_redirect and BPF_FUNC_redirect flags. */
+enum {
+	BPF_F_INGRESS			= (1ULL << 0),
+};
+
+/* BPF_FUNC_skb_set_tunnel_key and BPF_FUNC_skb_get_tunnel_key flags. */
+enum {
+	BPF_F_TUNINFO_IPV6		= (1ULL << 0),
+};
+
+/* flags for both BPF_FUNC_get_stackid and BPF_FUNC_get_stack. */
+enum {
+	BPF_F_SKIP_FIELD_MASK		= 0xffULL,
+	BPF_F_USER_STACK		= (1ULL << 8),
+/* flags used by BPF_FUNC_get_stackid only. */
+	BPF_F_FAST_STACK_CMP		= (1ULL << 9),
+	BPF_F_REUSE_STACKID		= (1ULL << 10),
+/* flags used by BPF_FUNC_get_stack only. */
+	BPF_F_USER_BUILD_ID		= (1ULL << 11),
+};
+
+/* BPF_FUNC_skb_set_tunnel_key flags. */
+enum {
+	BPF_F_ZERO_CSUM_TX		= (1ULL << 1),
+	BPF_F_DONT_FRAGMENT		= (1ULL << 2),
+	BPF_F_SEQ_NUMBER		= (1ULL << 3),
+	BPF_F_NO_TUNNEL_KEY		= (1ULL << 4),
+};
