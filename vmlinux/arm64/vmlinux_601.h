@@ -290,3 +290,29 @@ struct cpumask {
 };
 
 typedef struct cpumask cpumask_t;
+
+struct llist_node;
+
+struct llist_head {
+	struct llist_node *first;
+};
+
+struct llist_node {
+	struct llist_node *next;
+};
+
+struct __call_single_node {
+	struct llist_node llist;
+	union {
+		unsigned int u_flags;
+		atomic_t a_flags;
+	};
+	u16 src;
+	u16 dst;
+};
+
+struct refcount_struct {
+	atomic_t refs;
+};
+
+typedef struct refcount_struct refcount_t;
