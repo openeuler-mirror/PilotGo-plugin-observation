@@ -836,7 +836,56 @@ _bpftool()
                             return 0
                             ;;
                     esac
-                    ;; 
+                    ;;
+                pin)
+                    case $prev in
+                        $command)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            ;;
+                        id)
+                            _bpftool_get_map_ids
+                            ;;
+                        name)
+                            _bpftool_get_map_names
+                            ;;
+                    esac
+                    return 0
+                    ;;
+                event_pipe)
+                    case $prev in
+                        $command)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        id)
+                            _bpftool_get_map_ids_for_type perf_event_array
+                            return 0
+                            ;;
+                        name)
+                            _bpftool_get_map_names_for_type perf_event_array
+                            return 0
+                            ;;
+                        cpu)
+                            return 0
+                            ;;
+                        index)
+                            return 0
+                            ;;
+                        *)
+                            _bpftool_once_attr 'cpu index'
+                            return 0
+                            ;;
+                    esac
+                    ;;
+                *)
+                    [[ $prev == $object ]] && \
+                        COMPREPLY=( $( compgen -W 'delete dump getnext help \
+                            lookup pin event_pipe show list update create \
+                            peek push enqueue pop dequeue freeze' -- \
+                            "$cur" ) )
+                    ;;
+            esac
+            ;; 
 } &&
 complete -F _bpftool bpftool
 
