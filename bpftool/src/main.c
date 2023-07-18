@@ -104,7 +104,9 @@ static int do_version(int argc, char **argv)
 	}
 
 	if (json_output) {
-		jsonw_start_object(json_wtr);	
+		jsonw_start_object(json_wtr);
+
+		jsonw_name(json_wtr, "version");
 	}
 	return 0
 }
