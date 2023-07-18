@@ -133,7 +133,60 @@ static int do_version(int argc, char **argv)
 		jsonw_end_object(json_wtr);	/* root object */
 	} else {
 		unsigned int nb_features = 0;
-	return 0
+
+#ifdef BPFTOOL_VERSION
+		printf("%s v%s\n", bin_name, BPFTOOL_VERSION);
+#else
+		printf("%s v%d.%d.%d\n", bin_name, BPFTOOL_MAJOR_VERSION,
+		       BPFTOOL_MINOR_VERSION, BPFTOOL_PATCH_VERSION);
+#endif
+		printf("using libbpf %s\n", libbpf_version_string());
+		printf("features:");
+		print_feature("libbfd", has_libbfd, &nb_features);
+		print_feature("llvm", has_llvm, &nb_features);
+		print_feature("skeletons", has_skeletons, &nb_features);
+		print_feature("bootstrap", bootstrap, &nb_features);
+		printf("\n");
+	}
+	return 0;
+}
+
+bool is_prefix(const char *pfx, const char *str)
+{
+	if (!pfx)
+		return false;
+	if (strlen(str) < strlen(pfx))
+		return false;
+
+	return !memcmp(str, pfx, strlen(pfx));
+}
+
+int cmd_select(const struct cmd *cmds, int argc, char **argv,
+	       int (*help)(int argc, char **argv))
+{
+	unsigned int i;
+
+	last_argc = argc;
+	last_argv = argv;
+	last_do_help = help;
+
+	if (argc < 1 && cmds[0].func)
+		return cmds[0].func(argc, argv);
+
+	for (i = 0; cmds[i].cmd; i++) {
+		if (is_prefix(*argv, cmds[i].cmd)) {
+			if (!cmds[i].func) {
+				p_err("command '%s' is not supported in bootstrap mode",
+				      cmds[i].cmd);
+				return -1;
+			}
+			return cmds[i].func(argc - 1, argv + 1);
+		}
+	}
+
+	help(argc - 1, argv + 1);
+
+	return -1;
 }
 
 static int do_batch(int argc, char **argv)
@@ -266,6 +319,7 @@ last_do_help = do_help;
 	if (version_requested)
 		return do_version(argc, argv);
 
-
+	ret = cmd_select(commands, argc, argv, do_help);
+	
 	return 0
 }
