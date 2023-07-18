@@ -63,3 +63,65 @@ int bpf_map_create(enum bpf_map_type map_type,
 	fd = sys_bpf_fd(BPF_MAP_CREATE, &attr, attr_sz);
 	return libbpf_err_errno(fd);
 }
+
+int bpf_map_update_elem(int fd, const void *key, const void *value,
+			__u64 flags)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, flags);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.map_fd = fd;
+	attr.key = ptr_to_u64(key);
+	attr.value = ptr_to_u64(value);
+	attr.flags = flags;
+
+	ret = sys_bpf(BPF_MAP_UPDATE_ELEM, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_map_lookup_elem(int fd, const void *key, void *value)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, flags);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.map_fd = fd;
+	attr.key = ptr_to_u64(key);
+	attr.value = ptr_to_u64(value);
+
+	ret = sys_bpf(BPF_MAP_LOOKUP_ELEM, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_map_lookup_and_delete_elem(int fd, const void *key, void *value)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, flags);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.map_fd = fd;
+	attr.key = ptr_to_u64(key);
+	attr.value = ptr_to_u64(value);
+
+	ret = sys_bpf(BPF_MAP_LOOKUP_AND_DELETE_ELEM, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_map_delete_elem(int fd, const void *key)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, flags);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.map_fd = fd;
+	attr.key = ptr_to_u64(key);
+
+	ret = sys_bpf(BPF_MAP_DELETE_ELEM, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+}
