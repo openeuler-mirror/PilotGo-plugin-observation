@@ -44,6 +44,47 @@ void jsonw_reset(json_writer_t *self)
 	self->sep = '\0';
 }
 
+static void jsonw_eol(json_writer_t *self)
+{
+	if (!self->pretty)
+		return;
+
+	putc('\n', self->out);
+	jsonw_indent(self);
+}
+
+static void jsonw_puts(json_writer_t *self, const char *str)
+{
+	putc('"', self->out);
+	for (; *str; ++str)
+		switch (*str) {
+		case '\t':
+			fputs("\\t", self->out);
+			break;
+		case '\n':
+			fputs("\\n", self->out);
+			break;
+		case '\r':
+			fputs("\\r", self->out);
+			break;
+		case '\f':
+			fputs("\\f", self->out);
+			break;
+		case '\b':
+			fputs("\\b", self->out);
+			break;
+		case '\\':
+			fputs("\\\\", self->out);
+			break;
+		case '"':
+			fputs("\\\"", self->out);
+			break;
+		default:
+			putc(*str, self->out);
+		}
+	putc('"', self->out);
+}
+
 static void jsonw_eor(json_writer_t *self)
 {
 	if (self->sep != '\0')
@@ -82,4 +123,20 @@ void jsonw_printf(json_writer_t *self, const char *fmt, ...)
 	jsonw_eor(self);
 	vfprintf(self->out, fmt, ap);
 	va_end(ap);
+}
+
+void jsonw_start_object(json_writer_t *self)
+{
+	jsonw_begin(self, '{');
+}
+
+void jsonw_bool(json_writer_t *self, bool val)
+{
+	jsonw_printf(self, "%s", val ? "true" : "false");
+}
+
+void jsonw_bool_field(json_writer_t *self, const char *prop, bool val)
+{
+	jsonw_name(self, prop);
+	jsonw_bool(self, val);
 }

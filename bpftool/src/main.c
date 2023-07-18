@@ -118,6 +118,16 @@ static int do_version(int argc, char **argv)
 		jsonw_printf(json_wtr, "\"%d.%d.%d\"", BPFTOOL_MAJOR_VERSION,
 			     BPFTOOL_MINOR_VERSION, BPFTOOL_PATCH_VERSION);
 #endif
+		jsonw_name(json_wtr, "libbpf_version");
+		jsonw_printf(json_wtr, "\"%d.%d\"",
+			     libbpf_major_version(), libbpf_minor_version());
+
+		jsonw_name(json_wtr, "features");
+		jsonw_start_object(json_wtr);
+		jsonw_bool_field(json_wtr, "libbfd", has_libbfd);
+		jsonw_bool_field(json_wtr, "llvm", has_llvm);
+		jsonw_bool_field(json_wtr, "skeletons", has_skeletons);
+		jsonw_bool_field(json_wtr, "bootstrap", bootstrap);
 	}
 	return 0
 }
