@@ -932,3 +932,67 @@ enum {
 	BPF_F_SEQ_NUMBER		= (1ULL << 3),
 	BPF_F_NO_TUNNEL_KEY		= (1ULL << 4),
 };
+
+/* BPF_FUNC_skb_get_tunnel_key flags. */
+enum {
+	BPF_F_TUNINFO_FLAGS		= (1ULL << 4),
+};
+
+/* BPF_FUNC_perf_event_output, BPF_FUNC_perf_event_read and
+ * BPF_FUNC_perf_event_read_value flags.
+ */
+enum {
+	BPF_F_INDEX_MASK		= 0xffffffffULL,
+	BPF_F_CURRENT_CPU		= BPF_F_INDEX_MASK,
+/* BPF_FUNC_perf_event_output for sk_buff input context. */
+	BPF_F_CTXLEN_MASK		= (0xfffffULL << 32),
+};
+
+/* Current network namespace */
+enum {
+	BPF_F_CURRENT_NETNS		= (-1L),
+};
+
+/* BPF_FUNC_csum_level level values. */
+enum {
+	BPF_CSUM_LEVEL_QUERY,
+	BPF_CSUM_LEVEL_INC,
+	BPF_CSUM_LEVEL_DEC,
+	BPF_CSUM_LEVEL_RESET,
+};
+
+/* BPF_FUNC_skb_adjust_room flags. */
+enum {
+	BPF_F_ADJ_ROOM_FIXED_GSO	= (1ULL << 0),
+	BPF_F_ADJ_ROOM_ENCAP_L3_IPV4	= (1ULL << 1),
+	BPF_F_ADJ_ROOM_ENCAP_L3_IPV6	= (1ULL << 2),
+	BPF_F_ADJ_ROOM_ENCAP_L4_GRE	= (1ULL << 3),
+	BPF_F_ADJ_ROOM_ENCAP_L4_UDP	= (1ULL << 4),
+	BPF_F_ADJ_ROOM_NO_CSUM_RESET	= (1ULL << 5),
+	BPF_F_ADJ_ROOM_ENCAP_L2_ETH	= (1ULL << 6),
+	BPF_F_ADJ_ROOM_DECAP_L3_IPV4	= (1ULL << 7),
+	BPF_F_ADJ_ROOM_DECAP_L3_IPV6	= (1ULL << 8),
+};
+
+enum {
+	BPF_ADJ_ROOM_ENCAP_L2_MASK	= 0xff,
+	BPF_ADJ_ROOM_ENCAP_L2_SHIFT	= 56,
+};
+
+#define BPF_F_ADJ_ROOM_ENCAP_L2(len)	(((__u64)len & \
+					  BPF_ADJ_ROOM_ENCAP_L2_MASK) \
+					 << BPF_ADJ_ROOM_ENCAP_L2_SHIFT)
+
+/* BPF_FUNC_sysctl_get_name flags. */
+enum {
+	BPF_F_SYSCTL_BASE_NAME		= (1ULL << 0),
+};
+
+/* BPF_FUNC_<kernel_obj>_storage_get flags */
+enum {
+	BPF_LOCAL_STORAGE_GET_F_CREATE	= (1ULL << 0),
+	/* BPF_SK_STORAGE_GET_F_CREATE is only kept for backward compatibility
+	 * and BPF_LOCAL_STORAGE_GET_F_CREATE must be used instead.
+	 */
+	BPF_SK_STORAGE_GET_F_CREATE  = BPF_LOCAL_STORAGE_GET_F_CREATE,
+};
