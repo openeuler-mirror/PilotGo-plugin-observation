@@ -518,3 +518,43 @@ struct sched_statistics {
 	long: 64;
 	long: 64;
 };
+
+struct cpumask {
+	long unsigned int bits[2];
+};
+
+typedef struct cpumask cpumask_t;
+
+union rcu_special {
+	struct {
+		u8 blocked;
+		u8 need_qs;
+		u8 exp_hint;
+		u8 need_mb;
+	} b;
+	u32 s;
+};
+
+struct sched_info {
+	long unsigned int pcount;
+	long long unsigned int run_delay;
+	long long unsigned int last_arrival;
+	long long unsigned int last_queued;
+};
+
+struct plist_node {
+	int prio;
+	struct list_head prio_list;
+	struct list_head node_list;
+};
+
+struct task_rss_stat {
+	int events;
+	int count[4];
+};
+
+enum timespec_type {
+	TT_NONE = 0,
+	TT_NATIVE = 1,
+	TT_COMPAT = 2,
+};
