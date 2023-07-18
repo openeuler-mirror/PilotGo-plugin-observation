@@ -876,6 +876,64 @@ err_out:
 	return libbpf_err_ptr(err);
 }
 
+/* Parse out USDT ELF note from '.note.stapsdt' section.
+ * Logic inspired by perf's code.
+ */
+static int parse_usdt_note(Elf *elf, const char *path, GElf_Nhdr *nhdr,
+			   const char *data, size_t name_off, size_t desc_off,
+			   struct usdt_note *note)
+{
+	const char *provider, *name, *args;
+	long addrs[3];
+	size_t len;
+
+	/* sanity check USDT note name and type first */
+	if (strncmp(data + name_off, USDT_NOTE_NAME, nhdr->n_namesz) != 0)
+		return -EINVAL;
+	if (nhdr->n_type != USDT_NOTE_TYPE)
+		return -EINVAL;
+
+	/* sanity check USDT note contents ("description" in ELF terminology) */
+	len = nhdr->n_descsz;
+	data = data + desc_off;
+
+	/* +3 is the very minimum required to store three empty strings */
+	if (len < sizeof(addrs) + 3)
+		return -EINVAL;
+
+	/* get location, base, and semaphore addrs */
+	memcpy(&addrs, data, sizeof(addrs));
+
+	/* parse string fields: provider, name, args */
+	provider = data + sizeof(addrs);
+
+	name = (const char *)memchr(provider, '\0', data + len - provider);
+	if (!name) /* non-zero-terminated provider */
+		return -EINVAL;
+	name++;
+	if (name >= data + len || *name == '\0') /* missing or empty name */
+		return -EINVAL;
+
+	args = memchr(name, '\0', data + len - name);
+	if (!args) /* non-zero-terminated name */
+		return -EINVAL;
+	++args;
+	if (args >= data + len) /* missing arguments spec */
+		return -EINVAL;
+
+	note->provider = provider;
+	note->name = name;
+	if (*args == '\0' || *args == ':')
+		note->args = "";
+	else
+		note->args = args;
+	note->loc_addr = addrs[0];
+	note->base_addr = addrs[1];
+	note->sema_addr = addrs[2];
+
+	return 0;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
