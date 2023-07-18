@@ -54,3 +54,14 @@ void jsonw_start_object(json_writer_t *self)
 {
 	jsonw_begin(self, '{');
 }
+
+void jsonw_name(json_writer_t *self, const char *name)
+{
+	jsonw_eor(self);
+	jsonw_eol(self);
+	self->sep = '\0';
+	jsonw_puts(self, name);
+	putc(':', self->out);
+	if (self->pretty)
+		putc(' ', self->out);
+}
