@@ -85,6 +85,50 @@ struct usdt_manager {
 	bool has_sema_refcnt;
 };
 
+struct usdt_manager *usdt_manager_new(struct bpf_object *obj)
+{
+	static const char *ref_ctr_sysfs_path = "/sys/bus/event_source/devices/uprobe/format/ref_ctr_offset";
+	struct usdt_manager *man;
+	struct bpf_map *specs_map, *ip_to_spec_id_map;
+
+	specs_map = bpf_object__find_map_by_name(obj, "__bpf_usdt_specs");
+	ip_to_spec_id_map = bpf_object__find_map_by_name(obj, "__bpf_usdt_ip_to_spec_id");
+	if (!specs_map || !ip_to_spec_id_map) {
+		pr_warn("usdt: failed to find USDT support BPF maps, did you forget to include bpf/usdt.bpf.h?\n");
+		return ERR_PTR(-ESRCH);
+	}
+
+	man = calloc(1, sizeof(*man));
+	if (!man)
+		return ERR_PTR(-ENOMEM);
+
+	man->specs_map = specs_map;
+	man->ip_to_spec_id_map = ip_to_spec_id_map;
+
+	/* Detect if BPF cookie is supported for kprobes.
+	 * We don't need IP-to-ID mapping if we can use BPF cookies.
+	 * Added in: 7adfc6c9b315 ("bpf: Add bpf_get_attach_cookie() BPF helper to access bpf_cookie value")
+	 */
+	man->has_bpf_cookie = kernel_supports(obj, FEAT_BPF_COOKIE);
+
+	/* Detect kernel support for automatic refcounting of USDT semaphore.
+	 * If this is not supported, USDTs with semaphores will not be supported.
+	 * Added in: a6ca88b241d5 ("trace_uprobe: support reference counter in fd-based uprobe")
+	 */
+	man->has_sema_refcnt = faccessat(AT_FDCWD, ref_ctr_sysfs_path, F_OK, AT_EACCESS) == 0;
+
+	return man;
+}
+
+void usdt_manager_free(struct usdt_manager *man)
+{
+	if (IS_ERR_OR_NULL(man))
+		return;
+
+	free(man->free_spec_ids);
+	free(man);
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
