@@ -274,6 +274,96 @@ static int parse_elf_segs(Elf *elf, const char *path, struct elf_seg **segs, siz
 	return 0;
 }
 
+static int parse_vma_segs(int pid, const char *lib_path, struct elf_seg **segs, size_t *seg_cnt)
+{
+	char path[PATH_MAX], line[PATH_MAX], mode[16];
+	size_t seg_start, seg_end, seg_off;
+	struct elf_seg *seg;
+	int tmp_pid, i, err;
+	FILE *f;
+
+	*seg_cnt = 0;
+
+	/* Handle containerized binaries only accessible from
+	 * /proc/<pid>/root/<path>. They will be reported as just /<path> in
+	 * /proc/<pid>/maps.
+	 */
+	if (sscanf(lib_path, "/proc/%d/root%s", &tmp_pid, path) == 2 && pid == tmp_pid)
+		goto proceed;
+
+	if (!realpath(lib_path, path)) {
+		pr_warn("usdt: failed to get absolute path of '%s' (err %d), using path as is...\n",
+			lib_path, -errno);
+		libbpf_strlcpy(path, lib_path, sizeof(path));
+	}
+
+proceed:
+	sprintf(line, "/proc/%d/maps", pid);
+	f = fopen(line, "r");
+	if (!f) {
+		err = -errno;
+		pr_warn("usdt: failed to open '%s' to get base addr of '%s': %d\n",
+			line, lib_path, err);
+		return err;
+	}
+
+	/* We need to handle lines with no path at the end:
+	 *
+	 * 7f5c6f5d1000-7f5c6f5d3000 rw-p 001c7000 08:04 21238613      /usr/lib64/libc-2.17.so
+	 * 7f5c6f5d3000-7f5c6f5d8000 rw-p 00000000 00:00 0
+	 * 7f5c6f5d8000-7f5c6f5d9000 r-xp 00000000 103:01 362990598    /data/users/andriin/linux/tools/bpf/usdt/libhello_usdt.so
+	 */
+	while (fscanf(f, "%zx-%zx %s %zx %*s %*d%[^\n]\n",
+		      &seg_start, &seg_end, mode, &seg_off, line) == 5) {
+		void *tmp;
+
+		/* to handle no path case (see above) we need to capture line
+		 * without skipping any whitespaces. So we need to strip
+		 * leading whitespaces manually here
+		 */
+		i = 0;
+		while (isblank(line[i]))
+			i++;
+		if (strcmp(line + i, path) != 0)
+			continue;
+
+		pr_debug("usdt: discovered segment for lib '%s': addrs %zx-%zx mode %s offset %zx\n",
+			 path, seg_start, seg_end, mode, seg_off);
+
+		/* ignore non-executable sections for shared libs */
+		if (mode[2] != 'x')
+			continue;
+
+		tmp = libbpf_reallocarray(*segs, *seg_cnt + 1, sizeof(**segs));
+		if (!tmp) {
+			err = -ENOMEM;
+			goto err_out;
+		}
+
+		*segs = tmp;
+		seg = *segs + *seg_cnt;
+		*seg_cnt += 1;
+
+		seg->start = seg_start;
+		seg->end = seg_end;
+		seg->offset = seg_off;
+		seg->is_exec = true;
+	}
+
+	if (*seg_cnt == 0) {
+		pr_warn("usdt: failed to find '%s' (resolved to '%s') within PID %d memory mappings\n",
+			lib_path, path, pid);
+		err = -ESRCH;
+		goto err_out;
+	}
+
+	qsort(*segs, *seg_cnt, sizeof(**segs), cmp_elf_segs);
+	err = 0;
+err_out:
+	fclose(f);
+	return err;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
