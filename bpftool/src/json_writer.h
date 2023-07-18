@@ -26,3 +26,7 @@ void jsonw_name(json_writer_t *self, const char *name);
 void __printf(2, 3) jsonw_printf(json_writer_t *self, const char *fmt, ...);
 
 void jsonw_start_object(json_writer_t *self);
+void jsonw_end_object(json_writer_t *self);
+
+void jsonw_start_array(json_writer_t *self);
+void jsonw_end_array(json_writer_t *self);

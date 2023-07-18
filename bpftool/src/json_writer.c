@@ -140,3 +140,8 @@ void jsonw_bool_field(json_writer_t *self, const char *prop, bool val)
 	jsonw_name(self, prop);
 	jsonw_bool(self, val);
 }
+
+void jsonw_end_object(json_writer_t *self)
+{
+	jsonw_end(self, '}');
+}
