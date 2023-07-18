@@ -644,7 +644,57 @@ _bpftool()
                             -- "$cur" ) )
                     ;;
             esac
-            ;;               
+            ;;    
+        map)
+            local MAP_TYPE='id pinned name'
+            case $command in
+                show|list|dump|peek|pop|dequeue|freeze)
+                    case $prev in
+                        $command)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        id)
+                            case "$command" in
+                                peek)
+                                    _bpftool_get_map_ids_for_type stack
+                                    _bpftool_get_map_ids_for_type queue
+                                    ;;
+                                pop)
+                                    _bpftool_get_map_ids_for_type stack
+                                    ;;
+                                dequeue)
+                                    _bpftool_get_map_ids_for_type queue
+                                    ;;
+                                *)
+                                    _bpftool_get_map_ids
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                        name)
+                            case "$command" in
+                                peek)
+                                    _bpftool_get_map_names_for_type stack
+                                    _bpftool_get_map_names_for_type queue
+                                    ;;
+                                pop)
+                                    _bpftool_get_map_names_for_type stack
+                                    ;;
+                                dequeue)
+                                    _bpftool_get_map_names_for_type queue
+                                    ;;
+                                *)
+                                    _bpftool_get_map_names
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                        *)
+                            return 0
+                            ;;
+                    esac
+                    ;;      
 } &&
 complete -F _bpftool bpftool
 
