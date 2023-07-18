@@ -13,6 +13,8 @@
 extern "C" {
 #endif
 
+int libbpf_set_memlock_rlim(size_t memlock_bytes);
+
 struct bpf_map_create_opts {
 	size_t sz; /* size of this struct for forward/backward compatibility */
 
@@ -168,6 +170,50 @@ LIBBPF_API int bpf_prog_detach(int attachable_fd, enum bpf_attach_type type);
 LIBBPF_API int bpf_prog_detach2(int prog_fd, int attachable_fd,
 				enum bpf_attach_type type);
 
+union bpf_iter_link_info; /* defined in up-to-date linux/bpf.h */
+struct bpf_link_create_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	__u32 flags;
+	union bpf_iter_link_info *iter_info;
+	__u32 iter_info_len;
+	__u32 target_btf_id;
+	union {
+		struct {
+			__u64 bpf_cookie;
+		} perf_event;
+		struct {
+			__u32 flags;
+			__u32 cnt;
+			const char **syms;
+			const unsigned long *addrs;
+			const __u64 *cookies;
+		} kprobe_multi;
+		struct {
+			__u64 cookie;
+		} tracing;
+	};
+	size_t :0;
+};
+#define bpf_link_create_opts__last_field kprobe_multi.cookies
+
+LIBBPF_API int bpf_link_create(int prog_fd, int target_fd,
+			       enum bpf_attach_type attach_type,
+			       const struct bpf_link_create_opts *opts);
+
+LIBBPF_API int bpf_link_detach(int link_fd);
+
+struct bpf_link_update_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	__u32 flags;	   /* extra flags */
+	__u32 old_prog_fd; /* expected old program FD */
+	__u32 old_map_fd;  /* expected old map FD */
+};
+#define bpf_link_update_opts__last_field old_map_fd
+
+LIBBPF_API int bpf_link_update(int link_fd, int new_prog_fd,
+			       const struct bpf_link_update_opts *opts);
+
+LIBBPF_API int bpf_iter_create(int link_fd);
 
 #ifdef __cplusplus
 } /* extern "C" */
