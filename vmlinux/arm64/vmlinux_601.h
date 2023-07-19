@@ -344,3 +344,39 @@ struct sched_avg {
 	long unsigned int util_avg;
 	struct util_est util_est;
 };
+
+struct cfs_rq;
+
+struct sched_entity {
+	struct load_weight load;
+	struct rb_node run_node;
+	struct list_head group_node;
+	unsigned int on_rq;
+	u64 exec_start;
+	u64 sum_exec_runtime;
+	u64 vruntime;
+	u64 prev_sum_exec_runtime;
+	u64 nr_migrations;
+	int depth;
+	struct sched_entity *parent;
+	struct cfs_rq *cfs_rq;
+	struct cfs_rq *my_q;
+	long unsigned int runnable_weight;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct sched_avg avg;
+};
+
+struct sched_rt_entity {
+	struct list_head run_list;
+	long unsigned int timeout;
+	long unsigned int watchdog_stamp;
+	unsigned int time_slice;
+	short unsigned int on_rq;
+	short unsigned int on_list;
+	struct sched_rt_entity *back;
+};
