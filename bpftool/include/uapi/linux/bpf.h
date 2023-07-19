@@ -1243,3 +1243,114 @@ struct bpf_sock {
 	__u32 state;
 	__s32 rx_queue_mapping;
 };
+
+struct bpf_tcp_sock {
+	__u32 snd_cwnd;		/* Sending congestion window		*/
+	__u32 srtt_us;		/* smoothed round trip time << 3 in usecs */
+	__u32 rtt_min;
+	__u32 snd_ssthresh;	/* Slow start size threshold		*/
+	__u32 rcv_nxt;		/* What we want to receive next		*/
+	__u32 snd_nxt;		/* Next sequence we send		*/
+	__u32 snd_una;		/* First byte we want an ack for	*/
+	__u32 mss_cache;	/* Cached effective mss, not including SACKS */
+	__u32 ecn_flags;	/* ECN status bits.			*/
+	__u32 rate_delivered;	/* saved rate sample: packets delivered */
+	__u32 rate_interval_us;	/* saved rate sample: time elapsed */
+	__u32 packets_out;	/* Packets which are "in flight"	*/
+	__u32 retrans_out;	/* Retransmitted packets out		*/
+	__u32 total_retrans;	/* Total retransmits for entire connection */
+	__u32 segs_in;		/* RFC4898 tcpEStatsPerfSegsIn
+				 * total number of segments in.
+				 */
+	__u32 data_segs_in;	/* RFC4898 tcpEStatsPerfDataSegsIn
+				 * total number of data segments in.
+				 */
+	__u32 segs_out;		/* RFC4898 tcpEStatsPerfSegsOut
+				 * The total number of segments sent.
+				 */
+	__u32 data_segs_out;	/* RFC4898 tcpEStatsPerfDataSegsOut
+				 * total number of data segments sent.
+				 */
+	__u32 lost_out;		/* Lost packets			*/
+	__u32 sacked_out;	/* SACK'd packets			*/
+	__u64 bytes_received;	/* RFC4898 tcpEStatsAppHCThruOctetsReceived
+				 * sum(delta(rcv_nxt)), or how many bytes
+				 * were acked.
+				 */
+	__u64 bytes_acked;	/* RFC4898 tcpEStatsAppHCThruOctetsAcked
+				 * sum(delta(snd_una)), or how many bytes
+				 * were acked.
+				 */
+	__u32 dsack_dups;	/* RFC4898 tcpEStatsStackDSACKDups
+				 * total number of DSACK blocks received
+				 */
+	__u32 delivered;	/* Total data packets delivered incl. rexmits */
+	__u32 delivered_ce;	/* Like the above but only ECE marked packets */
+	__u32 icsk_retransmits;	/* Number of unrecovered [RTO] timeouts */
+};
+
+struct bpf_sock_tuple {
+	union {
+		struct {
+			__be32 saddr;
+			__be32 daddr;
+			__be16 sport;
+			__be16 dport;
+		} ipv4;
+		struct {
+			__be32 saddr[4];
+			__be32 daddr[4];
+			__be16 sport;
+			__be16 dport;
+		} ipv6;
+	};
+};
+
+struct bpf_xdp_sock {
+	__u32 queue_id;
+};
+
+#define XDP_PACKET_HEADROOM 256
+
+
+enum xdp_action {
+	XDP_ABORTED = 0,
+	XDP_DROP,
+	XDP_PASS,
+	XDP_TX,
+	XDP_REDIRECT,
+};
+
+
+struct xdp_md {
+	__u32 data;
+	__u32 data_end;
+	__u32 data_meta;
+	/* Below access go through struct xdp_rxq_info */
+	__u32 ingress_ifindex; /* rxq->dev->ifindex */
+	__u32 rx_queue_index;  /* rxq->queue_index  */
+
+	__u32 egress_ifindex;  /* txq->dev->ifindex */
+};
+
+
+struct bpf_devmap_val {
+	__u32 ifindex;   /* device index */
+	union {
+		int   fd;  /* prog fd on map write */
+		__u32 id;  /* prog id on map read */
+	} bpf_prog;
+};
+
+struct bpf_cpumap_val {
+	__u32 qsize;	/* queue size to remote target CPU */
+	union {
+		int   fd;	/* prog fd on map write */
+		__u32 id;	/* prog id on map read */
+	} bpf_prog;
+};
+
+enum sk_action {
+	SK_DROP = 0,
+	SK_PASS,
+};
