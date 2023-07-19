@@ -1141,6 +1141,30 @@ _bpftool()
                     ;;
             esac
             ;;
+        feature)
+            case $command in
+                probe)
+                    [[ $prev == "prefix" ]] && return 0
+                    if _bpftool_search_list 'macros'; then
+                        _bpftool_once_attr 'prefix'
+                    else
+                        COMPREPLY+=( $( compgen -W 'macros' -- "$cur" ) )
+                    fi
+                    _bpftool_one_of_list 'kernel dev'
+                    _bpftool_once_attr 'full unprivileged'
+                    return 0
+                    ;;
+                list_builtins)
+                    [[ $prev != "$command" ]] && return 0
+                    COMPREPLY=( $( compgen -W 'prog_types map_types \
+                        attach_types link_types helpers' -- "$cur" ) )
+                    ;;
+                *)
+                    [[ $prev == $object ]] && \
+                        COMPREPLY=( $( compgen -W 'help list_builtins probe' -- "$cur" ) )
+                    ;;
+            esac
+            ;;
 } &&
 complete -F _bpftool bpftool
 
