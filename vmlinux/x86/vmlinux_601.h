@@ -595,3 +595,57 @@ struct restart_block {
 		} poll;
 	};
 };
+
+struct prev_cputime {
+	u64 utime;
+	u64 stime;
+	raw_spinlock_t lock;
+};
+
+struct rb_root {
+	struct rb_node *rb_node;
+};
+
+struct rb_root_cached {
+	struct rb_root rb_root;
+	struct rb_node *rb_leftmost;
+};
+
+struct timerqueue_head {
+	struct rb_root_cached rb_root;
+};
+
+struct posix_cputimer_base {
+	u64 nextevt;
+	struct timerqueue_head tqhead;
+};
+
+struct posix_cputimers {
+	struct posix_cputimer_base bases[3];
+	unsigned int timers_active;
+	unsigned int expiry_active;
+};
+
+struct posix_cputimers_work {
+	struct callback_head work;
+	unsigned int scheduled;
+};
+
+struct sem_undo_list;
+
+struct sysv_sem {
+	struct sem_undo_list *undo_list;
+};
+
+struct sysv_shm {
+	struct list_head shm_clist;
+};
+
+typedef struct {
+	long unsigned int sig[1];
+} sigset_t;
+
+struct sigpending {
+	struct list_head list;
+	sigset_t signal;
+};
