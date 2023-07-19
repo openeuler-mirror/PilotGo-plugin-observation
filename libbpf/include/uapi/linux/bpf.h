@@ -1217,3 +1217,45 @@ struct bpf_tcp_sock {
 	__u32 delivered_ce;	/* Like the above but only ECE marked packets */
 	__u32 icsk_retransmits;	/* Number of unrecovered [RTO] timeouts */
 };
+
+struct bpf_sock_tuple {
+	union {
+		struct {
+			__be32 saddr;
+			__be32 daddr;
+			__be16 sport;
+			__be16 dport;
+		} ipv4;
+		struct {
+			__be32 saddr[4];
+			__be32 daddr[4];
+			__be16 sport;
+			__be16 dport;
+		} ipv6;
+	};
+};
+
+struct bpf_xdp_sock {
+	__u32 queue_id;
+};
+
+#define XDP_PACKET_HEADROOM 256
+
+enum xdp_action {
+	XDP_ABORTED = 0,
+	XDP_DROP,
+	XDP_PASS,
+	XDP_TX,
+	XDP_REDIRECT,
+};
+
+struct xdp_md {
+	__u32 data;
+	__u32 data_end;
+	__u32 data_meta;
+	/* Below access go through struct xdp_rxq_info */
+	__u32 ingress_ifindex; /* rxq->dev->ifindex */
+	__u32 rx_queue_index;  /* rxq->queue_index  */
+
+	__u32 egress_ifindex;  /* txq->dev->ifindex */
+};
