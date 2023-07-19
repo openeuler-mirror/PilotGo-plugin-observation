@@ -886,6 +886,90 @@ _bpftool()
                     ;;
             esac
             ;; 
+        btf)
+            local PROG_TYPE='id pinned tag name'
+            local MAP_TYPE='id pinned name'
+            case $command in
+                dump)
+                    case $prev in
+                        $command)
+                            COMPREPLY+=( $( compgen -W "id map prog file" -- \
+                                "$cur" ) )
+                            return 0
+                            ;;
+                        prog)
+                            COMPREPLY=( $( compgen -W "$PROG_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        map)
+                            COMPREPLY=( $( compgen -W "$MAP_TYPE" -- "$cur" ) )
+                            return 0
+                            ;;
+                        id)
+                            case $pprev in
+                                prog)
+                                    _bpftool_get_prog_ids
+                                    ;;
+                                map)
+                                    _bpftool_get_map_ids
+                                    ;;
+                                $command)
+                                    _bpftool_get_btf_ids
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                        name)
+                            case $pprev in
+                                prog)
+                                    _bpftool_get_prog_names
+                                    ;;
+                                map)
+                                    _bpftool_get_map_names
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                        format)
+                            COMPREPLY=( $( compgen -W "c raw" -- "$cur" ) )
+                            ;;
+                        *)
+                            # emit extra options
+                            case ${words[3]} in
+                                id|file)
+                                    _bpftool_once_attr 'format'
+                                    ;;
+                                map|prog)
+                                    if [[ ${words[3]} == "map" ]] && [[ $cword == 6 ]]; then
+                                        COMPREPLY+=( $( compgen -W "key value kv all" -- "$cur" ) )
+                                    fi
+                                    _bpftool_once_attr 'format'
+                                    ;;
+                                *)
+                                    ;;
+                            esac
+                            return 0
+                            ;;
+                    esac
+                    ;;
+                show|list)
+                    case $prev in
+                        $command)
+                            COMPREPLY+=( $( compgen -W "id" -- "$cur" ) )
+                            ;;
+                        id)
+                            _bpftool_get_btf_ids
+                            ;;
+                    esac
+                    return 0
+                    ;;
+                *)
+                    [[ $prev == $object ]] && \
+                        COMPREPLY=( $( compgen -W 'dump help show list' \
+                            -- "$cur" ) )
+                    ;;
+            esac
+            ;;
 } &&
 complete -F _bpftool bpftool
 
