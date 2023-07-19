@@ -657,6 +657,80 @@ static int bpf_link_usdt_detach(struct bpf_link *link)
 	return 0;
 }
 
+static void bpf_link_usdt_dealloc(struct bpf_link *link)
+{
+	struct bpf_link_usdt *usdt_link = container_of(link, struct bpf_link_usdt, link);
+
+	free(usdt_link->spec_ids);
+	free(usdt_link->uprobes);
+	free(usdt_link);
+}
+
+static size_t specs_hash_fn(long key, void *ctx)
+{
+	return str_hash((char *)key);
+}
+
+static bool specs_equal_fn(long key1, long key2, void *ctx)
+{
+	return strcmp((char *)key1, (char *)key2) == 0;
+}
+
+static int allocate_spec_id(struct usdt_manager *man, struct hashmap *specs_hash,
+			    struct bpf_link_usdt *link, struct usdt_target *target,
+			    int *spec_id, bool *is_new)
+{
+	long tmp;
+	void *new_ids;
+	int err;
+
+	/* check if we already allocated spec ID for this spec string */
+	if (hashmap__find(specs_hash, target->spec_str, &tmp)) {
+		*spec_id = tmp;
+		*is_new = false;
+		return 0;
+	}
+
+	/* otherwise it's a new ID that needs to be set up in specs map and
+	 * returned back to usdt_manager when USDT link is detached
+	 */
+	new_ids = libbpf_reallocarray(link->spec_ids, link->spec_cnt + 1, sizeof(*link->spec_ids));
+	if (!new_ids)
+		return -ENOMEM;
+	link->spec_ids = new_ids;
+
+	/* get next free spec ID, giving preference to free list, if not empty */
+	if (man->free_spec_cnt) {
+		*spec_id = man->free_spec_ids[man->free_spec_cnt - 1];
+
+		/* cache spec ID for current spec string for future lookups */
+		err = hashmap__add(specs_hash, target->spec_str, *spec_id);
+		if (err)
+			 return err;
+
+		man->free_spec_cnt--;
+	} else {
+		/* don't allocate spec ID bigger than what fits in specs map */
+		if (man->next_free_spec_id >= bpf_map__max_entries(man->specs_map))
+			return -E2BIG;
+
+		*spec_id = man->next_free_spec_id;
+
+		/* cache spec ID for current spec string for future lookups */
+		err = hashmap__add(specs_hash, target->spec_str, *spec_id);
+		if (err)
+			 return err;
+
+		man->next_free_spec_id++;
+	}
+
+	/* remember new spec ID in the link for later return back to free list on detach */
+	link->spec_ids[link->spec_cnt] = *spec_id;
+	link->spec_cnt++;
+	*is_new = true;
+	return 0;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
