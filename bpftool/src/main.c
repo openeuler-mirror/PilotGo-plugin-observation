@@ -71,8 +71,10 @@ static int do_help(int argc, char **argv)
 static int do_version(int argc, char **argv);
 
 static const struct cmd commands[] = {
-		{ "help",	do_help },
-		{ "batch",	do_batch },
+	{ "help",	do_help },
+	{ "batch",	do_batch },
+	{ "prog",	do_prog },
+	{ "map",	do_map },
 };
 
 #ifndef BPFTOOL_VERSION
