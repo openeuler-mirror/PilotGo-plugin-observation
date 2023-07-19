@@ -444,3 +444,64 @@ int bpf_obj_get_opts(const char *pathname, const struct bpf_obj_get_opts *opts)
 	fd = sys_bpf_fd(BPF_OBJ_GET, &attr, attr_sz);
 	return libbpf_err_errno(fd);
 }
+
+int bpf_prog_attach(int prog_fd, int target_fd, enum bpf_attach_type type,
+		    unsigned int flags)
+{
+	DECLARE_LIBBPF_OPTS(bpf_prog_attach_opts, opts,
+		.flags = flags,
+	);
+
+	return bpf_prog_attach_opts(prog_fd, target_fd, type, &opts);
+}
+
+int bpf_prog_attach_opts(int prog_fd, int target_fd,
+			  enum bpf_attach_type type,
+			  const struct bpf_prog_attach_opts *opts)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, replace_bpf_fd);
+	union bpf_attr attr;
+	int ret;
+
+	if (!OPTS_VALID(opts, bpf_prog_attach_opts))
+		return libbpf_err(-EINVAL);
+
+	memset(&attr, 0, attr_sz);
+	attr.target_fd	   = target_fd;
+	attr.attach_bpf_fd = prog_fd;
+	attr.attach_type   = type;
+	attr.attach_flags  = OPTS_GET(opts, flags, 0);
+	attr.replace_bpf_fd = OPTS_GET(opts, replace_prog_fd, 0);
+
+	ret = sys_bpf(BPF_PROG_ATTACH, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_prog_detach(int target_fd, enum bpf_attach_type type)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, replace_bpf_fd);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.target_fd	 = target_fd;
+	attr.attach_type = type;
+
+	ret = sys_bpf(BPF_PROG_DETACH, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_prog_detach2(int prog_fd, int target_fd, enum bpf_attach_type type)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, replace_bpf_fd);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.target_fd	 = target_fd;
+	attr.attach_bpf_fd = prog_fd;
+	attr.attach_type = type;
+
+	ret = sys_bpf(BPF_PROG_DETACH, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
