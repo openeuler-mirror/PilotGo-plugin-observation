@@ -918,3 +918,15 @@ union bpf_attr {
 	FN(cgrp_storage_get, 210, ##ctx)		\
 	FN(cgrp_storage_delete, 211, ##ctx)		\
 	/* */
+#define __BPF_FUNC_MAPPER_APPLY(name, value, FN) FN(name),
+#define __BPF_FUNC_MAPPER(FN) ___BPF_FUNC_MAPPER(__BPF_FUNC_MAPPER_APPLY, FN)
+
+/* integer value in 'imm' field of BPF_CALL instruction selects which helper
+ * function eBPF program intends to call
+ */
+#define __BPF_ENUM_FN(x, y) BPF_FUNC_ ## x = y,
+enum bpf_func_id {
+	___BPF_FUNC_MAPPER(__BPF_ENUM_FN)
+	__BPF_FUNC_MAX_ID,
+};
+#undef __BPF_ENUM_FN    
