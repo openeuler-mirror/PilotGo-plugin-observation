@@ -821,3 +821,40 @@ int bpf_link_get_fd_by_id(__u32 id)
 	return bpf_link_get_fd_by_id_opts(id, NULL);
 }
 
+int bpf_obj_get_info_by_fd(int bpf_fd, void *info, __u32 *info_len)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, info);
+	union bpf_attr attr;
+	int err;
+
+	memset(&attr, 0, attr_sz);
+	attr.info.bpf_fd = bpf_fd;
+	attr.info.info_len = *info_len;
+	attr.info.info = ptr_to_u64(info);
+
+	err = sys_bpf(BPF_OBJ_GET_INFO_BY_FD, &attr, attr_sz);
+	if (!err)
+		*info_len = attr.info.info_len;
+	return libbpf_err_errno(err);
+}
+
+int bpf_prog_get_info_by_fd(int prog_fd, struct bpf_prog_info *info, __u32 *info_len)
+{
+	return bpf_obj_get_info_by_fd(prog_fd, info, info_len);
+}
+
+int bpf_map_get_info_by_fd(int map_fd, struct bpf_map_info *info, __u32 *info_len)
+{
+	return bpf_obj_get_info_by_fd(map_fd, info, info_len);
+}
+
+int bpf_btf_get_info_by_fd(int btf_fd, struct bpf_btf_info *info, __u32 *info_len)
+{
+	return bpf_obj_get_info_by_fd(btf_fd, info, info_len);
+}
+
+int bpf_link_get_info_by_fd(int link_fd, struct bpf_link_info *info, __u32 *info_len)
+{
+	return bpf_obj_get_info_by_fd(link_fd, info, info_len);
+}
+
