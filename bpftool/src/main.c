@@ -75,6 +75,8 @@ static const struct cmd commands[] = {
 	{ "batch",	do_batch },
 	{ "prog",	do_prog },
 	{ "map",	do_map },
+	{ "link",	do_link },
+	{ "cgroup",	do_cgroup },
 };
 
 #ifndef BPFTOOL_VERSION
