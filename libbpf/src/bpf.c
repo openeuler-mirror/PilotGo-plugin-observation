@@ -693,4 +693,40 @@ int bpf_prog_query(int target_fd, enum bpf_attach_type type, __u32 query_flags,
 	return libbpf_err_errno(ret);
 }
 
+static int bpf_obj_get_next_id(__u32 start_id, __u32 *next_id, int cmd)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, open_flags);
+	union bpf_attr attr;
+	int err;
+
+	memset(&attr, 0, attr_sz);
+	attr.start_id = start_id;
+
+	err = sys_bpf(cmd, &attr, attr_sz);
+	if (!err)
+		*next_id = attr.next_id;
+
+	return libbpf_err_errno(err);
+}
+
+int bpf_prog_get_next_id(__u32 start_id, __u32 *next_id)
+{
+	return bpf_obj_get_next_id(start_id, next_id, BPF_PROG_GET_NEXT_ID);
+}
+
+int bpf_map_get_next_id(__u32 start_id, __u32 *next_id)
+{
+	return bpf_obj_get_next_id(start_id, next_id, BPF_MAP_GET_NEXT_ID);
+}
+
+int bpf_btf_get_next_id(__u32 start_id, __u32 *next_id)
+{
+	return bpf_obj_get_next_id(start_id, next_id, BPF_BTF_GET_NEXT_ID);
+}
+
+int bpf_link_get_next_id(__u32 start_id, __u32 *next_id)
+{
+	return bpf_obj_get_next_id(start_id, next_id, BPF_LINK_GET_NEXT_ID);
+}
+
 
