@@ -1165,6 +1165,40 @@ _bpftool()
                     ;;
             esac
             ;;
+        link)
+            case $command in
+                show|list|pin|detach)
+                    case $prev in
+                        id)
+                            _bpftool_get_link_ids
+                            return 0
+                            ;;
+                    esac
+                    ;;
+            esac
+
+            local LINK_TYPE='id pinned'
+            case $command in
+                show|list)
+                    [[ $prev != "$command" ]] && return 0
+                    COMPREPLY=( $( compgen -W "$LINK_TYPE" -- "$cur" ) )
+                    return 0
+                    ;;
+                pin|detach)
+                    if [[ $prev == "$command" ]]; then
+                        COMPREPLY=( $( compgen -W "$LINK_TYPE" -- "$cur" ) )
+                    else
+                        _filedir
+                    fi
+                    return 0
+                    ;;
+                *)
+                    [[ $prev == $object ]] && \
+                        COMPREPLY=( $( compgen -W 'help pin show list' -- "$cur" ) )
+                    ;;
+            esac
+            ;;
+    esac
 } &&
 complete -F _bpftool bpftool
 
