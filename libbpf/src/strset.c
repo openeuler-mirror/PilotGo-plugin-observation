@@ -132,3 +132,46 @@ int strset__find_str(struct strset *set, const char *s)
 
 	return -ENOENT;
 }
+
+/* Add a string s to the string data. If the string already exists, return its
+ * offset within string data.
+ * Returns:
+ *   - > 0 offset into string data, on success;
+ *   - < 0, on error.
+ */
+int strset__add_str(struct strset *set, const char *s)
+{
+	long old_off, new_off, len;
+	void *p;
+	int err;
+
+	/* Hashmap keys are always offsets within set->strs_data, so to even
+	 * look up some string from the "outside", we need to first append it
+	 * at the end, so that it can be addressed with an offset. Luckily,
+	 * until set->strs_data_len is incremented, that string is just a piece
+	 * of garbage for the rest of the code, so no harm, no foul. On the
+	 * other hand, if the string is unique, it's already appended and
+	 * ready to be used, only a simple set->strs_data_len increment away.
+	 */
+	len = strlen(s) + 1;
+	p = strset_add_str_mem(set, len);
+	if (!p)
+		return -ENOMEM;
+
+	new_off = set->strs_data_len;
+	memcpy(p, s, len);
+
+	/* Now attempt to add the string, but only if the string with the same
+	 * contents doesn't exist already (HASHMAP_ADD strategy). If such
+	 * string exists, we'll get its offset in old_off (that's old_key).
+	 */
+	err = hashmap__insert(set->strs_hash, new_off, new_off,
+			      HASHMAP_ADD, &old_off, NULL);
+	if (err == -EEXIST)
+		return old_off; /* duplicated string, return existing offset */
+	if (err)
+		return err;
+
+	set->strs_data_len += len; /* new unique string, adjust data length */
+	return new_off;
+}
