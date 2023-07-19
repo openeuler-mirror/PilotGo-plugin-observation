@@ -588,6 +588,75 @@ err_out:
 	return err;
 }
 
+struct bpf_link_usdt {
+	struct bpf_link link;
+
+	struct usdt_manager *usdt_man;
+
+	size_t spec_cnt;
+	int *spec_ids;
+
+	size_t uprobe_cnt;
+	struct {
+		long abs_ip;
+		struct bpf_link *link;
+	} *uprobes;
+};
+
+static int bpf_link_usdt_detach(struct bpf_link *link)
+{
+	struct bpf_link_usdt *usdt_link = container_of(link, struct bpf_link_usdt, link);
+	struct usdt_manager *man = usdt_link->usdt_man;
+	int i;
+
+	for (i = 0; i < usdt_link->uprobe_cnt; i++) {
+		/* detach underlying uprobe link */
+		bpf_link__destroy(usdt_link->uprobes[i].link);
+		/* there is no need to update specs map because it will be
+		 * unconditionally overwritten on subsequent USDT attaches,
+		 * but if BPF cookies are not used we need to remove entry
+		 * from ip_to_spec_id map, otherwise we'll run into false
+		 * conflicting IP errors
+		 */
+		if (!man->has_bpf_cookie) {
+			/* not much we can do about errors here */
+			(void)bpf_map_delete_elem(bpf_map__fd(man->ip_to_spec_id_map),
+						  &usdt_link->uprobes[i].abs_ip);
+		}
+	}
+
+	/* try to return the list of previously used spec IDs to usdt_manager
+	 * for future reuse for subsequent USDT attaches
+	 */
+	if (!man->free_spec_ids) {
+		/* if there were no free spec IDs yet, just transfer our IDs */
+		man->free_spec_ids = usdt_link->spec_ids;
+		man->free_spec_cnt = usdt_link->spec_cnt;
+		usdt_link->spec_ids = NULL;
+	} else {
+		/* otherwise concat IDs */
+		size_t new_cnt = man->free_spec_cnt + usdt_link->spec_cnt;
+		int *new_free_ids;
+
+		new_free_ids = libbpf_reallocarray(man->free_spec_ids, new_cnt,
+						   sizeof(*new_free_ids));
+		/* If we couldn't resize free_spec_ids, we'll just leak
+		 * a bunch of free IDs; this is very unlikely to happen and if
+		 * system is so exhausted on memory, it's the least of user's
+		 * concerns, probably.
+		 * So just do our best here to return those IDs to usdt_manager.
+		 */
+		if (new_free_ids) {
+			memcpy(new_free_ids + man->free_spec_cnt, usdt_link->spec_ids,
+			       usdt_link->spec_cnt * sizeof(*usdt_link->spec_ids));
+			man->free_spec_ids = new_free_ids;
+			man->free_spec_cnt = new_cnt;
+		}
+	}
+
+	return 0;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
