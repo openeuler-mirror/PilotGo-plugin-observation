@@ -1163,3 +1163,83 @@ struct __sk_buff {
 	__u32 :24;		/* Padding, future use. */
 	__u64 hwtstamp;
 };
+struct bpf_tunnel_key {
+	__u32 tunnel_id;
+	union {
+		__u32 remote_ipv4;
+		__u32 remote_ipv6[4];
+	};
+	__u8 tunnel_tos;
+	__u8 tunnel_ttl;
+	union {
+		__u16 tunnel_ext;	/* compat */
+		__be16 tunnel_flags;
+	};
+	__u32 tunnel_label;
+	union {
+		__u32 local_ipv4;
+		__u32 local_ipv6[4];
+	};
+};
+
+/* user accessible mirror of in-kernel xfrm_state.
+ * new fields can only be added to the end of this structure
+ */
+struct bpf_xfrm_state {
+	__u32 reqid;
+	__u32 spi;	/* Stored in network byte order */
+	__u16 family;
+	__u16 ext;	/* Padding, future use. */
+	union {
+		__u32 remote_ipv4;	/* Stored in network byte order */
+		__u32 remote_ipv6[4];	/* Stored in network byte order */
+	};
+};
+
+/* Generic BPF return codes which all BPF program types may support.
+ * The values are binary compatible with their TC_ACT_* counter-part to
+ * provide backwards compatibility with existing SCHED_CLS and SCHED_ACT
+ * programs.
+ *
+ * XDP is handled seprately, see XDP_*.
+ */
+enum bpf_ret_code {
+	BPF_OK = 0,
+	/* 1 reserved */
+	BPF_DROP = 2,
+	/* 3-6 reserved */
+	BPF_REDIRECT = 7,
+	/* >127 are reserved for prog type specific return codes.
+	 *
+	 * BPF_LWT_REROUTE: used by BPF_PROG_TYPE_LWT_IN and
+	 *    BPF_PROG_TYPE_LWT_XMIT to indicate that skb had been
+	 *    changed and should be routed based on its new L3 header.
+	 *    (This is an L3 redirect, as opposed to L2 redirect
+	 *    represented by BPF_REDIRECT above).
+	 */
+	BPF_LWT_REROUTE = 128,
+	/* BPF_FLOW_DISSECTOR_CONTINUE: used by BPF_PROG_TYPE_FLOW_DISSECTOR
+	 *   to indicate that no custom dissection was performed, and
+	 *   fallback to standard dissector is requested.
+	 */
+	BPF_FLOW_DISSECTOR_CONTINUE = 129,
+};
+
+struct bpf_sock {
+	__u32 bound_dev_if;
+	__u32 family;
+	__u32 type;
+	__u32 protocol;
+	__u32 mark;
+	__u32 priority;
+	/* IP address also allows 1 and 2 bytes access */
+	__u32 src_ip4;
+	__u32 src_ip6[4];
+	__u32 src_port;		/* host byte order */
+	__be16 dst_port;	/* network byte order */
+	__u16 :16;		/* zero padding */
+	__u32 dst_ip4;
+	__u32 dst_ip6[4];
+	__u32 state;
+	__s32 rx_queue_mapping;
+};
