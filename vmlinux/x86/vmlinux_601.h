@@ -649,3 +649,50 @@ struct sigpending {
 	struct list_head list;
 	sigset_t signal;
 };
+
+typedef struct {
+	uid_t val;
+} kuid_t;
+
+struct seccomp_filter;
+
+struct seccomp {
+	int mode;
+	atomic_t filter_count;
+	struct seccomp_filter *filter;
+};
+
+struct syscall_user_dispatch {
+	char *selector;
+	long unsigned int offset;
+	long unsigned int len;
+	bool on_dispatch;
+};
+
+struct spinlock {
+	union {
+		struct raw_spinlock rlock;
+		struct {
+			u8 __padding[24];
+			struct lockdep_map dep_map;
+		};
+	};
+};
+
+typedef struct spinlock spinlock_t;
+
+struct wake_q_node {
+	struct wake_q_node *next;
+};
+
+struct irqtrace_events {
+	unsigned int irq_events;
+	long unsigned int hardirq_enable_ip;
+	long unsigned int hardirq_disable_ip;
+	unsigned int hardirq_enable_event;
+	unsigned int hardirq_disable_event;
+	long unsigned int softirq_disable_ip;
+	long unsigned int softirq_enable_ip;
+	unsigned int softirq_disable_event;
+	unsigned int softirq_enable_event;
+};
