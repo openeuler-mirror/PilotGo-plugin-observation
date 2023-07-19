@@ -322,6 +322,34 @@ int bpf_map_delete_elem_flags(int fd, const void *key, __u64 flags)
 	return libbpf_err_errno(ret);
 }
 
+int bpf_map_get_next_key(int fd, const void *key, void *next_key)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, next_key);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.map_fd = fd;
+	attr.key = ptr_to_u64(key);
+	attr.next_key = ptr_to_u64(next_key);
+
+	ret = sys_bpf(BPF_MAP_GET_NEXT_KEY, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_map_freeze(int fd)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, map_fd);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.map_fd = fd;
+
+	ret = sys_bpf(BPF_MAP_FREEZE, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
 static int bpf_map_batch_common(int cmd, int fd, void  *in_batch,
 				void *out_batch, void *keys, void *values,
 				__u32 *count,
