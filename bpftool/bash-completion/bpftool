@@ -1010,6 +1010,66 @@ _bpftool()
                     ;;
             esac
             ;;
+        cgroup)
+            case $command in
+                show|list|tree)
+                    case $cword in
+                        3)
+                            _filedir
+                            ;;
+                        4)
+                            COMPREPLY=( $( compgen -W 'effective' -- "$cur" ) )
+                            ;;
+                    esac
+                    return 0
+                    ;;
+                attach|detach)
+                    local BPFTOOL_CGROUP_ATTACH_TYPES="$(bpftool feature list_builtins attach_types 2>/dev/null | \
+                        grep '^cgroup_')"
+                    local ATTACH_FLAGS='multi override'
+                    local PROG_TYPE='id pinned tag name'
+                    # Check for $prev = $command first
+                    if [ $prev = $command ]; then
+                        _filedir
+                        return 0
+                    # Then check for attach type. This is done outside of the
+                    # "case $prev in" to avoid writing the whole list of attach
+                    # types again as pattern to match (where we cannot reuse
+                    # our variable).
+                    elif [[ $BPFTOOL_CGROUP_ATTACH_TYPES =~ $prev ]]; then
+                            COMPREPLY=( $( compgen -W "$PROG_TYPE" -- \
+                                "$cur" ) )
+                            return 0
+                    fi
+                    # case/esac for the other cases
+                    case $prev in
+                        id)
+                            _bpftool_get_prog_ids
+                            return 0
+                            ;;
+                        *)
+                            if ! _bpftool_search_list "$BPFTOOL_CGROUP_ATTACH_TYPES"; then
+                                COMPREPLY=( $( compgen -W \
+                                    "$BPFTOOL_CGROUP_ATTACH_TYPES" -- "$cur" ) )
+                            elif [[ "$command" == "attach" ]]; then
+                                # We have an attach type on the command line,
+                                # but it is not the previous word, or
+                                # "id|pinned|tag|name" (we already checked for
+                                # that). This should only leave the case when
+                                # we need attach flags for "attach" commamnd.
+                                _bpftool_one_of_list "$ATTACH_FLAGS"
+                            fi
+                            return 0
+                            ;;
+                    esac
+                    ;;
+                *)
+                    [[ $prev == $object ]] && \
+                        COMPREPLY=( $( compgen -W 'help attach detach \
+                            show list tree' -- "$cur" ) )
+                    ;;
+            esac
+            ;;
 } &&
 complete -F _bpftool bpftool
 
