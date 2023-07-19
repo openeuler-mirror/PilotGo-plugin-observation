@@ -884,3 +884,14 @@ static int dso__add_syms(struct dso *dso, Elf *e, Elf_Scn *section,
 err_out:
 	return -1;
 }
+
+static void dso__free_fields(struct dso *dso)
+{
+	if (!dso)
+		return;
+
+	free(dso->name);
+	free(dso->ranges);
+	free(dso->syms);
+	btf__free(dso->btf);
+}
