@@ -934,6 +934,51 @@ static int parse_usdt_note(Elf *elf, const char *path, GElf_Nhdr *nhdr,
 	return 0;
 }
 
+static int parse_usdt_arg(const char *arg_str, int arg_num, struct usdt_arg_spec *arg, int *arg_sz);
+
+static int parse_usdt_spec(struct usdt_spec *spec, const struct usdt_note *note, __u64 usdt_cookie)
+{
+	struct usdt_arg_spec *arg;
+	const char *s;
+	int arg_sz, len;
+
+	spec->usdt_cookie = usdt_cookie;
+	spec->arg_cnt = 0;
+
+	s = note->args;
+	while (s[0]) {
+		if (spec->arg_cnt >= USDT_MAX_ARG_CNT) {
+			pr_warn("usdt: too many USDT arguments (> %d) for '%s:%s' with args spec '%s'\n",
+				USDT_MAX_ARG_CNT, note->provider, note->name, note->args);
+			return -E2BIG;
+		}
+
+		arg = &spec->args[spec->arg_cnt];
+		len = parse_usdt_arg(s, spec->arg_cnt, arg, &arg_sz);
+		if (len < 0)
+			return len;
+
+		arg->arg_signed = arg_sz < 0;
+		if (arg_sz < 0)
+			arg_sz = -arg_sz;
+
+		switch (arg_sz) {
+		case 1: case 2: case 4: case 8:
+			arg->arg_bitshift = 64 - arg_sz * 8;
+			break;
+		default:
+			pr_warn("usdt: unsupported arg #%d (spec '%s') size: %d\n",
+				spec->arg_cnt, s, arg_sz);
+			return -EINVAL;
+		}
+
+		s += len;
+		spec->arg_cnt++;
+	}
+
+	return 0;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
