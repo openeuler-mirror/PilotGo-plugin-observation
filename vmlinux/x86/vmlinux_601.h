@@ -696,3 +696,52 @@ struct irqtrace_events {
 	unsigned int softirq_disable_event;
 	unsigned int softirq_enable_event;
 };
+
+struct held_lock {
+	u64 prev_chain_key;
+	long unsigned int acquire_ip;
+	struct lockdep_map *instance;
+	struct lockdep_map *nest_lock;
+	unsigned int class_idx: 13;
+	unsigned int irq_context: 2;
+	unsigned int trylock: 1;
+	unsigned int read: 2;
+	unsigned int check: 1;
+	unsigned int hardirqs_off: 1;
+	unsigned int references: 12;
+	unsigned int pin_count;
+};
+
+struct task_io_accounting {
+	u64 rchar;
+	u64 wchar;
+	u64 syscr;
+	u64 syscw;
+	u64 read_bytes;
+	u64 write_bytes;
+	u64 cancelled_write_bytes;
+};
+
+typedef struct {
+	long unsigned int bits[1];
+} nodemask_t;
+
+struct seqcount {
+	unsigned int sequence;
+	struct lockdep_map dep_map;
+};
+
+typedef struct seqcount seqcount_t;
+
+struct seqcount_spinlock {
+	seqcount_t seqcount;
+	spinlock_t *lock;
+};
+
+typedef struct seqcount_spinlock seqcount_spinlock_t;
+
+typedef atomic64_t atomic_long_t;
+
+struct optimistic_spin_queue {
+	atomic_t tail;
+};
