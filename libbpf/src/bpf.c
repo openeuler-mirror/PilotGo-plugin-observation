@@ -505,3 +505,104 @@ int bpf_prog_detach2(int prog_fd, int target_fd, enum bpf_attach_type type)
 	ret = sys_bpf(BPF_PROG_DETACH, &attr, attr_sz);
 	return libbpf_err_errno(ret);
 }
+
+int bpf_link_create(int prog_fd, int target_fd,
+		    enum bpf_attach_type attach_type,
+		    const struct bpf_link_create_opts *opts)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, link_create);
+	__u32 target_btf_id, iter_info_len;
+	union bpf_attr attr;
+	int fd, err;
+
+	if (!OPTS_VALID(opts, bpf_link_create_opts))
+		return libbpf_err(-EINVAL);
+
+	iter_info_len = OPTS_GET(opts, iter_info_len, 0);
+	target_btf_id = OPTS_GET(opts, target_btf_id, 0);
+
+	/* validate we don't have unexpected combinations of non-zero fields */
+	if (iter_info_len || target_btf_id) {
+		if (iter_info_len && target_btf_id)
+			return libbpf_err(-EINVAL);
+		if (!OPTS_ZEROED(opts, target_btf_id))
+			return libbpf_err(-EINVAL);
+	}
+
+	memset(&attr, 0, attr_sz);
+	attr.link_create.prog_fd = prog_fd;
+	attr.link_create.target_fd = target_fd;
+	attr.link_create.attach_type = attach_type;
+	attr.link_create.flags = OPTS_GET(opts, flags, 0);
+
+	if (target_btf_id) {
+		attr.link_create.target_btf_id = target_btf_id;
+		goto proceed;
+	}
+
+	switch (attach_type) {
+	case BPF_TRACE_ITER:
+		attr.link_create.iter_info = ptr_to_u64(OPTS_GET(opts, iter_info, (void *)0));
+		attr.link_create.iter_info_len = iter_info_len;
+		break;
+	case BPF_PERF_EVENT:
+		attr.link_create.perf_event.bpf_cookie = OPTS_GET(opts, perf_event.bpf_cookie, 0);
+		if (!OPTS_ZEROED(opts, perf_event))
+			return libbpf_err(-EINVAL);
+		break;
+	case BPF_TRACE_KPROBE_MULTI:
+		attr.link_create.kprobe_multi.flags = OPTS_GET(opts, kprobe_multi.flags, 0);
+		attr.link_create.kprobe_multi.cnt = OPTS_GET(opts, kprobe_multi.cnt, 0);
+		attr.link_create.kprobe_multi.syms = ptr_to_u64(OPTS_GET(opts, kprobe_multi.syms, 0));
+		attr.link_create.kprobe_multi.addrs = ptr_to_u64(OPTS_GET(opts, kprobe_multi.addrs, 0));
+		attr.link_create.kprobe_multi.cookies = ptr_to_u64(OPTS_GET(opts, kprobe_multi.cookies, 0));
+		if (!OPTS_ZEROED(opts, kprobe_multi))
+			return libbpf_err(-EINVAL);
+		break;
+	case BPF_TRACE_FENTRY:
+	case BPF_TRACE_FEXIT:
+	case BPF_MODIFY_RETURN:
+	case BPF_LSM_MAC:
+		attr.link_create.tracing.cookie = OPTS_GET(opts, tracing.cookie, 0);
+		if (!OPTS_ZEROED(opts, tracing))
+			return libbpf_err(-EINVAL);
+		break;
+	default:
+		if (!OPTS_ZEROED(opts, flags))
+			return libbpf_err(-EINVAL);
+		break;
+	}
+proceed:
+	fd = sys_bpf_fd(BPF_LINK_CREATE, &attr, attr_sz);
+	if (fd >= 0)
+		return fd;
+	/* we'll get EINVAL if LINK_CREATE doesn't support attaching fentry
+	 * and other similar programs
+	 */
+	err = -errno;
+	if (err != -EINVAL)
+		return libbpf_err(err);
+
+	/* if user used features not supported by
+	 * BPF_RAW_TRACEPOINT_OPEN command, then just give up immediately
+	 */
+	if (attr.link_create.target_fd || attr.link_create.target_btf_id)
+		return libbpf_err(err);
+	if (!OPTS_ZEROED(opts, sz))
+		return libbpf_err(err);
+
+	/* otherwise, for few select kinds of programs that can be
+	 * attached using BPF_RAW_TRACEPOINT_OPEN command, try that as
+	 * a fallback for older kernels
+	 */
+	switch (attach_type) {
+	case BPF_TRACE_RAW_TP:
+	case BPF_LSM_MAC:
+	case BPF_TRACE_FENTRY:
+	case BPF_TRACE_FEXIT:
+	case BPF_MODIFY_RETURN:
+		return bpf_raw_tracepoint_open(NULL, prog_fd);
+	default:
+		return libbpf_err(err);
+	}
+}
