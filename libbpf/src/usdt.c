@@ -402,6 +402,192 @@ static int parse_usdt_note(Elf *elf, const char *path, GElf_Nhdr *nhdr,
 
 static int parse_usdt_spec(struct usdt_spec *spec, const struct usdt_note *note, __u64 usdt_cookie);
 
+static int collect_usdt_targets(struct usdt_manager *man, Elf *elf, const char *path, pid_t pid,
+				const char *usdt_provider, const char *usdt_name, __u64 usdt_cookie,
+				struct usdt_target **out_targets, size_t *out_target_cnt)
+{
+	size_t off, name_off, desc_off, seg_cnt = 0, vma_seg_cnt = 0, target_cnt = 0;
+	struct elf_seg *segs = NULL, *vma_segs = NULL;
+	struct usdt_target *targets = NULL, *target;
+	long base_addr = 0;
+	Elf_Scn *notes_scn, *base_scn;
+	GElf_Shdr base_shdr, notes_shdr;
+	GElf_Ehdr ehdr;
+	GElf_Nhdr nhdr;
+	Elf_Data *data;
+	int err;
+
+	*out_targets = NULL;
+	*out_target_cnt = 0;
+
+	err = find_elf_sec_by_name(elf, USDT_NOTE_SEC, &notes_shdr, &notes_scn);
+	if (err) {
+		pr_warn("usdt: no USDT notes section (%s) found in '%s'\n", USDT_NOTE_SEC, path);
+		return err;
+	}
+
+	if (notes_shdr.sh_type != SHT_NOTE || !gelf_getehdr(elf, &ehdr)) {
+		pr_warn("usdt: invalid USDT notes section (%s) in '%s'\n", USDT_NOTE_SEC, path);
+		return -EINVAL;
+	}
+
+	err = parse_elf_segs(elf, path, &segs, &seg_cnt);
+	if (err) {
+		pr_warn("usdt: failed to process ELF program segments for '%s': %d\n", path, err);
+		goto err_out;
+	}
+
+	/* .stapsdt.base ELF section is optional, but is used for prelink
+	 * offset compensation (see a big comment further below)
+	 */
+	if (find_elf_sec_by_name(elf, USDT_BASE_SEC, &base_shdr, &base_scn) == 0)
+		base_addr = base_shdr.sh_addr;
+
+	data = elf_getdata(notes_scn, 0);
+	off = 0;
+	while ((off = gelf_getnote(data, off, &nhdr, &name_off, &desc_off)) > 0) {
+		long usdt_abs_ip, usdt_rel_ip, usdt_sema_off = 0;
+		struct usdt_note note;
+		struct elf_seg *seg = NULL;
+		void *tmp;
+
+		err = parse_usdt_note(elf, path, &nhdr, data->d_buf, name_off, desc_off, &note);
+		if (err)
+			goto err_out;
+
+		if (strcmp(note.provider, usdt_provider) != 0 || strcmp(note.name, usdt_name) != 0)
+			continue;
+
+		usdt_abs_ip = note.loc_addr;
+		if (base_addr)
+			usdt_abs_ip += base_addr - note.base_addr;
+
+		/* When attaching uprobes (which is what USDTs basically are)
+		 * kernel expects file offset to be specified, not a relative
+		 * virtual address, so we need to translate virtual address to
+		 * file offset, for both ET_EXEC and ET_DYN binaries.
+		 */
+		seg = find_elf_seg(segs, seg_cnt, usdt_abs_ip);
+		if (!seg) {
+			err = -ESRCH;
+			pr_warn("usdt: failed to find ELF program segment for '%s:%s' in '%s' at IP 0x%lx\n",
+				usdt_provider, usdt_name, path, usdt_abs_ip);
+			goto err_out;
+		}
+		if (!seg->is_exec) {
+			err = -ESRCH;
+			pr_warn("usdt: matched ELF binary '%s' segment [0x%lx, 0x%lx) for '%s:%s' at IP 0x%lx is not executable\n",
+				path, seg->start, seg->end, usdt_provider, usdt_name,
+				usdt_abs_ip);
+			goto err_out;
+		}
+		/* translate from virtual address to file offset */
+		usdt_rel_ip = usdt_abs_ip - seg->start + seg->offset;
+
+		if (ehdr.e_type == ET_DYN && !man->has_bpf_cookie) {
+			if (pid < 0) {
+				pr_warn("usdt: attaching to shared libraries without specific PID is not supported on current kernel\n");
+				err = -ENOTSUP;
+				goto err_out;
+			}
+
+			/* vma_segs are lazily initialized only if necessary */
+			if (vma_seg_cnt == 0) {
+				err = parse_vma_segs(pid, path, &vma_segs, &vma_seg_cnt);
+				if (err) {
+					pr_warn("usdt: failed to get memory segments in PID %d for shared library '%s': %d\n",
+						pid, path, err);
+					goto err_out;
+				}
+			}
+
+			seg = find_vma_seg(vma_segs, vma_seg_cnt, usdt_rel_ip);
+			if (!seg) {
+				err = -ESRCH;
+				pr_warn("usdt: failed to find shared lib memory segment for '%s:%s' in '%s' at relative IP 0x%lx\n",
+					usdt_provider, usdt_name, path, usdt_rel_ip);
+				goto err_out;
+			}
+
+			usdt_abs_ip = seg->start - seg->offset + usdt_rel_ip;
+		}
+
+		pr_debug("usdt: probe for '%s:%s' in %s '%s': addr 0x%lx base 0x%lx (resolved abs_ip 0x%lx rel_ip 0x%lx) args '%s' in segment [0x%lx, 0x%lx) at offset 0x%lx\n",
+			 usdt_provider, usdt_name, ehdr.e_type == ET_EXEC ? "exec" : "lib ", path,
+			 note.loc_addr, note.base_addr, usdt_abs_ip, usdt_rel_ip, note.args,
+			 seg ? seg->start : 0, seg ? seg->end : 0, seg ? seg->offset : 0);
+
+		/* Adjust semaphore address to be a file offset */
+		if (note.sema_addr) {
+			if (!man->has_sema_refcnt) {
+				pr_warn("usdt: kernel doesn't support USDT semaphore refcounting for '%s:%s' in '%s'\n",
+					usdt_provider, usdt_name, path);
+				err = -ENOTSUP;
+				goto err_out;
+			}
+
+			seg = find_elf_seg(segs, seg_cnt, note.sema_addr);
+			if (!seg) {
+				err = -ESRCH;
+				pr_warn("usdt: failed to find ELF loadable segment with semaphore of '%s:%s' in '%s' at 0x%lx\n",
+					usdt_provider, usdt_name, path, note.sema_addr);
+				goto err_out;
+			}
+			if (seg->is_exec) {
+				err = -ESRCH;
+				pr_warn("usdt: matched ELF binary '%s' segment [0x%lx, 0x%lx] for semaphore of '%s:%s' at 0x%lx is executable\n",
+					path, seg->start, seg->end, usdt_provider, usdt_name,
+					note.sema_addr);
+				goto err_out;
+			}
+
+			usdt_sema_off = note.sema_addr - seg->start + seg->offset;
+
+			pr_debug("usdt: sema  for '%s:%s' in %s '%s': addr 0x%lx base 0x%lx (resolved 0x%lx) in segment [0x%lx, 0x%lx] at offset 0x%lx\n",
+				 usdt_provider, usdt_name, ehdr.e_type == ET_EXEC ? "exec" : "lib ",
+				 path, note.sema_addr, note.base_addr, usdt_sema_off,
+				 seg->start, seg->end, seg->offset);
+		}
+
+		/* Record adjusted addresses and offsets and parse USDT spec */
+		tmp = libbpf_reallocarray(targets, target_cnt + 1, sizeof(*targets));
+		if (!tmp) {
+			err = -ENOMEM;
+			goto err_out;
+		}
+		targets = tmp;
+
+		target = &targets[target_cnt];
+		memset(target, 0, sizeof(*target));
+
+		target->abs_ip = usdt_abs_ip;
+		target->rel_ip = usdt_rel_ip;
+		target->sema_off = usdt_sema_off;
+
+		/* notes.args references strings from Elf itself, so they can
+		 * be referenced safely until elf_end() call
+		 */
+		target->spec_str = note.args;
+
+		err = parse_usdt_spec(&target->spec, &note, usdt_cookie);
+		if (err)
+			goto err_out;
+
+		target_cnt++;
+	}
+
+	*out_targets = targets;
+	*out_target_cnt = target_cnt;
+	err = target_cnt;
+
+err_out:
+	free(segs);
+	free(vma_segs);
+	if (err < 0)
+		free(targets);
+	return err;
+}
+
 /*Architecture specific logic for parsing USDT parameter location specifications*/
 
 #if defined(__x86_64__) || defined(__i386__)
