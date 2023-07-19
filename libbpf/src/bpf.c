@@ -408,3 +408,39 @@ int bpf_map_update_batch(int fd, const void *keys, const void *values, __u32 *co
 	return bpf_map_batch_common(BPF_MAP_UPDATE_BATCH, fd, NULL, NULL,
 				    (void *)keys, (void *)values, count, opts);
 }
+
+int bpf_obj_pin(int fd, const char *pathname)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, file_flags);
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.pathname = ptr_to_u64((void *)pathname);
+	attr.bpf_fd = fd;
+
+	ret = sys_bpf(BPF_OBJ_PIN, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
+
+int bpf_obj_get(const char *pathname)
+{
+	return bpf_obj_get_opts(pathname, NULL);
+}
+
+int bpf_obj_get_opts(const char *pathname, const struct bpf_obj_get_opts *opts)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, file_flags);
+	union bpf_attr attr;
+	int fd;
+
+	if (!OPTS_VALID(opts, bpf_obj_get_opts))
+		return libbpf_err(-EINVAL);
+
+	memset(&attr, 0, attr_sz);
+	attr.pathname = ptr_to_u64((void *)pathname);
+	attr.file_flags = OPTS_GET(opts, file_flags, 0);
+
+	fd = sys_bpf_fd(BPF_OBJ_GET, &attr, attr_sz);
+	return libbpf_err_errno(fd);
+}
