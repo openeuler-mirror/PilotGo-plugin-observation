@@ -745,3 +745,58 @@ typedef atomic64_t atomic_long_t;
 struct optimistic_spin_queue {
 	atomic_t tail;
 };
+
+struct mutex {
+	atomic_long_t owner;
+	raw_spinlock_t wait_lock;
+	struct optimistic_spin_queue osq;
+	struct list_head wait_list;
+	void *magic;
+	struct lockdep_map dep_map;
+};
+
+struct arch_tlbflush_unmap_batch {
+	struct cpumask cpumask;
+};
+
+struct tlbflush_unmap_batch {
+	struct arch_tlbflush_unmap_batch arch;
+	bool flush_required;
+	bool writable;
+};
+
+struct page_frag {
+	struct page *page;
+	__u32 offset;
+	__u32 size;
+};
+
+struct kmap_ctrl {};
+
+struct timer_list {
+	struct hlist_node entry;
+	long unsigned int expires;
+	void (*function)(struct timer_list *);
+	u32 flags;
+	struct lockdep_map lockdep_map;
+};
+
+struct llist_head {
+	struct llist_node *first;
+};
+
+struct desc_struct {
+	u16 limit0;
+	u16 base0;
+	u16 base1: 8;
+	u16 type: 4;
+	u16 s: 1;
+	u16 dpl: 2;
+	u16 p: 1;
+	u16 limit1: 4;
+	u16 avl: 1;
+	u16 l: 1;
+	u16 d: 1;
+	u16 g: 1;
+	u16 base2: 8;
+};
