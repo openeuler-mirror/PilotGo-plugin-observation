@@ -316,3 +316,31 @@ struct refcount_struct {
 };
 
 typedef struct refcount_struct refcount_t;
+
+struct load_weight {
+	long unsigned int weight;
+	u32 inv_weight;
+};
+
+struct rb_node {
+	long unsigned int __rb_parent_color;
+	struct rb_node *rb_right;
+	struct rb_node *rb_left;
+};
+
+struct util_est {
+	unsigned int enqueued;
+	unsigned int ewma;
+};
+
+struct sched_avg {
+	u64 last_update_time;
+	u64 load_sum;
+	u64 runnable_sum;
+	u32 util_sum;
+	u32 period_contrib;
+	long unsigned int load_avg;
+	long unsigned int runnable_avg;
+	long unsigned int util_avg;
+	struct util_est util_est;
+};
