@@ -848,3 +848,39 @@ static int sym_cmp(const void *p1, const void *p2)
 		return strcmp(s1->name, s2->name);
 	return s1->start < s2->start ? -1 : 1;
 }
+
+static int dso__add_syms(struct dso *dso, Elf *e, Elf_Scn *section,
+			 size_t stridx, size_t symsize)
+{
+	Elf_Data *data = NULL;
+
+	while ((data = elf_getdata(section, data)) != 0) {
+		size_t i, symcount = data->d_size / symsize;
+
+		if (data->d_size % symsize)
+			return -1;
+
+		for (i = 0; i < symcount; ++i) {
+			const char *name;
+			GElf_Sym sym;
+
+			if (!gelf_getsym(data, (int)i, &sym))
+				continue;
+			if (!(name = elf_strptr(e, stridx, sym.st_name)))
+				continue;
+			if (name[0] == '\0')
+				continue;
+
+			if (sym.st_value == 0)
+				continue;
+
+			if (dso__add_sym(dso, name, sym.st_value, sym.st_size))
+				goto err_out;
+		}
+	}
+
+	return 0;
+
+err_out:
+	return -1;
+}
