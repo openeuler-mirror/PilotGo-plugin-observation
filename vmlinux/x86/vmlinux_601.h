@@ -800,3 +800,49 @@ struct desc_struct {
 	u16 g: 1;
 	u16 base2: 8;
 };
+
+struct fpu_state_perm {
+	u64 __state_perm;
+	unsigned int __state_size;
+	unsigned int __user_state_size;
+};
+
+struct fregs_state {
+	u32 cwd;
+	u32 swd;
+	u32 twd;
+	u32 fip;
+	u32 fcs;
+	u32 foo;
+	u32 fos;
+	u32 st_space[20];
+	u32 status;
+};
+
+struct fxregs_state {
+	u16 cwd;
+	u16 swd;
+	u16 twd;
+	u16 fop;
+	union {
+		struct {
+			u64 rip;
+			u64 rdp;
+		};
+		struct {
+			u32 fip;
+			u32 fcs;
+			u32 foo;
+			u32 fos;
+		};
+	};
+	u32 mxcsr;
+	u32 mxcsr_mask;
+	u32 st_space[32];
+	u32 xmm_space[64];
+	u32 padding[12];
+	union {
+		u32 padding1[12];
+		u32 sw_reserved[12];
+	};
+};
