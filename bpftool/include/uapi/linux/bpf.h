@@ -1534,12 +1534,7 @@ struct bpf_sock_addr {
 	__bpf_md_ptr(struct bpf_sock *, sk);
 };
 
-/* User bpf_sock_ops struct to access socket values and specify request ops
- * and their replies.
- * Some of this fields are in network (bigendian) byte order and may need
- * to be converted before use (bpf_ntohl() defined in samples/bpf/bpf_endian.h).
- * New fields can only be added at the end of this structure
- */
+
 struct bpf_sock_ops {
 	__u32 op;
 	union {
@@ -1590,15 +1585,56 @@ struct bpf_sock_ops {
 				 * It includes the header, options,
 				 * and payload.
 				 */
-	__u32 skb_tcp_flags;	/* tcp_flags of the header.  It provides
-				 * an easy way to check for tcp_flags
-				 * without parsing skb_data.
-				 *
-				 * In particular, the skb_tcp_flags
-				 * will still be available in
-				 * BPF_SOCK_OPS_HDR_OPT_LEN even though
-				 * the outgoing header has not
-				 * been written yet.
-				 */
+	__u32 skb_tcp_flags;	
 	__u64 skb_hwtstamp;
+};
+enum {
+	BPF_SOCK_OPS_RTO_CB_FLAG	= (1<<0),
+	BPF_SOCK_OPS_RETRANS_CB_FLAG	= (1<<1),
+	BPF_SOCK_OPS_STATE_CB_FLAG	= (1<<2),
+	BPF_SOCK_OPS_RTT_CB_FLAG	= (1<<3),
+
+
+	BPF_SOCK_OPS_PARSE_ALL_HDR_OPT_CB_FLAG	= (1<<4),
+
+	BPF_SOCK_OPS_PARSE_UNKNOWN_HDR_OPT_CB_FLAG = (1<<5),
+
+	BPF_SOCK_OPS_WRITE_HDR_OPT_CB_FLAG = (1<<6),
+/* Mask of all currently supported cb flags */
+	BPF_SOCK_OPS_ALL_CB_FLAGS       = 0x7F,
+};
+
+/* List of known BPF sock_ops operators.
+ * New entries can only be added at the end
+ */
+enum {
+	BPF_SOCK_OPS_VOID,
+	BPF_SOCK_OPS_TIMEOUT_INIT,	/* Should return SYN-RTO value to use or
+					 * -1 if default value should be used
+					 */
+	BPF_SOCK_OPS_RWND_INIT,		/* Should return initial advertized
+					 * window (in packets) or -1 if default
+					 * value should be used
+					 */
+	BPF_SOCK_OPS_TCP_CONNECT_CB,	/* Calls BPF program right before an
+					 * active connection is initialized
+					 */
+	BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB,	
+	BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB,	
+	BPF_SOCK_OPS_NEEDS_ECN,		
+	BPF_SOCK_OPS_BASE_RTT,		
+	BPF_SOCK_OPS_RTO_CB,		
+	BPF_SOCK_OPS_RETRANS_CB,	
+	BPF_SOCK_OPS_STATE_CB,		/* Called when TCP changes state.
+					 * Arg1: old_state
+					 * Arg2: new_state
+					 */
+	BPF_SOCK_OPS_TCP_LISTEN_CB,	/* Called on listen(2), right after
+					 * socket transition to LISTEN state.
+					 */
+	BPF_SOCK_OPS_RTT_CB,		/* Called on every RTT.
+					 */
+	BPF_SOCK_OPS_PARSE_HDR_OPT_CB,	
+	BPF_SOCK_OPS_HDR_OPT_LEN_CB,	
+	BPF_SOCK_OPS_WRITE_HDR_OPT_CB,	
 };
