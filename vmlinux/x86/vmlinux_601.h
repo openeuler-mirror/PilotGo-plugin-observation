@@ -887,3 +887,61 @@ union fpregs_state {
 	struct xregs_state xsave;
 	u8 __padding[4096];
 };
+
+struct fpstate {
+	unsigned int size;
+	unsigned int user_size;
+	u64 xfeatures;
+	u64 user_xfeatures;
+	u64 xfd;
+	unsigned int is_valloc: 1;
+	unsigned int is_guest: 1;
+	unsigned int is_confidential: 1;
+	unsigned int in_use: 1;
+	long: 64;
+	long: 64;
+	long: 64;
+	union fpregs_state regs;
+};
+
+struct fpu {
+	unsigned int last_cpu;
+	long unsigned int avx512_timestamp;
+	struct fpstate *fpstate;
+	struct fpstate *__task_fpstate;
+	struct fpu_state_perm perm;
+	struct fpu_state_perm guest_perm;
+	struct fpstate __fpstate;
+};
+
+struct perf_event;
+
+struct io_bitmap;
+
+struct thread_struct {
+	struct desc_struct tls_array[3];
+	long unsigned int sp;
+	short unsigned int es;
+	short unsigned int ds;
+	short unsigned int fsindex;
+	short unsigned int gsindex;
+	long unsigned int fsbase;
+	long unsigned int gsbase;
+	struct perf_event *ptrace_bps[4];
+	long unsigned int virtual_dr6;
+	long unsigned int ptrace_dr7;
+	long unsigned int cr2;
+	long unsigned int trap_nr;
+	long unsigned int error_code;
+	struct io_bitmap *io_bitmap;
+	long unsigned int iopl_emul;
+	unsigned int iopl_warn: 1;
+	unsigned int sig_on_uaccess_err: 1;
+	u32 pkru;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct fpu fpu;
+};
