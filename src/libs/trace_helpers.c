@@ -1003,3 +1003,12 @@ err_out:
 	free(image);
 	return fd;
 }
+
+static int dso__load_sym_table_from_vdso_image(struct dso *dso)
+{
+	int fd = create_tmp_vdso_image(dso);
+
+	if (fd < 0)
+		return -1;
+	return dso__load_sym_table_from_elf(dso, fd);
+}
