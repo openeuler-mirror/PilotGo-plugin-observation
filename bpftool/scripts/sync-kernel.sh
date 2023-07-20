@@ -258,3 +258,67 @@ TIP_TAG="bpftool-tip-${SUFFIX}"
 BPF_BASELINE_TAG="bpftool-bpf-baseline-${SUFFIX}"
 BPF_TIP_TAG="bpftool-bpf-tip-${SUFFIX}"
 VIEW_TAG="bpftool-view-${SUFFIX}"
+
+# Squash state of kernel repo at baseline into single commit
+SQUASH_BASE_TAG="bpftool-squash-base-${SUFFIX}"
+SQUASH_TIP_TAG="bpftool-squash-tip-${SUFFIX}"
+SQUASH_COMMIT=$(git commit-tree "${BASELINE_COMMIT}^{tree}" -m "BASELINE SQUASH ${BASELINE_COMMIT}")
+
+echo "WORKDIR:          ${WORKDIR}"
+echo "LINUX REPO:       ${LINUX_REPO}"
+echo "BPFTOOL REPO:     ${BPFTOOL_REPO}"
+echo "TEMP DIR:         ${TMP_DIR}"
+echo "SUFFIX:           ${SUFFIX}"
+echo "BASE COMMIT:      '$(commit_desc "${BASELINE_COMMIT}")'"
+echo "TIP COMMIT:       '$(commit_desc "${TIP_COMMIT}")'"
+echo "BPF BASE COMMIT:  '$(commit_desc "${BPF_BASELINE_COMMIT}")'"
+echo "BPF TIP COMMIT:   '$(commit_desc "${BPF_TIP_COMMIT}")'"
+echo "SQUASH COMMIT:    ${SQUASH_COMMIT}"
+echo "BASELINE TAG:     ${BASELINE_TAG}"
+echo "TIP TAG:          ${TIP_TAG}"
+echo "BPF BASELINE TAG: ${BPF_BASELINE_TAG}"
+echo "BPF TIP TAG:      ${BPF_TIP_TAG}"
+echo "SQUASH BASE TAG:  ${SQUASH_BASE_TAG}"
+echo "SQUASH TIP TAG:   ${SQUASH_TIP_TAG}"
+echo "VIEW TAG:         ${VIEW_TAG}"
+echo "BPFTOOL SYNC TAG: ${BPFTOOL_SYNC_TAG}"
+echo "PATCHES:          ${TMP_DIR}/patches"
+
+git branch "${BASELINE_TAG}" "${BASELINE_COMMIT}"
+git branch "${TIP_TAG}" "${TIP_COMMIT}"
+git branch "${BPF_BASELINE_TAG}" "${BPF_BASELINE_COMMIT}"
+git branch "${BPF_TIP_TAG}" "${BPF_TIP_COMMIT}"
+git branch "${SQUASH_BASE_TAG}" "${SQUASH_COMMIT}"
+git checkout -b "${SQUASH_TIP_TAG}" "${SQUASH_COMMIT}"
+
+# Cherry-pick new commits onto squashed baseline commit
+echo "Cherry-pick for bpf-next..."
+cherry_pick_commits "${BASELINE_TAG}" "${TIP_TAG}"
+echo "Cherry-pick for bpf..."
+cherry_pick_commits "${BPF_BASELINE_TAG}" "${BPF_TIP_TAG}"
+
+# Move all bpftool files into __bpftool directory.
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --prune-empty -f --tree-filter "${BPFTOOL_TREE_FILTER}" "${SQUASH_TIP_TAG}" "${SQUASH_BASE_TAG}"
+# Make __bpftool a new root directory
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --prune-empty -f --subdirectory-filter __bpftool "${SQUASH_TIP_TAG}" "${SQUASH_BASE_TAG}"
+
+# If there are no new commits with  bpftool-related changes, bail out
+COMMIT_CNT=$(git rev-list --count "${SQUASH_BASE_TAG}".."${SQUASH_TIP_TAG}")
+if (("${COMMIT_CNT}" <= 0)); then
+	echo "No new changes to apply, we are done!"
+	cleanup
+	exit 2
+fi
+
+# Exclude baseline commit and generate nice cover letter with summary
+git format-patch --no-signature "${SQUASH_BASE_TAG}".."${SQUASH_TIP_TAG}" --cover-letter -o "${TMP_DIR}"/patches
+
+# Now is time to re-apply bpftool-related linux patches to bpftool repo
+cd_to "${BPFTOOL_REPO}"
+
+# shellcheck disable=SC2012
+for patch in $(ls -1 "${TMP_DIR}"/patches | tail -n +2); do
+	if ! git am --3way --committer-date-is-author-date "${TMP_DIR}/patches/${patch}"; then
+		read -rp "Applying ${TMP_DIR}/patches/${patch} failed, please resolve manually and press <return> to proceed..."
+	fi
+done
