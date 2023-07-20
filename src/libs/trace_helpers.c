@@ -895,3 +895,45 @@ static void dso__free_fields(struct dso *dso)
 	free(dso->syms);
 	btf__free(dso->btf);
 }
+
+static int dso__load_sym_table_from_elf(struct dso *dso, int fd)
+{
+	Elf_Scn *section = NULL;
+	Elf *e;
+	int i;
+
+	e = fd > 0 ? open_elf_by_fd(fd) : open_elf(dso->name, &fd);
+	if (!e)
+		return -1;
+
+	while ((section = elf_nextscn(e, section)) != 0) {
+		GElf_Shdr header;
+
+		if (!gelf_getshdr(section, &header))
+			continue;
+
+		if (header.sh_type != SHT_SYMTAB &&
+		    header.sh_type != SHT_DYNSYM)
+			continue;
+
+		if (dso__add_syms(dso, e, section, header.sh_link,
+				  header.sh_entsize))
+			goto err_out;
+	}
+
+	/* now when strings are finalized, adjust pointers properly */
+	for (i = 0; i < dso->syms_sz; i++)
+		dso->syms[i].name =
+			btf__name_by_offset(dso->btf,
+					    (unsigned long)dso->syms[i].name);
+
+	qsort(dso->syms, dso->syms_sz, sizeof(*dso->syms), sym_cmp);
+
+	close_elf(e, fd);
+	return 0;
+
+err_out:
+	dso__free_fields(dso);
+	close_elf(e, fd);
+	return -1;
+}
