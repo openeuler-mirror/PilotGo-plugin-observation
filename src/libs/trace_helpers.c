@@ -937,3 +937,69 @@ err_out:
 	close_elf(e, fd);
 	return -1;
 }
+
+static int create_tmp_vdso_image(struct dso *dso)
+{
+	uint64_t start_addr, end_addr;
+	long pid = getpid();
+	char buf[PATH_MAX];
+	void *image = NULL;
+	char tmpfile[128];
+	int ret, fd = -1;
+	uint64_t sz;
+	char *name;
+	FILE *f;
+
+	snprintf(tmpfile, sizeof(tmpfile), "/proc/%ld/maps", pid);
+	f = fopen(tmpfile, "r");
+	if (!f)
+		return -1;
+
+	while (true) {
+		ret = fscanf(f, "%lx-%lx %*s %*x %*x:%*x %*u%[^\n]",
+			     &start_addr, &end_addr, buf);
+		if (ret == EOF && feof(f))
+			break;
+		if (ret != 3)
+			goto err_out;
+
+		name = buf;
+		while (isspace(*name))
+			name++;
+		if (!is_file_backed(name))
+			continue;
+		if (is_vdso(name))
+			break;
+	}
+
+	sz = end_addr - start_addr;
+	image = malloc(sz);
+	if (!image)
+		goto err_out;
+	memcpy(image, (void *)start_addr, sz);
+
+	snprintf(tmpfile, sizeof(tmpfile),
+		 "/tmp/libbpf_%ld_vdso_image_XXXXXX", pid);
+	fd = mkostemp(tmpfile, O_CLOEXEC);
+	if (fd < 0) {
+		fprintf(stderr, "failed to create temp file: %s\n",
+			strerror(errno));
+		goto err_out;
+	}
+	/* Unlink the file to avoid leaking */
+	if (unlink(tmpfile) == -1)
+		fprintf(stderr, "failed to unlink %s: %s\n", tmpfile,
+			strerror(errno));
+	if (write(fd, image, sz) == -1) {
+		fprintf(stderr, "failed to write to vDSO image: %s\n",
+			strerror(errno));
+		close(fd);
+		fd = -1;
+		goto err_out;
+	}
+
+err_out:
+	fclose(f);
+	free(image);
+	return fd;
+}
