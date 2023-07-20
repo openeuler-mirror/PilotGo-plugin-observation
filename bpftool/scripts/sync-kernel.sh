@@ -103,3 +103,111 @@ commit_desc()
 {
 	git log -n1 --pretty='%h ("%s")' "$1"
 }
+
+commit_signature()
+{
+	# shellcheck disable=SC2086
+	git show --pretty='("%s")|%aI|%b' --shortstat "$1" -- ${2-.} | tr '\n' '|'
+}
+
+cherry_pick_commits()
+{
+	local manual_mode=${MANUAL_MODE:-0}
+	local baseline_tag=$1
+	local tip_tag=$2
+	local new_commits
+	local signature
+	local should_skip
+	local synced_cnt
+	local manual_check
+	local bpftool_conflict_cnt
+	local desc
+
+	# shellcheck disable=SC2068
+	new_commits=$(git rev-list --no-merges --topo-order --reverse "${baseline_tag}".."${tip_tag}" ${BPFTOOL_PATHS[@]})
+	for new_commit in ${new_commits}; do
+		if [[ "${baseline_tag}" == "${BPF_BASELINE_TAG}" ]]; then
+			if git merge-base --is-ancestor "${new_commit}" "${BASELINE_COMMIT}"; then
+				echo "Commit ${new_commit::12} from bpf is already in bpf-next branch, skipping."
+				continue
+			fi
+		fi
+		desc="$(commit_desc "${new_commit}")"
+		signature="$(commit_signature "${new_commit}" "${BPFTOOL_PATHS[*]}")"
+		# shellcheck disable=SC2126
+		synced_cnt=$(grep -F "${signature}" "${TMP_DIR}"/bpftool_commits.txt | wc -l)
+		manual_check=0
+		if (("${synced_cnt}" > 0)); then
+			# commit with the same subject is already in bpftool, but it's
+			# not 100% the same commit, so check with user
+			echo "Commit '${desc}' is synced into bpftool as:"
+			grep -F "${signature}" "${TMP_DIR}"/bpftool_commits.txt | \
+				cut -d'|' -f1 | sed -e 's/^/- /'
+			if (("${manual_mode}" != 1 && "${synced_cnt}" == 1)); then
+				echo "Skipping '${desc}' due to unique match..."
+				continue
+			fi
+			if (("${synced_cnt}" > 1)); then
+				echo "'${desc} matches multiple commits, please, double-check!"
+				manual_check=1
+			fi
+		fi
+		if (("${manual_mode}" == 1 || "${manual_check}" == 1)); then
+			read -rp "Do you want to skip '${desc}'? [y/N]: " should_skip
+			case "${should_skip}" in
+				"y" | "Y")
+					echo "Skipping '${desc}'..."
+					continue
+					;;
+			esac
+		fi
+		# commit hasn't been synced into bpftool yet
+		echo "Picking '${desc}'..."
+		if ! git cherry-pick "${new_commit}" &>/dev/null; then
+			echo "Warning! Cherry-picking '${desc} failed, checking if it's non-bpftool files causing problems..."
+			# shellcheck disable=SC2068
+			bpftool_conflict_cnt=$(git diff --name-only --diff-filter=U -- ${BPFTOOL_PATHS[@]} | wc -l)
+			conflict_cnt=$(git diff --name-only | wc -l)
+			prompt_resolution=1
+
+			if (("${bpftool_conflict_cnt}" == 0)); then
+				echo "Looks like only non-bpftool files have conflicts, ignoring..."
+				if (("${conflict_cnt}" == 0)); then
+					echo "Empty cherry-pick, skipping it..."
+					git cherry-pick --abort
+					continue
+				fi
+
+				git add .
+				# GIT_EDITOR=true to avoid editor popping up to edit commit message
+				if ! GIT_EDITOR=true git cherry-pick --continue &>/dev/null; then
+					echo "Error! That still failed! Please resolve manually."
+				else
+					echo "Success! All cherry-pick conflicts were resolved for '${desc}'!"
+					prompt_resolution=0
+				fi
+			fi
+
+			if (("${prompt_resolution}" == 1)); then
+				read -rp "Error! Cherry-picking '${desc}' failed, please fix manually and press <return> to proceed..."
+			fi
+		fi
+		echo "LINUX_$(git log --pretty='%h' -n1) ${signature}" >> "${TMP_DIR}"/bpftool_commits.txt
+	done
+}
+
+cleanup()
+{
+	echo "Cleaning up..."
+	rm -r -- "${TMP_DIR}"
+	cd_to "${LINUX_REPO}"
+	git checkout "${TIP_SYM_REF}"
+	git branch -D "${BASELINE_TAG}" "${TIP_TAG}" "${BPF_BASELINE_TAG}" "${BPF_TIP_TAG}" \
+		      "${SQUASH_BASE_TAG}" "${SQUASH_TIP_TAG}" || true
+	# shellcheck disable=SC2015
+	git show-ref --verify --quiet refs/heads/"${VIEW_TAG}" && \
+		git branch -D "${VIEW_TAG}" || true
+
+	cd_to .
+	echo "DONE."
+}
