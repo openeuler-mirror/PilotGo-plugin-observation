@@ -1012,3 +1012,16 @@ static int dso__load_sym_table_from_vdso_image(struct dso *dso)
 		return -1;
 	return dso__load_sym_table_from_elf(dso, fd);
 }
+
+static int dso__load_sym_table(struct dso *dso)
+{
+	if (dso->type == UNKNOWN)
+		return -1;
+	if (dso->type == PERF_MAP)
+		return dso__load_sym_table_from_perf_map(dso);
+	if (dso->type == EXEC || dso->type == DYN)
+		return dso__load_sym_table_from_elf(dso, 0);
+	if (dso->type == VDSO)
+		return dso__load_sym_table_from_vdso_image(dso);
+	return -1;
+}
