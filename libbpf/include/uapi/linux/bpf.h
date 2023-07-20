@@ -1389,3 +1389,53 @@ struct bpf_btf_info {
 	__u32 name_len;
 	__u32 kernel_btf;
 } __attribute__((aligned(8)));
+
+struct bpf_link_info {
+	__u32 type;
+	__u32 id;
+	__u32 prog_id;
+	union {
+		struct {
+			__aligned_u64 tp_name; /* in/out: tp_name buffer ptr */
+			__u32 tp_name_len;     /* in/out: tp_name buffer len */
+		} raw_tracepoint;
+		struct {
+			__u32 attach_type;
+			__u32 target_obj_id; /* prog_id for PROG_EXT, otherwise btf object id */
+			__u32 target_btf_id; /* BTF type id inside the object */
+		} tracing;
+		struct {
+			__u64 cgroup_id;
+			__u32 attach_type;
+		} cgroup;
+		struct {
+			__aligned_u64 target_name; /* in/out: target_name buffer ptr */
+			__u32 target_name_len;	   /* in/out: target_name buffer len */
+			union {
+				struct {
+					__u32 map_id;
+				} map;
+			};
+			union {
+				struct {
+					__u64 cgroup_id;
+					__u32 order;
+				} cgroup;
+				struct {
+					__u32 tid;
+					__u32 pid;
+				} task;
+			};
+		} iter;
+		struct  {
+			__u32 netns_ino;
+			__u32 attach_type;
+		} netns;
+		struct {
+			__u32 ifindex;
+		} xdp;
+		struct {
+			__u32 map_id;
+		} struct_ops;
+	};
+} __attribute__((aligned(8)));
