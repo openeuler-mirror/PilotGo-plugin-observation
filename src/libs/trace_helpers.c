@@ -1025,3 +1025,32 @@ static int dso__load_sym_table(struct dso *dso)
 		return dso__load_sym_table_from_vdso_image(dso);
 	return -1;
 }
+
+static struct sym *dso__find_sym(struct dso *dso, uint64_t offset)
+{
+	unsigned long sym_addr;
+	int start, end, mid;
+
+	if (!dso->syms && dso__load_sym_table(dso))
+		return NULL;
+
+	start = 0;
+	end = dso->syms_sz - 1;
+
+	/* find largest sym_addr <= addr using binary search */
+	while (start < end) {
+		mid = start + (end - start + 1) / 2;
+		sym_addr = dso->syms[mid].start;
+
+		if (sym_addr <= offset)
+			start = mid;
+		else
+			end = mid - 1;
+	}
+
+	if (start == end && dso->syms[start].start <= offset) {
+		(dso->syms[start]).offset = offset - dso->syms[start].start;
+		return &dso->syms[start];
+	}
+	return NULL;
+}
