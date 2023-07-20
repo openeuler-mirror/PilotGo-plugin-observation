@@ -945,3 +945,85 @@ struct thread_struct {
 	long: 64;
 	struct fpu fpu;
 };
+
+struct sched_class;
+
+struct task_group;
+
+struct rcu_node;
+
+struct mm_struct;
+
+struct pid;
+
+struct completion;
+
+struct cred;
+
+struct key;
+
+struct nameidata;
+
+struct fs_struct;
+
+struct files_struct;
+
+struct io_uring_task;
+
+struct nsproxy;
+
+struct signal_struct;
+
+struct sighand_struct;
+
+struct audit_context;
+
+struct rt_mutex_waiter;
+
+struct mutex_waiter;
+
+struct bio_list;
+
+struct blk_plug;
+
+struct reclaim_state;
+
+struct backing_dev_info;
+
+struct io_context;
+
+struct capture_control;
+
+struct kernel_siginfo;
+
+typedef struct kernel_siginfo kernel_siginfo_t;
+
+struct css_set;
+
+struct robust_list_head;
+
+struct futex_pi_state;
+
+struct perf_event_context;
+
+struct mempolicy;
+
+struct numa_group;
+
+struct rseq;
+
+struct task_delay_info;
+
+struct ftrace_ret_stack;
+
+struct mem_cgroup;
+
+struct request_queue;
+
+struct uprobe_task;
+
+struct vm_struct;
+
+struct bpf_local_storage;
+
+struct bpf_run_ctx;
