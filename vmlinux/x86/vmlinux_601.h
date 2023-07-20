@@ -846,3 +846,44 @@ struct fxregs_state {
 		u32 sw_reserved[12];
 	};
 };
+
+struct math_emu_info;
+
+struct swregs_state {
+	u32 cwd;
+	u32 swd;
+	u32 twd;
+	u32 fip;
+	u32 fcs;
+	u32 foo;
+	u32 fos;
+	u32 st_space[20];
+	u8 ftop;
+	u8 changed;
+	u8 lookahead;
+	u8 no_update;
+	u8 rm;
+	u8 alimit;
+	struct math_emu_info *info;
+	u32 entry_eip;
+};
+
+struct xstate_header {
+	u64 xfeatures;
+	u64 xcomp_bv;
+	u64 reserved[6];
+};
+
+struct xregs_state {
+	struct fxregs_state i387;
+	struct xstate_header header;
+	u8 extended_state_area[0];
+};
+
+union fpregs_state {
+	struct fregs_state fsave;
+	struct fxregs_state fxsave;
+	struct swregs_state soft;
+	struct xregs_state xsave;
+	u8 __padding[4096];
+};
