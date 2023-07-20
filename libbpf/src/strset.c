@@ -106,3 +106,29 @@ static void *strset_add_str_mem(struct strset *set, size_t add_sz)
 	return libbpf_add_mem(&set->strs_data, &set->strs_data_cap, 1,
 			      set->strs_data_len, set->strs_data_max_len, add_sz);
 }
+
+/* Find string offset that corresponds to a given string *s*.
+ * Returns:
+ *   - >0 offset into string data, if string is found;
+ *   - -ENOENT, if string is not in the string data;
+ *   - <0, on any other error.
+ */
+int strset__find_str(struct strset *set, const char *s)
+{
+	long old_off, new_off, len;
+	void *p;
+
+	/* see strset__add_str() for why we do this */
+	len = strlen(s) + 1;
+	p = strset_add_str_mem(set, len);
+	if (!p)
+		return -ENOMEM;
+
+	new_off = set->strs_data_len;
+	memcpy(p, s, len);
+
+	if (hashmap__find(set->strs_hash, new_off, &old_off))
+		return old_off;
+
+	return -ENOENT;
+}
