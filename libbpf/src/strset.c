@@ -80,3 +80,29 @@ err_out:
 	strset__free(set);
 	return ERR_PTR(err);
 }
+
+void strset__free(struct strset *set)
+{
+	if (IS_ERR_OR_NULL(set))
+		return;
+
+	hashmap__free(set->strs_hash);
+	free(set->strs_data);
+	free(set);
+}
+
+size_t strset__data_size(const struct strset *set)
+{
+	return set->strs_data_len;
+}
+
+const char *strset__data(const struct strset *set)
+{
+	return set->strs_data;
+}
+
+static void *strset_add_str_mem(struct strset *set, size_t add_sz)
+{
+	return libbpf_add_mem(&set->strs_data, &set->strs_data_cap, 1,
+			      set->strs_data_len, set->strs_data_max_len, add_sz);
+}
