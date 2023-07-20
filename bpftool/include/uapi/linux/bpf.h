@@ -1638,3 +1638,65 @@ enum {
 	BPF_SOCK_OPS_HDR_OPT_LEN_CB,	
 	BPF_SOCK_OPS_WRITE_HDR_OPT_CB,	
 };
+enum {
+	BPF_TCP_ESTABLISHED = 1,
+	BPF_TCP_SYN_SENT,
+	BPF_TCP_SYN_RECV,
+	BPF_TCP_FIN_WAIT1,
+	BPF_TCP_FIN_WAIT2,
+	BPF_TCP_TIME_WAIT,
+	BPF_TCP_CLOSE,
+	BPF_TCP_CLOSE_WAIT,
+	BPF_TCP_LAST_ACK,
+	BPF_TCP_LISTEN,
+	BPF_TCP_CLOSING,	/* Now a valid state */
+	BPF_TCP_NEW_SYN_RECV,
+
+	BPF_TCP_MAX_STATES	/* Leave at the end! */
+};
+
+enum {
+	TCP_BPF_IW		= 1001,	/* Set TCP initial congestion window */
+	TCP_BPF_SNDCWND_CLAMP	= 1002,	/* Set sndcwnd_clamp */
+	TCP_BPF_DELACK_MAX	= 1003, /* Max delay ack in usecs */
+	TCP_BPF_RTO_MIN		= 1004, /* Min delay ack in usecs */
+	TCP_BPF_SYN		= 1005, /* Copy the TCP header */
+	TCP_BPF_SYN_IP		= 1006, /* Copy the IP[46] and TCP header */
+	TCP_BPF_SYN_MAC         = 1007, /* Copy the MAC, IP[46], and TCP header */
+};
+
+enum {
+	BPF_LOAD_HDR_OPT_TCP_SYN = (1ULL << 0),
+};
+
+/* args[0] value during BPF_SOCK_OPS_HDR_OPT_LEN_CB and
+ * BPF_SOCK_OPS_WRITE_HDR_OPT_CB.
+ */
+enum {
+	BPF_WRITE_HDR_TCP_CURRENT_MSS = 1,	/* Kernel is finding the
+						 * total option spaces
+						 * required for an established
+						 * sk in order to calculate the
+						 * MSS.  No skb is actually
+						 * sent.
+						 */
+	BPF_WRITE_HDR_TCP_SYNACK_COOKIE = 2,	/* Kernel is in syncookie mode
+						 * when sending a SYN.
+						 */
+};
+
+struct bpf_perf_event_value {
+	__u64 counter;
+	__u64 enabled;
+	__u64 running;
+};
+enum {
+	BPF_DEVCG_ACC_MKNOD	= (1ULL << 0),
+	BPF_DEVCG_ACC_READ	= (1ULL << 1),
+	BPF_DEVCG_ACC_WRITE	= (1ULL << 2),
+};
+
+enum {
+	BPF_DEVCG_DEV_BLOCK	= (1ULL << 0),
+	BPF_DEVCG_DEV_CHAR	= (1ULL << 1),
+};
