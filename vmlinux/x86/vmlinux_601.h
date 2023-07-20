@@ -1293,3 +1293,55 @@ struct task_struct {
 	long: 64;
 	struct thread_struct thread;
 };
+
+struct jump_entry {
+	s32 code;
+	s32 target;
+	long int key;
+};
+
+struct static_key_mod;
+
+struct static_key {
+	atomic_t enabled;
+	union {
+		long unsigned int type;
+		struct jump_entry *entries;
+		struct static_key_mod *next;
+	};
+};
+
+struct orc_entry {
+	s16 sp_offset;
+	s16 bp_offset;
+	unsigned int sp_reg: 4;
+	unsigned int bp_reg: 4;
+	unsigned int type: 2;
+	unsigned int end: 1;
+} __attribute__((packed));
+
+struct bug_entry {
+	int bug_addr_disp;
+	int file_disp;
+	short unsigned int line;
+	short unsigned int flags;
+};
+
+typedef __s64 time64_t;
+
+struct __kernel_timespec {
+	__kernel_time64_t tv_sec;
+	long long int tv_nsec;
+};
+
+struct timespec64 {
+	time64_t tv_sec;
+	long int tv_nsec;
+};
+
+typedef s32 old_time32_t;
+
+struct old_timespec32 {
+	old_time32_t tv_sec;
+	s32 tv_nsec;
+};
