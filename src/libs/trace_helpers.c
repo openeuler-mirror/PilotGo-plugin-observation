@@ -1054,3 +1054,52 @@ static struct sym *dso__find_sym(struct dso *dso, uint64_t offset)
 	}
 	return NULL;
 }
+
+struct syms *syms__load_file(const char *fname)
+{
+	char buf[PATH_MAX], perm[5];
+	struct syms *syms;
+	struct map map;
+	char *name;
+	FILE *f;
+	int ret;
+
+	f = fopen(fname, "r");
+	if (!f)
+		return NULL;
+
+	syms = calloc(1, sizeof(*syms));
+	if (!syms)
+		goto err_out;
+
+	while (true) {
+		ret = fscanf(f, "%lx-%lx %4s %lx %lx:%lx %lu%[^\n]",
+			     &map.start_addr, &map.end_addr, perm,
+			     &map.file_off, &map.dev_major,
+			     &map.dev_minor, &map.inode, buf);
+		if (ret == EOF && feof(f))
+			break;
+		if (ret != 8)	/* perf-<PID>.map */
+			goto err_out;
+
+		if (perm[2] != 'x')
+			continue;
+
+		name = buf;
+		while (isspace(*name))
+			name++;
+		if (!is_file_backed(name))
+			continue;
+
+		if (syms__add_dso(syms, &map, name))
+			goto err_out;
+	}
+
+	fclose(f);
+	return syms;
+
+err_out:
+	syms__free(syms);
+	fclose(f);
+	return NULL;
+}
