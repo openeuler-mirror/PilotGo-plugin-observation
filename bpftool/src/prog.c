@@ -34,6 +34,60 @@
 
 static struct hashmap *prog_table;
 
+static int show_prog(int fd)
+{
+	struct bpf_prog_info info = {};
+	__u32 len = sizeof(info);
+	int err;
+
+	err = bpf_prog_get_info_by_fd(fd, &info, &len);
+	if (err) {
+		p_err("can't get prog info: %s", strerror(errno));
+		return -1;
+	}
+
+	if (json_output)
+		print_prog_json(&info, fd);
+	else
+		print_prog_plain(&info, fd);
+
+	return 0;
+}
+
+static int do_show_subset(int argc, char **argv)
+{
+	int *fds = NULL;
+	int nb_fds, i;
+	int err = -1;
+
+	fds = malloc(sizeof(int));
+	if (!fds) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+	nb_fds = prog_parse_fds(&argc, &argv, &fds);
+	if (nb_fds < 1)
+		goto exit_free;
+
+	if (json_output && nb_fds > 1)
+		jsonw_start_array(json_wtr);	/* root array */
+	for (i = 0; i < nb_fds; i++) {
+		err = show_prog(fds[i]);
+		if (err) {
+			for (; i < nb_fds; i++)
+				close(fds[i]);
+			break;
+		}
+		close(fds[i]);
+	}
+	if (json_output && nb_fds > 1)
+		jsonw_end_array(json_wtr);	/* root array */
+
+exit_free:
+	free(fds);
+	return err;
+}
+
 static int do_show(int argc, char **argv)
 {
 	__u32 id = 0;
