@@ -213,3 +213,57 @@ err_out:
 	return errno = -err, NULL;
 }
 
+static inline int roundup_len(__u32 len)
+{
+	/* clear out top 2 bits (discard and busy, if set) */
+	len <<= 2;
+	len >>= 2;
+	/* add length prefix */
+	len += BPF_RINGBUF_HDR_SZ;
+	/* round up to 8 byte alignment */
+	return (len + 7) / 8 * 8;
+}
+
+static int64_t ringbuf_process_ring(struct ring *r)
+{
+	int *len_ptr, len, err;
+	/* 64-bit to avoid overflow in case of extreme application behavior */
+	int64_t cnt = 0;
+	unsigned long cons_pos, prod_pos;
+	bool got_new_data;
+	void *sample;
+
+	cons_pos = smp_load_acquire(r->consumer_pos);
+	do {
+		got_new_data = false;
+		prod_pos = smp_load_acquire(r->producer_pos);
+		while (cons_pos < prod_pos) {
+			len_ptr = r->data + (cons_pos & r->mask);
+			len = smp_load_acquire(len_ptr);
+
+			/* sample not committed yet, bail out for now */
+			if (len & BPF_RINGBUF_BUSY_BIT)
+				goto done;
+
+			got_new_data = true;
+			cons_pos += roundup_len(len);
+
+			if ((len & BPF_RINGBUF_DISCARD_BIT) == 0) {
+				sample = (void *)len_ptr + BPF_RINGBUF_HDR_SZ;
+				err = r->sample_cb(r->ctx, sample, len);
+				if (err < 0) {
+					/* update consumer pos and bail out */
+					smp_store_release(r->consumer_pos,
+							  cons_pos);
+					return err;
+				}
+				cnt++;
+			}
+
+			smp_store_release(r->consumer_pos, cons_pos);
+		}
+	} while (got_new_data);
+done:
+	return cnt;
+}
+
