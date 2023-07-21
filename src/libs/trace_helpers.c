@@ -1135,3 +1135,19 @@ const struct sym *syms__map_addr(const struct syms *syms, unsigned long addr)
 		return NULL;
 	return dso__find_sym(dso, offset);
 }
+
+const struct sym *syms__map_addr_dso(const struct syms *syms, unsigned long addr,
+				     char **dso_name, unsigned long *dso_offset)
+{
+	struct dso *dso;
+	uint64_t offset;
+
+	dso = syms__find_dso(syms, addr, &offset);
+	if (!dso)
+		return NULL;
+
+	*dso_name = dso->name;
+	*dso_offset = offset;
+
+	return dso__find_sym(dso, offset);
+}
