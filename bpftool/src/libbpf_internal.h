@@ -1,11 +1,3 @@
-/* SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause) */
-
-/*
- * Internal libbpf helpers.
- *
- * Copyright (c) 2019 Facebook
- */
-
 #ifndef __LIBBPF_LIBBPF_INTERNAL_H
 #define __LIBBPF_LIBBPF_INTERNAL_H
 
@@ -17,10 +9,8 @@
 #include <unistd.h>
 #include "relo_core.h"
 
-/* make sure libbpf doesn't use kernel-only integer typedefs */
 #pragma GCC poison u8 u16 u32 u64 s8 s16 s32 s64
 
-/* prevent accidental re-addition of reallocarray() */
 #pragma GCC poison reallocarray
 
 #include "libbpf.h"
