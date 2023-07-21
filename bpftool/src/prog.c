@@ -283,6 +283,25 @@ static int do_dump(int argc, char **argv)
 
 }
 
+static int
+get_prog_type_by_name(const char *name, enum bpf_prog_type *prog_type,
+		      enum bpf_attach_type *expected_attach_type)
+{
+	libbpf_print_fn_t print_backup;
+	int ret;
+
+	ret = libbpf_prog_type_by_name(name, prog_type, expected_attach_type);
+	if (!ret)
+		return ret;
+
+	/* libbpf_prog_type_by_name() failed, let's re-run with debug level */
+	print_backup = libbpf_set_print(print_all_levels);
+	ret = libbpf_prog_type_by_name(name, prog_type, expected_attach_type);
+	libbpf_set_print(print_backup);
+
+	return ret;
+}
+
 static int do_pin(int argc, char **argv)
 {
 	int err;
@@ -291,6 +310,63 @@ static int do_pin(int argc, char **argv)
 	if (!err && json_output)
 		jsonw_null(json_wtr);
 	return err;
+}
+
+static int do_loader(int argc, char **argv)
+{
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	DECLARE_LIBBPF_OPTS(gen_loader_opts, gen);
+	struct bpf_object *obj;
+	const char *file;
+	int err = 0;
+
+	if (!REQ_ARGS(1))
+		return -1;
+	file = GET_ARG();
+
+	if (verifier_logs)
+		/* log_level1 + log_level2 + stats, but not stable UAPI */
+		open_opts.kernel_log_level = 1 + 2 + 4;
+
+	obj = bpf_object__open_file(file, &open_opts);
+	if (!obj) {
+		p_err("failed to open object file");
+		goto err_close_obj;
+	}
+
+	err = bpf_object__gen_loader(obj, &gen);
+	if (err)
+		goto err_close_obj;
+
+	err = bpf_object__load(obj);
+	if (err) {
+		p_err("failed to load object file");
+		goto err_close_obj;
+	}
+
+	if (verifier_logs) {
+		struct dump_data dd = {};
+
+		kernel_syms_load(&dd);
+		dump_xlated_plain(&dd, (void *)gen.insns, gen.insns_sz, false, false);
+		kernel_syms_destroy(&dd);
+	}
+	err = try_loader(&gen);
+err_close_obj:
+	bpf_object__close(obj);
+	return err;
+}
+
+static int do_load(int argc, char **argv)
+{
+	if (use_loader)
+		return do_loader(argc, argv);
+	return load_with_options(argc, argv, true);
+}
+
+static int do_loadall(int argc, char **argv)
+{
+	return load_with_options(argc, argv, false);
 }
 
 static const struct cmd cmds[] = {
