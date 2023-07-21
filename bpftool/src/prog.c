@@ -357,6 +357,302 @@ err_close_obj:
 	return err;
 }
 
+static int load_with_options(int argc, char **argv, bool first_prog_only)
+{
+	enum bpf_prog_type common_prog_type = BPF_PROG_TYPE_UNSPEC;
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, open_opts,
+		.relaxed_maps = relaxed_maps,
+	);
+	enum bpf_attach_type expected_attach_type;
+	struct map_replace *map_replace = NULL;
+	struct bpf_program *prog = NULL, *pos;
+	unsigned int old_map_fds = 0;
+	const char *pinmaps = NULL;
+	bool auto_attach = false;
+	struct bpf_object *obj;
+	struct bpf_map *map;
+	const char *pinfile;
+	unsigned int i, j;
+	__u32 ifindex = 0;
+	const char *file;
+	int idx, err;
+
+
+	if (!REQ_ARGS(2))
+		return -1;
+	file = GET_ARG();
+	pinfile = GET_ARG();
+
+	while (argc) {
+		if (is_prefix(*argv, "type")) {
+			NEXT_ARG();
+
+			if (common_prog_type != BPF_PROG_TYPE_UNSPEC) {
+				p_err("program type already specified");
+				goto err_free_reuse_maps;
+			}
+			if (!REQ_ARGS(1))
+				goto err_free_reuse_maps;
+
+			err = libbpf_prog_type_by_name(*argv, &common_prog_type,
+						       &expected_attach_type);
+			if (err < 0) {
+				/* Put a '/' at the end of type to appease libbpf */
+				char *type = malloc(strlen(*argv) + 2);
+
+				if (!type) {
+					p_err("mem alloc failed");
+					goto err_free_reuse_maps;
+				}
+				*type = 0;
+				strcat(type, *argv);
+				strcat(type, "/");
+
+				err = get_prog_type_by_name(type, &common_prog_type,
+							    &expected_attach_type);
+				free(type);
+				if (err < 0)
+					goto err_free_reuse_maps;
+			}
+
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "map")) {
+			void *new_map_replace;
+			char *endptr, *name;
+			int fd;
+
+			NEXT_ARG();
+
+			if (!REQ_ARGS(4))
+				goto err_free_reuse_maps;
+
+			if (is_prefix(*argv, "idx")) {
+				NEXT_ARG();
+
+				idx = strtoul(*argv, &endptr, 0);
+				if (*endptr) {
+					p_err("can't parse %s as IDX", *argv);
+					goto err_free_reuse_maps;
+				}
+				name = NULL;
+			} else if (is_prefix(*argv, "name")) {
+				NEXT_ARG();
+
+				name = *argv;
+				idx = -1;
+			} else {
+				p_err("expected 'idx' or 'name', got: '%s'?",
+				      *argv);
+				goto err_free_reuse_maps;
+			}
+			NEXT_ARG();
+
+			fd = map_parse_fd(&argc, &argv);
+			if (fd < 0)
+				goto err_free_reuse_maps;
+
+			new_map_replace = libbpf_reallocarray(map_replace,
+							      old_map_fds + 1,
+							      sizeof(*map_replace));
+			if (!new_map_replace) {
+				p_err("mem alloc failed");
+				goto err_free_reuse_maps;
+			}
+			map_replace = new_map_replace;
+
+			map_replace[old_map_fds].idx = idx;
+			map_replace[old_map_fds].name = name;
+			map_replace[old_map_fds].fd = fd;
+			old_map_fds++;
+		} else if (is_prefix(*argv, "dev")) {
+			NEXT_ARG();
+
+			if (ifindex) {
+				p_err("offload device already specified");
+				goto err_free_reuse_maps;
+			}
+			if (!REQ_ARGS(1))
+				goto err_free_reuse_maps;
+
+			ifindex = if_nametoindex(*argv);
+			if (!ifindex) {
+				p_err("unrecognized netdevice '%s': %s",
+				      *argv, strerror(errno));
+				goto err_free_reuse_maps;
+			}
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "pinmaps")) {
+			NEXT_ARG();
+
+			if (!REQ_ARGS(1))
+				goto err_free_reuse_maps;
+
+			pinmaps = GET_ARG();
+		} else if (is_prefix(*argv, "autoattach")) {
+			auto_attach = true;
+			NEXT_ARG();
+		} else {
+			p_err("expected no more arguments, 'type', 'map' or 'dev', got: '%s'?",
+			      *argv);
+			goto err_free_reuse_maps;
+		}
+	}
+
+	set_max_rlimit();
+
+	if (verifier_logs)
+		/* log_level1 + log_level2 + stats, but not stable UAPI */
+		open_opts.kernel_log_level = 1 + 2 + 4;
+
+	obj = bpf_object__open_file(file, &open_opts);
+	if (!obj) {
+		p_err("failed to open object file");
+		goto err_free_reuse_maps;
+	}
+
+	bpf_object__for_each_program(pos, obj) {
+		enum bpf_prog_type prog_type = common_prog_type;
+
+		if (prog_type == BPF_PROG_TYPE_UNSPEC) {
+			const char *sec_name = bpf_program__section_name(pos);
+
+			err = get_prog_type_by_name(sec_name, &prog_type,
+						    &expected_attach_type);
+			if (err < 0)
+				goto err_close_obj;
+		}
+
+		bpf_program__set_ifindex(pos, ifindex);
+		if (bpf_program__type(pos) != prog_type)
+			bpf_program__set_type(pos, prog_type);
+		bpf_program__set_expected_attach_type(pos, expected_attach_type);
+	}
+
+	qsort(map_replace, old_map_fds, sizeof(*map_replace),
+	      map_replace_compar);
+
+	/* After the sort maps by name will be first on the list, because they
+	 * have idx == -1.  Resolve them.
+	 */
+	j = 0;
+	while (j < old_map_fds && map_replace[j].name) {
+		i = 0;
+		bpf_object__for_each_map(map, obj) {
+			if (!strcmp(bpf_map__name(map), map_replace[j].name)) {
+				map_replace[j].idx = i;
+				break;
+			}
+			i++;
+		}
+		if (map_replace[j].idx == -1) {
+			p_err("unable to find map '%s'", map_replace[j].name);
+			goto err_close_obj;
+		}
+		j++;
+	}
+	/* Resort if any names were resolved */
+	if (j)
+		qsort(map_replace, old_map_fds, sizeof(*map_replace),
+		      map_replace_compar);
+
+	/* Set ifindex and name reuse */
+	j = 0;
+	idx = 0;
+	bpf_object__for_each_map(map, obj) {
+		if (bpf_map__type(map) != BPF_MAP_TYPE_PERF_EVENT_ARRAY)
+			bpf_map__set_ifindex(map, ifindex);
+
+		if (j < old_map_fds && idx == map_replace[j].idx) {
+			err = bpf_map__reuse_fd(map, map_replace[j++].fd);
+			if (err) {
+				p_err("unable to set up map reuse: %d", err);
+				goto err_close_obj;
+			}
+
+			/* Next reuse wants to apply to the same map */
+			if (j < old_map_fds && map_replace[j].idx == idx) {
+				p_err("replacement for map idx %d specified more than once",
+				      idx);
+				goto err_close_obj;
+			}
+		}
+
+		idx++;
+	}
+	if (j < old_map_fds) {
+		p_err("map idx '%d' not used", map_replace[j].idx);
+		goto err_close_obj;
+	}
+
+	err = bpf_object__load(obj);
+	if (err) {
+		p_err("failed to load object file");
+		goto err_close_obj;
+	}
+
+	err = mount_bpffs_for_pin(pinfile);
+	if (err)
+		goto err_close_obj;
+
+	if (first_prog_only) {
+		prog = bpf_object__next_program(obj, NULL);
+		if (!prog) {
+			p_err("object file doesn't contain any bpf program");
+			goto err_close_obj;
+		}
+
+		if (auto_attach)
+			err = auto_attach_program(prog, pinfile);
+		else
+			err = bpf_obj_pin(bpf_program__fd(prog), pinfile);
+		if (err) {
+			p_err("failed to pin program %s",
+			      bpf_program__section_name(prog));
+			goto err_close_obj;
+		}
+	} else {
+		if (auto_attach)
+			err = auto_attach_programs(obj, pinfile);
+		else
+			err = bpf_object__pin_programs(obj, pinfile);
+		if (err) {
+			p_err("failed to pin all programs");
+			goto err_close_obj;
+		}
+	}
+
+	if (pinmaps) {
+		err = bpf_object__pin_maps(obj, pinmaps);
+		if (err) {
+			p_err("failed to pin all maps");
+			goto err_unpin;
+		}
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+
+	bpf_object__close(obj);
+	for (i = 0; i < old_map_fds; i++)
+		close(map_replace[i].fd);
+	free(map_replace);
+
+	return 0;
+
+err_unpin:
+	if (first_prog_only)
+		unlink(pinfile);
+	else
+		bpf_object__unpin_programs(obj, pinfile);
+err_close_obj:
+	bpf_object__close(obj);
+err_free_reuse_maps:
+	for (i = 0; i < old_map_fds; i++)
+		close(map_replace[i].fd);
+	free(map_replace);
+	return -1;
+}
+
 static int do_load(int argc, char **argv)
 {
 	if (use_loader)
