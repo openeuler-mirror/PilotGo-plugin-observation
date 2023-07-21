@@ -211,3 +211,50 @@ cleanup()
 	cd_to .
 	echo "DONE."
 }
+
+cd_to "${BPFTOOL_REPO}"
+BPFTOOL_SYNC_TAG="bpftool-sync-${SUFFIX}"
+git checkout -b "${BPFTOOL_SYNC_TAG}"
+
+# Update libbpf
+if [[ "${SKIP_LIBBPF_UPDATE:-0}" -ne 1 ]]; then
+	cd_to "${BPFTOOL_REPO}"/libbpf
+	git pull origin master
+	LIBBPF_VERSION=$(grep -oE '^LIBBPF_([0-9.]+)' src/libbpf.map | sort -rV | head -n1 | cut -d'_' -f2)
+	LIBBPF_COMMIT=$(git rev-parse HEAD)
+	cd_to "${BPFTOOL_REPO}"
+	if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+		git add libbpf
+		git commit --signoff -m 'sync: Update libbpf submodule' \
+			-m "\
+Pull latest libbpf from mirror.
+Libbpf version: ${LIBBPF_VERSION}
+Libbpf commit:  ${LIBBPF_COMMIT}" \
+			-- libbpf
+	fi
+fi
+
+# Use libbpf's new checkpoints as tips
+TIP_COMMIT=${BPF_NEXT_TIP_COMMIT:-$(cat "${BPFTOOL_REPO}"/libbpf/CHECKPOINT-COMMIT)}
+BPF_TIP_COMMIT=${BPF_TIP_COMMIT:-$(cat "${BPFTOOL_REPO}"/libbpf/BPF-CHECKPOINT-COMMIT)}
+if [ -z "${TIP_COMMIT}" ] || [ -z "${BPF_TIP_COMMIT}" ]; then
+	echo "Error: bpf or bpf-next tip commits are not provided"
+	usage
+fi
+
+cd_to "${BPFTOOL_REPO}"
+GITHUB_ABS_DIR=$(pwd)
+echo "Dumping existing bpftool commit signatures..."
+for h in $(git log --pretty='%h' -n500); do
+	echo "$h" "$(commit_signature "$h")" >> "${TMP_DIR}"/bpftool_commits.txt
+done
+
+# Use current kernel repo HEAD as a source of patches
+cd_to "${LINUX_REPO}"
+LINUX_ABS_DIR=$(pwd)
+TIP_SYM_REF=$(git symbolic-ref -q --short HEAD || git rev-parse HEAD)
+BASELINE_TAG="bpftool-baseline-${SUFFIX}"
+TIP_TAG="bpftool-tip-${SUFFIX}"
+BPF_BASELINE_TAG="bpftool-bpf-baseline-${SUFFIX}"
+BPF_TIP_TAG="bpftool-bpf-tip-${SUFFIX}"
+VIEW_TAG="bpftool-view-${SUFFIX}"
