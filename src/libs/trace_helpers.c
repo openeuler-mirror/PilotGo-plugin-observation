@@ -1111,3 +1111,16 @@ struct syms *syms__load_pid(pid_t tgid)
 	snprintf(fname, sizeof(fname), "/proc/%ld/maps", (long)tgid);
 	return syms__load_file(fname);
 }
+
+void syms__free(struct syms *syms)
+{
+	int i;
+
+	if (!syms)
+		return;
+
+	for (i = 0; i < syms->dso_sz; i++)
+		dso__free_fields(&syms->dsos[i]);
+	free(syms->dsos);
+	free(syms);
+}
