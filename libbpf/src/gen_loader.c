@@ -58,3 +58,34 @@ static int realloc_insn_buf(struct bpf_gen *gen, __u32 size)
 	gen->insn_cur = insn_start + off;
 	return 0;
 }
+
+static int realloc_data_buf(struct bpf_gen *gen, __u32 size)
+{
+	size_t off = gen->data_cur - gen->data_start;
+	void *data_start;
+
+	if (gen->error)
+		return gen->error;
+	if (size > INT32_MAX || off + size > INT32_MAX) {
+		gen->error = -ERANGE;
+		return -ERANGE;
+	}
+	data_start = realloc(gen->data_start, off + size);
+	if (!data_start) {
+		gen->error = -ENOMEM;
+		free(gen->data_start);
+		gen->data_start = NULL;
+		return -ENOMEM;
+	}
+	gen->data_start = data_start;
+	gen->data_cur = data_start + off;
+	return 0;
+}
+
+static void emit(struct bpf_gen *gen, struct bpf_insn insn)
+{
+	if (realloc_insn_buf(gen, sizeof(insn)))
+		return;
+	memcpy(gen->insn_cur, &insn, sizeof(insn));
+	gen->insn_cur += sizeof(insn);
+}
