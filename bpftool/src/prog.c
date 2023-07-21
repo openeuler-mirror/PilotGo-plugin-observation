@@ -208,6 +208,81 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
+static int do_dump(int argc, char **argv)
+{
+	struct bpf_prog_info info;
+	__u32 info_len = sizeof(info);
+	size_t info_data_sz = 0;
+	void *info_data = NULL;
+	char *filepath = NULL;
+	bool opcodes = false;
+	bool visual = false;
+	enum dump_mode mode;
+	bool linum = false;
+	int nb_fds, i = 0;
+	int *fds = NULL;
+	int err = -1;
+
+	if (is_prefix(*argv, "jited")) {
+		if (disasm_init())
+			return -1;
+		mode = DUMP_JITED;
+	} else if (is_prefix(*argv, "xlated")) {
+		mode = DUMP_XLATED;
+	} else {
+		p_err("expected 'xlated' or 'jited', got: %s", *argv);
+		return -1;
+	}
+	NEXT_ARG();
+
+	if (argc < 2)
+		usage();
+
+	fds = malloc(sizeof(int));
+	if (!fds) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+	nb_fds = prog_parse_fds(&argc, &argv, &fds);
+	if (nb_fds < 1)
+		goto exit_free;
+
+	while (argc) {
+		if (is_prefix(*argv, "file")) {
+			NEXT_ARG();
+			if (!argc) {
+				p_err("expected file path");
+				goto exit_close;
+			}
+			if (nb_fds > 1) {
+				p_err("several programs matched");
+				goto exit_close;
+			}
+
+			filepath = *argv;
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "opcodes")) {
+			opcodes = true;
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "visual")) {
+			if (nb_fds > 1) {
+				p_err("several programs matched");
+				goto exit_close;
+			}
+
+			visual = true;
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "linum")) {
+			linum = true;
+			NEXT_ARG();
+		} else {
+			usage();
+			goto exit_close;
+		}
+	}
+
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },

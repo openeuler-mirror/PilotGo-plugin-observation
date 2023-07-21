@@ -251,6 +251,22 @@ void emit_obj_refs_plain(struct hashmap *map, __u32 id, const char *prefix)
 		break;
 	}
 }
-
-
 #endif
+
+void delete_obj_refs_table(struct hashmap *map)
+{
+	struct hashmap_entry *entry;
+	size_t bkt;
+
+	if (!map)
+		return;
+
+	hashmap__for_each_entry(map, entry, bkt) {
+		struct obj_refs *refs = entry->pvalue;
+
+		free(refs->refs);
+		free(refs);
+	}
+
+	hashmap__free(map);
+}
