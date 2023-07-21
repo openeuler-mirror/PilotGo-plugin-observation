@@ -397,7 +397,6 @@ static int load_with_options(int argc, char **argv, bool first_prog_only)
 			err = libbpf_prog_type_by_name(*argv, &common_prog_type,
 						       &expected_attach_type);
 			if (err < 0) {
-				/* Put a '/' at the end of type to appease libbpf */
 				char *type = malloc(strlen(*argv) + 2);
 
 				if (!type) {

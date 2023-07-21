@@ -105,6 +105,182 @@ mnt_fs(const char *target, const char *type, char *buff, size_t bufflen)
 	return 0;
 }
 
+static bool known_to_need_rlimit(void)
+{
+	struct rlimit rlim_init, rlim_cur_zero = {};
+	struct bpf_insn insns[] = {
+		BPF_MOV64_IMM(BPF_REG_0, 0),
+		BPF_EXIT_INSN(),
+	};
+	size_t insn_cnt = ARRAY_SIZE(insns);
+	union bpf_attr attr;
+	int prog_fd, err;
+
+	memset(&attr, 0, sizeof(attr));
+	attr.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
+	attr.insns = ptr_to_u64(insns);
+	attr.insn_cnt = insn_cnt;
+	attr.license = ptr_to_u64("GPL");
+
+	if (getrlimit(RLIMIT_MEMLOCK, &rlim_init))
+		return false;
+
+	rlim_cur_zero.rlim_max = rlim_init.rlim_max;
+	if (setrlimit(RLIMIT_MEMLOCK, &rlim_cur_zero))
+		return false;
+
+	prog_fd = syscall(__NR_bpf, BPF_PROG_LOAD, &attr, sizeof(attr));
+	err = errno;
+
+	setrlimit(RLIMIT_MEMLOCK, &rlim_init);
+
+	if (prog_fd < 0)
+		return err == EPERM;
+
+	close(prog_fd);
+	return false;
+}
+
+int open_obj_pinned(const char *path, bool quiet)
+{
+	char *pname;
+	int fd = -1;
+
+	pname = strdup(path);
+	if (!pname) {
+		if (!quiet)
+			p_err("mem alloc failed");
+		goto out_ret;
+	}
+
+	fd = bpf_obj_get(pname);
+	if (fd < 0) {
+		if (!quiet)
+			p_err("bpf obj get (%s): %s", pname,
+			      errno == EACCES && !is_bpffs(dirname(pname)) ?
+			    "directory not in bpf file system (bpffs)" :
+			    strerror(errno));
+		goto out_free;
+	}
+
+out_free:
+	free(pname);
+out_ret:
+	return fd;
+}
+
+void set_max_rlimit(void)
+{
+	struct rlimit rinf = { RLIM_INFINITY, RLIM_INFINITY };
+
+	if (known_to_need_rlimit())
+		setrlimit(RLIMIT_MEMLOCK, &rinf);
+}
+
+int open_obj_pinned_any(const char *path, enum bpf_obj_type exp_type)
+{
+	enum bpf_obj_type type;
+	int fd;
+
+	fd = open_obj_pinned(path, false);
+	if (fd < 0)
+		return -1;
+
+	type = get_fd_type(fd);
+	if (type < 0) {
+		close(fd);
+		return type;
+	}
+	if (type != exp_type) {
+		p_err("incorrect object type: %s", get_fd_type_name(type));
+		close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
+
+int map_parse_fds(int *argc, char ***argv, int **fds)
+{
+	if (is_prefix(**argv, "id")) {
+		unsigned int id;
+		char *endptr;
+
+		NEXT_ARGP();
+
+		id = strtoul(**argv, &endptr, 0);
+		if (*endptr) {
+			p_err("can't parse %s as ID", **argv);
+			return -1;
+		}
+		NEXT_ARGP();
+
+		(*fds)[0] = bpf_map_get_fd_by_id(id);
+		if ((*fds)[0] < 0) {
+			p_err("get map by id (%u): %s", id, strerror(errno));
+			return -1;
+		}
+		return 1;
+	} else if (is_prefix(**argv, "name")) {
+		char *name;
+
+		NEXT_ARGP();
+
+		name = **argv;
+		if (strlen(name) > BPF_OBJ_NAME_LEN - 1) {
+			p_err("can't parse name");
+			return -1;
+		}
+		NEXT_ARGP();
+
+		return map_fd_by_name(name, fds);
+	} else if (is_prefix(**argv, "pinned")) {
+		char *path;
+
+		NEXT_ARGP();
+
+		path = **argv;
+		NEXT_ARGP();
+
+		(*fds)[0] = open_obj_pinned_any(path, BPF_OBJ_MAP);
+		if ((*fds)[0] < 0)
+			return -1;
+		return 1;
+	}
+
+	p_err("expected 'id', 'name' or 'pinned', got: '%s'?", **argv);
+	return -1;
+}
+
+
+int map_parse_fd(int *argc, char ***argv)
+{
+	int *fds = NULL;
+	int nb_fds, fd;
+
+	fds = malloc(sizeof(int));
+	if (!fds) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+	nb_fds = map_parse_fds(argc, argv, &fds);
+	if (nb_fds != 1) {
+		if (nb_fds > 1) {
+			p_err("several maps match this handle");
+			while (nb_fds--)
+				close(fds[nb_fds]);
+		}
+		fd = -1;
+		goto exit_free;
+	}
+
+	fd = fds[0];
+exit_free:
+	free(fds);
+	return fd;
+}
+
 int mount_bpffs_for_pin(const char *name)
 {
 	char err_str[ERR_MAX_LEN];
