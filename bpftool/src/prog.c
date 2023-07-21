@@ -283,6 +283,16 @@ static int do_dump(int argc, char **argv)
 
 }
 
+static int do_pin(int argc, char **argv)
+{
+	int err;
+
+	err = do_pin_any(argc, argv, prog_parse_fd);
+	if (!err && json_output)
+		jsonw_null(json_wtr);
+	return err;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
