@@ -8,7 +8,6 @@
 
 #include "json_writer.h"
 
-/* Create a new JSON stream */
 json_writer_t *jsonw_new(FILE *f)
 {
 	json_writer_t *self = malloc(sizeof(*self));
@@ -21,7 +20,6 @@ json_writer_t *jsonw_new(FILE *f)
 	return self;
 }
 
-/* End output to JSON stream */
 void jsonw_destroy(json_writer_t **self_p)
 {
 	json_writer_t *self = *self_p;
