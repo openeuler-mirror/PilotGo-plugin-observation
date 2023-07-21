@@ -1652,3 +1652,46 @@ enum {
 	BPF_FIB_LKUP_RET_NO_NEIGH,     /* no neighbor entry for nh */
 	BPF_FIB_LKUP_RET_FRAG_NEEDED,  /* fragmentation required to fwd */
 };
+
+struct bpf_fib_lookup {
+	__u8	family;
+
+	/* set if lookup is to consider L4 data - e.g., FIB rules */
+	__u8	l4_protocol;
+	__be16	sport;
+	__be16	dport;
+
+	union {	/* used for MTU check */
+		/* input to lookup */
+		__u16	tot_len; /* L3 length from network hdr (iph->tot_len) */
+
+		/* output: MTU value */
+		__u16	mtu_result;
+	};
+	__u32	ifindex;
+
+	union {
+		/* inputs to lookup */
+		__u8	tos;		/* AF_INET  */
+		__be32	flowinfo;	/* AF_INET6, flow_label + priority */
+
+		/* output: metric of fib result (IPv4/IPv6 only) */
+		__u32	rt_metric;
+	};
+
+	union {
+		__be32		ipv4_src;
+		__u32		ipv6_src[4];  /* in6_addr; network order */
+	};
+
+	union {
+		__be32		ipv4_dst;
+		__u32		ipv6_dst[4];  /* in6_addr; network order */
+	};
+
+	/* output */
+	__be16	h_vlan_proto;
+	__be16	h_vlan_TCI;
+	__u8	smac[6];     /* ETH_ALEN */
+	__u8	dmac[6];     /* ETH_ALEN */
+};
