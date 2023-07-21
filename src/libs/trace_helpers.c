@@ -1124,3 +1124,14 @@ void syms__free(struct syms *syms)
 	free(syms->dsos);
 	free(syms);
 }
+
+const struct sym *syms__map_addr(const struct syms *syms, unsigned long addr)
+{
+	struct dso *dso;
+	uint64_t offset;
+
+	dso = syms__find_dso(syms, addr, &offset);
+	if (!dso)
+		return NULL;
+	return dso__find_sym(dso, offset);
+}
