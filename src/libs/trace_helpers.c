@@ -1103,3 +1103,11 @@ err_out:
 	fclose(f);
 	return NULL;
 }
+
+struct syms *syms__load_pid(pid_t tgid)
+{
+	char fname[128];
+
+	snprintf(fname, sizeof(fname), "/proc/%ld/maps", (long)tgid);
+	return syms__load_file(fname);
+}
