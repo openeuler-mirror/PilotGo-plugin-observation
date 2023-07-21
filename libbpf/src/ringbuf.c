@@ -162,3 +162,54 @@ int ring_buffer__add(struct ring_buffer *rb, int map_fd,
 	return 0;
 }
 
+void ring_buffer__free(struct ring_buffer *rb)
+{
+	int i;
+
+	if (!rb)
+		return;
+
+	for (i = 0; i < rb->ring_cnt; ++i)
+		ringbuf_unmap_ring(rb, &rb->rings[i]);
+	if (rb->epoll_fd >= 0)
+		close(rb->epoll_fd);
+
+	free(rb->events);
+	free(rb->rings);
+	free(rb);
+}
+
+struct ring_buffer *
+ring_buffer__new(int map_fd, ring_buffer_sample_fn sample_cb, void *ctx,
+		 const struct ring_buffer_opts *opts)
+{
+	struct ring_buffer *rb;
+	int err;
+
+	if (!OPTS_VALID(opts, ring_buffer_opts))
+		return errno = EINVAL, NULL;
+
+	rb = calloc(1, sizeof(*rb));
+	if (!rb)
+		return errno = ENOMEM, NULL;
+
+	rb->page_size = getpagesize();
+
+	rb->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+	if (rb->epoll_fd < 0) {
+		err = -errno;
+		pr_warn("ringbuf: failed to create epoll instance: %d\n", err);
+		goto err_out;
+	}
+
+	err = ring_buffer__add(rb, map_fd, sample_cb, ctx);
+	if (err)
+		goto err_out;
+
+	return rb;
+
+err_out:
+	ring_buffer__free(rb);
+	return errno = -err, NULL;
+}
+
