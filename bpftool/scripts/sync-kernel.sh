@@ -322,3 +322,53 @@ for patch in $(ls -1 "${TMP_DIR}"/patches | tail -n +2); do
 		read -rp "Applying ${TMP_DIR}/patches/${patch} failed, please resolve manually and press <return> to proceed..."
 	fi
 done
+
+echo "Patching to account for expected differences..."
+patch -d "${LINUX_ABS_DIR}" -p0 -f --reject-file=- --no-backup-if-mismatch < "${GITHUB_ABS_DIR}/scripts/sync-kernel-expected-diff.patch" || true
+git add -u
+git commit -m 'tmp: apply expected differences to compare github/kernel repos' || true
+
+cd_to "${BPFTOOL_REPO}"
+# shellcheck disable=SC2068
+git ls-files -- ${BPFTOOL_VIEW_PATHS[@]} | grep -v -E "${BPFTOOL_VIEW_EXCLUDE_REGEX}" > "${TMP_DIR}"/github-view.ls
+
+echo "Comparing list of files..."
+diff -u "${TMP_DIR}"/linux-view.ls "${TMP_DIR}"/github-view.ls
+echo "Comparing file contents..."
+CONSISTENT=1
+while IFS= read -r F; do
+	if ! diff -u --color "${LINUX_ABS_DIR}/${F}" "${GITHUB_ABS_DIR}/${F}"; then
+		echo "${LINUX_ABS_DIR}/${F} and ${GITHUB_ABS_DIR}/${F} are different!"
+		CONSISTENT=0
+	fi
+done < "${TMP_DIR}"/linux-view.ls
+echo ""
+if (("${CONSISTENT}" == 1)); then
+	echo "Great! Content is identical!"
+else
+	ignore_inconsistency=n
+	echo "Unfortunately, there are some inconsistencies, please double check."
+	echo "Some of them may come from patches in bpf tree but absent from bpf-next."
+	echo "Note: I applied scripts/sync-kernel-expected-diff.patch before checking,"
+	echo "to account for expected changes. If this patch needs an update,"
+	echo "you can do it now with:"
+	echo "------"
+	echo "    (cd \"${LINUX_ABS_DIR}\" && git -c advice.detachedHead=false checkout HEAD~)"
+	echo "    for f in \$(cat \"${TMP_DIR}/linux-view.ls\"); do"
+	echo "        diff -u --label \"\${f}\" --label \"\${f}\" \\"
+	echo "            \"${LINUX_ABS_DIR}/\${f}\" \\"
+	echo "            \"${GITHUB_ABS_DIR}/\${f}\""
+	echo "    done > \"${GITHUB_ABS_DIR}/scripts/sync-kernel-expected-diff.patch\""
+	echo "------"
+	read -rp "Does everything look good? [y/N]: " ignore_inconsistency
+	case "${ignore_inconsistency}" in
+		"y" | "Y")
+			echo "Ok, proceeding..."
+			;;
+		*)
+			echo "Oops, exiting with error..."
+			exit 4
+	esac
+fi
+
+cleanup
