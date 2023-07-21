@@ -143,3 +143,8 @@ void jsonw_end_object(json_writer_t *self)
 {
 	jsonw_end(self, '}');
 }
+
+void jsonw_end_array(json_writer_t *self)
+{
+	jsonw_end(self, ']');
+}
