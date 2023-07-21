@@ -72,3 +72,106 @@ void delete_pinned_obj_table(struct hashmap *map)
 
 	hashmap__free(map);
 }
+
+static int
+mnt_fs(const char *target, const char *type, char *buff, size_t bufflen)
+{
+	bool bind_done = false;
+
+	while (mount("", target, "none", MS_PRIVATE | MS_REC, NULL)) {
+		if (errno != EINVAL || bind_done) {
+			snprintf(buff, bufflen,
+				 "mount --make-private %s failed: %s",
+				 target, strerror(errno));
+			return -1;
+		}
+
+		if (mount(target, target, "none", MS_BIND, NULL)) {
+			snprintf(buff, bufflen,
+				 "mount --bind %s %s failed: %s",
+				 target, target, strerror(errno));
+			return -1;
+		}
+
+		bind_done = true;
+	}
+
+	if (mount(type, target, type, 0, "mode=0700")) {
+		snprintf(buff, bufflen, "mount -t %s %s %s failed: %s",
+			 type, type, target, strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
+int mount_bpffs_for_pin(const char *name)
+{
+	char err_str[ERR_MAX_LEN];
+	char *file;
+	char *dir;
+	int err = 0;
+
+	file = malloc(strlen(name) + 1);
+	if (!file) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+
+	strcpy(file, name);
+	dir = dirname(file);
+
+	if (is_bpffs(dir))
+		/* nothing to do if already mounted */
+		goto out_free;
+
+	if (block_mount) {
+		p_err("no BPF file system found, not mounting it due to --nomount option");
+		err = -1;
+		goto out_free;
+	}
+
+	err = mnt_fs(dir, "bpf", err_str, ERR_MAX_LEN);
+	if (err) {
+		err_str[ERR_MAX_LEN - 1] = '\0';
+		p_err("can't mount BPF file system to pin the object (%s): %s",
+		      name, err_str);
+	}
+
+out_free:
+	free(file);
+	return err;
+}
+
+int do_pin_fd(int fd, const char *name)
+{
+	int err;
+
+	err = mount_bpffs_for_pin(name);
+	if (err)
+		return err;
+
+	err = bpf_obj_pin(fd, name);
+	if (err)
+		p_err("can't pin the object (%s): %s", name, strerror(errno));
+
+	return err;
+}
+
+int do_pin_any(int argc, char **argv, int (*get_fd)(int *, char ***))
+{
+	int err;
+	int fd;
+
+	if (!REQ_ARGS(3))
+		return -EINVAL;
+
+	fd = get_fd(&argc, &argv);
+	if (fd < 0)
+		return fd;
+
+	err = do_pin_fd(fd, *argv);
+
+	close(fd);
+	return err;
+}
