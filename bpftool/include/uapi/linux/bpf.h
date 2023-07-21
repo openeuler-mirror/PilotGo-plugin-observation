@@ -1669,9 +1669,7 @@ enum {
 	BPF_LOAD_HDR_OPT_TCP_SYN = (1ULL << 0),
 };
 
-/* args[0] value during BPF_SOCK_OPS_HDR_OPT_LEN_CB and
- * BPF_SOCK_OPS_WRITE_HDR_OPT_CB.
- */
+
 enum {
 	BPF_WRITE_HDR_TCP_CURRENT_MSS = 1,	/* Kernel is finding the
 						 * total option spaces
@@ -1699,4 +1697,35 @@ enum {
 enum {
 	BPF_DEVCG_DEV_BLOCK	= (1ULL << 0),
 	BPF_DEVCG_DEV_CHAR	= (1ULL << 1),
+};
+struct bpf_cgroup_dev_ctx {
+	/* access_type encoded as (BPF_DEVCG_ACC_* << 16) | BPF_DEVCG_DEV_* */
+	__u32 access_type;
+	__u32 major;
+	__u32 minor;
+};
+
+struct bpf_raw_tracepoint_args {
+	__u64 args[0];
+};
+
+/* DIRECT:  Skip the FIB rules and go to FIB table associated with device
+ * OUTPUT:  Do lookup from egress perspective; default is ingress
+ */
+enum {
+	BPF_FIB_LOOKUP_DIRECT  = (1U << 0),
+	BPF_FIB_LOOKUP_OUTPUT  = (1U << 1),
+	BPF_FIB_LOOKUP_SKIP_NEIGH = (1U << 2),
+};
+
+enum {
+	BPF_FIB_LKUP_RET_SUCCESS,      /* lookup successful */
+	BPF_FIB_LKUP_RET_BLACKHOLE,    /* dest is blackholed; can be dropped */
+	BPF_FIB_LKUP_RET_UNREACHABLE,  /* dest is unreachable; can be dropped */
+	BPF_FIB_LKUP_RET_PROHIBIT,     /* dest not allowed; can be dropped */
+	BPF_FIB_LKUP_RET_NOT_FWDED,    /* packet is not forwarded */
+	BPF_FIB_LKUP_RET_FWD_DISABLED, /* fwding is not enabled on ingress */
+	BPF_FIB_LKUP_RET_UNSUPP_LWT,   /* fwd requires encapsulation */
+	BPF_FIB_LKUP_RET_NO_NEIGH,     /* no neighbor entry for nh */
+	BPF_FIB_LKUP_RET_FRAG_NEEDED,  /* fragmentation required to fwd */
 };
