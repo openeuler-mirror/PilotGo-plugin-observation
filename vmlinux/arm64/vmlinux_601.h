@@ -476,3 +476,20 @@ struct sched_info {
 	long long unsigned int last_arrival;
 	long long unsigned int last_queued;
 };
+
+struct plist_node {
+	int prio;
+	struct list_head prio_list;
+	struct list_head node_list;
+};
+
+struct task_rss_stat {
+	int events;
+	int count[4];
+};
+
+struct prev_cputime {
+	u64 utime;
+	u64 stime;
+	raw_spinlock_t lock;
+};
