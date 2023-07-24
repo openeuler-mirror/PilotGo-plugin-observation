@@ -199,61 +199,6 @@ static int do_show(int argc, char **argv)
 	return err;
 }
 
-
-static int do_help(int argc, char **argv)
-{
-	if (json_output) {
-		jsonw_null(json_wtr);
-		return 0;
-	}
-
-	fprintf(stderr,
-		"Usage: %1$s %2$s { show | list } [PROG]\n"
-		"       %1$s %2$s dump xlated PROG [{ file FILE | [opcodes] [linum] [visual] }]\n"
-		"       %1$s %2$s dump jited  PROG [{ file FILE | [opcodes] [linum] }]\n"
-		"       %1$s %2$s pin   PROG FILE\n"
-		"       %1$s %2$s { load | loadall } OBJ  PATH \\\n"
-		"                         [type TYPE] [dev NAME] \\\n"
-		"                         [map { idx IDX | name NAME } MAP]\\\n"
-		"                         [pinmaps MAP_DIR]\n"
-		"                         [autoattach]\n"
-		"       %1$s %2$s attach PROG ATTACH_TYPE [MAP]\n"
-		"       %1$s %2$s detach PROG ATTACH_TYPE [MAP]\n"
-		"       %1$s %2$s run PROG \\\n"
-		"                         data_in FILE \\\n"
-		"                         [data_out FILE [data_size_out L]] \\\n"
-		"                         [ctx_in FILE [ctx_out FILE [ctx_size_out M]]] \\\n"
-		"                         [repeat N]\n"
-		"       %1$s %2$s profile PROG [duration DURATION] METRICs\n"
-		"       %1$s %2$s tracelog\n"
-		"       %1$s %2$s help\n"
-		"\n"
-		"       " HELP_SPEC_MAP "\n"
-		"       " HELP_SPEC_PROGRAM "\n"
-		"       TYPE := { socket | kprobe | kretprobe | classifier | action |\n"
-		"                 tracepoint | raw_tracepoint | xdp | perf_event | cgroup/skb |\n"
-		"                 cgroup/sock | cgroup/dev | lwt_in | lwt_out | lwt_xmit |\n"
-		"                 lwt_seg6local | sockops | sk_skb | sk_msg | lirc_mode2 |\n"
-		"                 sk_reuseport | flow_dissector | cgroup/sysctl |\n"
-		"                 cgroup/bind4 | cgroup/bind6 | cgroup/post_bind4 |\n"
-		"                 cgroup/post_bind6 | cgroup/connect4 | cgroup/connect6 |\n"
-		"                 cgroup/getpeername4 | cgroup/getpeername6 |\n"
-		"                 cgroup/getsockname4 | cgroup/getsockname6 | cgroup/sendmsg4 |\n"
-		"                 cgroup/sendmsg6 | cgroup/recvmsg4 | cgroup/recvmsg6 |\n"
-		"                 cgroup/getsockopt | cgroup/setsockopt | cgroup/sock_release |\n"
-		"                 struct_ops | fentry | fexit | freplace | sk_lookup }\n"
-		"       ATTACH_TYPE := { sk_msg_verdict | sk_skb_verdict | sk_skb_stream_verdict |\n"
-		"                        sk_skb_stream_parser | flow_dissector }\n"
-		"       METRIC := { cycles | instructions | l1d_loads | llc_misses | itlb_misses | dtlb_misses }\n"
-		"       " HELP_SPEC_OPTIONS " |\n"
-		"                    {-f|--bpffs} | {-m|--mapcompat} | {-n|--nomount} |\n"
-		"                    {-L|--use-loader} }\n"
-		"",
-		bin_name, argv[-2]);
-
-	return 0;
-}
-
 static int do_dump(int argc, char **argv)
 {
 	struct bpf_prog_info info;
@@ -1043,6 +988,181 @@ free_data_in:
 	return err;
 }
 
+
+static const struct cmd cmds[] = {
+	{ "show",	do_show },
+	{ "list",	do_show },
+	{ "help",	do_help },
+	{ "dump",	do_dump },
+	{ "pin",	do_pin },
+	{ "load",	do_load },
+	{ "loadall",	do_loadall },
+	{ "attach",	do_attach },
+	{ "detach",	do_detach },
+	{ "tracelog",	do_tracelog },
+	{ "run",	do_run },
+	{ "profile",	do_profile },
+	{ 0 }
+};
+
+int do_prog(int argc, char **argv)
+{
+	return cmd_select(cmds, argc, argv, do_help);
+}
+
+
+static int do_profile(int argc, char **argv)
+{
+	int num_metric, num_cpu, err = -1;
+	struct bpf_program *prog;
+	unsigned long duration;
+	char *endptr;
+
+	/* we at least need two args for the prog and one metric */
+	if (!REQ_ARGS(3))
+		return -EINVAL;
+
+	/* parse target fd */
+	profile_tgt_fd = prog_parse_fd(&argc, &argv);
+	if (profile_tgt_fd < 0) {
+		p_err("failed to parse fd");
+		return -1;
+	}
+
+	/* parse profiling optional duration */
+	if (argc > 2 && is_prefix(argv[0], "duration")) {
+		NEXT_ARG();
+		duration = strtoul(*argv, &endptr, 0);
+		if (*endptr)
+			usage();
+		NEXT_ARG();
+	} else {
+		duration = UINT_MAX;
+	}
+
+	num_metric = profile_parse_metrics(argc, argv);
+	if (num_metric <= 0)
+		goto out;
+
+	num_cpu = libbpf_num_possible_cpus();
+	if (num_cpu <= 0) {
+		p_err("failed to identify number of CPUs");
+		goto out;
+	}
+
+	profile_obj = profiler_bpf__open();
+	if (!profile_obj) {
+		p_err("failed to open and/or load BPF object");
+		goto out;
+	}
+
+	profile_obj->rodata->num_cpu = num_cpu;
+	profile_obj->rodata->num_metric = num_metric;
+
+	/* adjust map sizes */
+	bpf_map__set_max_entries(profile_obj->maps.events, num_metric * num_cpu);
+	bpf_map__set_max_entries(profile_obj->maps.fentry_readings, num_metric);
+	bpf_map__set_max_entries(profile_obj->maps.accum_readings, num_metric);
+	bpf_map__set_max_entries(profile_obj->maps.counts, 1);
+
+	/* change target name */
+	profile_tgt_name = profile_target_name(profile_tgt_fd);
+	if (!profile_tgt_name)
+		goto out;
+
+	bpf_object__for_each_program(prog, profile_obj->obj) {
+		err = bpf_program__set_attach_target(prog, profile_tgt_fd,
+						     profile_tgt_name);
+		if (err) {
+			p_err("failed to set attach target\n");
+			goto out;
+		}
+	}
+
+	set_max_rlimit();
+	err = profiler_bpf__load(profile_obj);
+	if (err) {
+		p_err("failed to load profile_obj");
+		goto out;
+	}
+
+	err = profile_open_perf_events(profile_obj);
+	if (err)
+		goto out;
+
+	err = profiler_bpf__attach(profile_obj);
+	if (err) {
+		p_err("failed to attach profile_obj");
+		goto out;
+	}
+	signal(SIGINT, int_exit);
+
+	sleep(duration);
+	profile_print_and_cleanup();
+	return 0;
+
+out:
+	profile_close_perf_events(profile_obj);
+	if (profile_obj)
+		profiler_bpf__destroy(profile_obj);
+	close(profile_tgt_fd);
+	free(profile_tgt_name);
+	return err;
+}
+
+static int do_help(int argc, char **argv)
+{
+	if (json_output) {
+		jsonw_null(json_wtr);
+		return 0;
+	}
+
+	fprintf(stderr,
+		"Usage: %1$s %2$s { show | list } [PROG]\n"
+		"       %1$s %2$s dump xlated PROG [{ file FILE | [opcodes] [linum] [visual] }]\n"
+		"       %1$s %2$s dump jited  PROG [{ file FILE | [opcodes] [linum] }]\n"
+		"       %1$s %2$s pin   PROG FILE\n"
+		"       %1$s %2$s { load | loadall } OBJ  PATH \\\n"
+		"                         [type TYPE] [dev NAME] \\\n"
+		"                         [map { idx IDX | name NAME } MAP]\\\n"
+		"                         [pinmaps MAP_DIR]\n"
+		"                         [autoattach]\n"
+		"       %1$s %2$s attach PROG ATTACH_TYPE [MAP]\n"
+		"       %1$s %2$s detach PROG ATTACH_TYPE [MAP]\n"
+		"       %1$s %2$s run PROG \\\n"
+		"                         data_in FILE \\\n"
+		"                         [data_out FILE [data_size_out L]] \\\n"
+		"                         [ctx_in FILE [ctx_out FILE [ctx_size_out M]]] \\\n"
+		"                         [repeat N]\n"
+		"       %1$s %2$s profile PROG [duration DURATION] METRICs\n"
+		"       %1$s %2$s tracelog\n"
+		"       %1$s %2$s help\n"
+		"\n"
+		"       " HELP_SPEC_MAP "\n"
+		"       " HELP_SPEC_PROGRAM "\n"
+		"       TYPE := { socket | kprobe | kretprobe | classifier | action |\n"
+		"                 tracepoint | raw_tracepoint | xdp | perf_event | cgroup/skb |\n"
+		"                 cgroup/sock | cgroup/dev | lwt_in | lwt_out | lwt_xmit |\n"
+		"                 lwt_seg6local | sockops | sk_skb | sk_msg | lirc_mode2 |\n"
+		"                 sk_reuseport | flow_dissector | cgroup/sysctl |\n"
+		"                 cgroup/bind4 | cgroup/bind6 | cgroup/post_bind4 |\n"
+		"                 cgroup/post_bind6 | cgroup/connect4 | cgroup/connect6 |\n"
+		"                 cgroup/getpeername4 | cgroup/getpeername6 |\n"
+		"                 cgroup/getsockname4 | cgroup/getsockname6 | cgroup/sendmsg4 |\n"
+		"                 cgroup/sendmsg6 | cgroup/recvmsg4 | cgroup/recvmsg6 |\n"
+		"                 cgroup/getsockopt | cgroup/setsockopt | cgroup/sock_release |\n"
+		"                 struct_ops | fentry | fexit | freplace | sk_lookup }\n"
+		"       ATTACH_TYPE := { sk_msg_verdict | sk_skb_verdict | sk_skb_stream_verdict |\n"
+		"                        sk_skb_stream_parser | flow_dissector }\n"
+		"       METRIC := { cycles | instructions | l1d_loads | llc_misses | itlb_misses | dtlb_misses }\n"
+		"       " HELP_SPEC_OPTIONS " |\n"
+		"                    {-f|--bpffs} | {-m|--mapcompat} | {-n|--nomount} |\n"
+		"                    {-L|--use-loader} }\n"
+		"",
+		bin_name, argv[-2]);
+
+	return 0;
+}
 
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
