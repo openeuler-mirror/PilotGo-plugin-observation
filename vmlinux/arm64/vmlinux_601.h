@@ -459,3 +459,20 @@ struct sched_statistics {
 	long: 64;
 	long: 64;
 };
+
+union rcu_special {
+	struct {
+		u8 blocked;
+		u8 need_qs;
+		u8 exp_hint;
+		u8 need_mb;
+	} b;
+	u32 s;
+};
+
+struct sched_info {
+	long unsigned int pcount;
+	long long unsigned int run_delay;
+	long long unsigned int last_arrival;
+	long long unsigned int last_queued;
+};
