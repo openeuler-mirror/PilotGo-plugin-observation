@@ -267,3 +267,53 @@ done:
 	return cnt;
 }
 
+/* Consume available ring buffer(s) data without event polling.
+ * Returns number of records consumed across all registered ring buffers (or
+ * INT_MAX, whichever is less), or negative number if any of the callbacks
+ * return error.
+ */
+int ring_buffer__consume(struct ring_buffer *rb)
+{
+	int64_t err, res = 0;
+	int i;
+
+	for (i = 0; i < rb->ring_cnt; i++) {
+		struct ring *ring = &rb->rings[i];
+
+		err = ringbuf_process_ring(ring);
+		if (err < 0)
+			return libbpf_err(err);
+		res += err;
+	}
+	if (res > INT_MAX)
+		return INT_MAX;
+	return res;
+}
+
+/* Poll for available data and consume records, if any are available.
+ * Returns number of records consumed (or INT_MAX, whichever is less), or
+ * negative number, if any of the registered callbacks returned error.
+ */
+int ring_buffer__poll(struct ring_buffer *rb, int timeout_ms)
+{
+	int i, cnt;
+	int64_t err, res = 0;
+
+	cnt = epoll_wait(rb->epoll_fd, rb->events, rb->ring_cnt, timeout_ms);
+	if (cnt < 0)
+		return libbpf_err(-errno);
+
+	for (i = 0; i < cnt; i++) {
+		__u32 ring_id = rb->events[i].data.fd;
+		struct ring *ring = &rb->rings[ring_id];
+
+		err = ringbuf_process_ring(ring);
+		if (err < 0)
+			return libbpf_err(err);
+		res += err;
+	}
+	if (res > INT_MAX)
+		return INT_MAX;
+	return res;
+}
+
