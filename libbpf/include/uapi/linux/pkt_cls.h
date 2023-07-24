@@ -38,13 +38,8 @@ enum {
 #define TC_ACT_QUEUED		5
 #define TC_ACT_REPEAT		6
 #define TC_ACT_REDIRECT		7
-#define TC_ACT_TRAP		8 /* For hw path, this means "trap to cpu"
-				   * and don't further process the frame
-				   * in hardware. For sw path, this is
-				   * equivalent of TC_ACT_STOLEN - drop
-				   * the skb and act like everything
-				   * is alright.
-				   */
+#define TC_ACT_TRAP		8 
+
 #define TC_ACT_VALUE_MAX	TC_ACT_TRAP
 
 #define __TC_ACT_EXT_SHIFT 28
@@ -56,3 +51,32 @@ enum {
 #define TC_ACT_JUMP __TC_ACT_EXT(1)
 #define TC_ACT_GOTO_CHAIN __TC_ACT_EXT(2)
 #define TC_ACT_EXT_OPCODE_MAX	TC_ACT_GOTO_CHAIN
+
+/* Action type identifiers*/
+enum {
+	TCA_ID_UNSPEC=0,
+	TCA_ID_POLICE=1,
+	/* other actions go here */
+	__TCA_ID_MAX=255
+};
+
+#define TCA_ID_MAX __TCA_ID_MAX
+
+struct tc_police {
+	__u32			index;
+	int			action;
+#define TC_POLICE_UNSPEC	TC_ACT_UNSPEC
+#define TC_POLICE_OK		TC_ACT_OK
+#define TC_POLICE_RECLASSIFY	TC_ACT_RECLASSIFY
+#define TC_POLICE_SHOT		TC_ACT_SHOT
+#define TC_POLICE_PIPE		TC_ACT_PIPE
+
+	__u32			limit;
+	__u32			burst;
+	__u32			mtu;
+	struct tc_ratespec	rate;
+	struct tc_ratespec	peakrate;
+	int			refcnt;
+	int			bindcnt;
+	__u32			capab;
+};
