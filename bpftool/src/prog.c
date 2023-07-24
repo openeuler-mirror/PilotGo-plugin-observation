@@ -32,7 +32,53 @@
 #include "main.h"
 #include "xlated_dumper.h"
 
+#define BPF_METADATA_PREFIX "bpf_metadata_"
+#define BPF_METADATA_PREFIX_LEN (sizeof(BPF_METADATA_PREFIX) - 1)
+
+enum dump_mode {
+	DUMP_JITED,
+	DUMP_XLATED,
+};
+
+static const bool attach_types[] = {
+	[BPF_SK_SKB_STREAM_PARSER] = true,
+	[BPF_SK_SKB_STREAM_VERDICT] = true,
+	[BPF_SK_SKB_VERDICT] = true,
+	[BPF_SK_MSG_VERDICT] = true,
+	[BPF_FLOW_DISSECTOR] = true,
+	[__MAX_BPF_ATTACH_TYPE] = false,
+};
+
+static const char * const attach_type_strings[] = {
+	[BPF_SK_SKB_STREAM_PARSER] = "stream_parser",
+	[BPF_SK_SKB_STREAM_VERDICT] = "stream_verdict",
+	[BPF_SK_SKB_VERDICT] = "skb_verdict",
+	[BPF_SK_MSG_VERDICT] = "msg_verdict",
+	[__MAX_BPF_ATTACH_TYPE] = NULL,
+};
+
 static struct hashmap *prog_table;
+
+static enum bpf_attach_type parse_attach_type(const char *str)
+{
+	enum bpf_attach_type type;
+
+	for (type = 0; type < __MAX_BPF_ATTACH_TYPE; type++) {
+		if (attach_types[type]) {
+			const char *attach_type_str;
+
+			attach_type_str = libbpf_bpf_attach_type_str(type);
+			if (!strcmp(str, attach_type_str))
+				return type;
+		}
+
+		if (attach_type_strings[type] &&
+		    is_prefix(str, attach_type_strings[type]))
+			return type;
+	}
+
+	return __MAX_BPF_ATTACH_TYPE;
+}
 
 static int show_prog(int fd)
 {
@@ -711,6 +757,28 @@ static int do_attach(int argc, char **argv)
 	err = bpf_prog_attach(progfd, mapfd, attach_type, 0);
 	if (err) {
 		p_err("failed prog attach to map");
+		return -EINVAL;
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+	return 0;
+}
+
+static int do_detach(int argc, char **argv)
+{
+	enum bpf_attach_type attach_type;
+	int err, progfd;
+	int mapfd;
+
+	err = parse_attach_detach_args(argc, argv,
+				       &progfd, &attach_type, &mapfd);
+	if (err)
+		return err;
+
+	err = bpf_prog_detach2(progfd, mapfd, attach_type);
+	if (err) {
+		p_err("failed prog detach from map");
 		return -EINVAL;
 	}
 
