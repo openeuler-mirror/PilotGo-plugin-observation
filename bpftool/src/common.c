@@ -200,6 +200,107 @@ int open_obj_pinned_any(const char *path, enum bpf_obj_type exp_type)
 	return fd;
 }
 
+int open_obj_pinned(const char *path, bool quiet)
+{
+	char *pname;
+	int fd = -1;
+
+	pname = strdup(path);
+	if (!pname) {
+		if (!quiet)
+			p_err("mem alloc failed");
+		goto out_ret;
+	}
+
+	fd = bpf_obj_get(pname);
+	if (fd < 0) {
+		if (!quiet)
+			p_err("bpf obj get (%s): %s", pname,
+			      errno == EACCES && !is_bpffs(dirname(pname)) ?
+			    "directory not in bpf file system (bpffs)" :
+			    strerror(errno));
+		goto out_free;
+	}
+
+out_free:
+	free(pname);
+out_ret:
+	return fd;
+}
+
+static int do_build_table_cb(const char *fpath, const struct stat *sb,
+			     int typeflag, struct FTW *ftwbuf)
+{
+	struct bpf_prog_info pinned_info;
+	__u32 len = sizeof(pinned_info);
+	enum bpf_obj_type objtype;
+	int fd, err = 0;
+	char *path;
+
+	if (typeflag != FTW_F)
+		goto out_ret;
+
+	fd = open_obj_pinned(fpath, true);
+	if (fd < 0)
+		goto out_ret;
+
+	objtype = get_fd_type(fd);
+	if (objtype != build_fn_type)
+		goto out_close;
+
+	memset(&pinned_info, 0, sizeof(pinned_info));
+	if (bpf_prog_get_info_by_fd(fd, &pinned_info, &len))
+		goto out_close;
+
+	path = strdup(fpath);
+	if (!path) {
+		err = -1;
+		goto out_close;
+	}
+
+	err = hashmap__append(build_fn_table, pinned_info.id, path);
+	if (err) {
+		p_err("failed to append entry to hashmap for ID %u, path '%s': %s",
+		      pinned_info.id, path, strerror(errno));
+		free(path);
+		goto out_close;
+	}
+
+out_close:
+	close(fd);
+out_ret:
+	return err;
+}
+
+
+int build_pinned_obj_table(struct hashmap *tab,
+			   enum bpf_obj_type type)
+{
+	struct mntent *mntent = NULL;
+	FILE *mntfile = NULL;
+	int flags = FTW_PHYS;
+	int nopenfd = 16;
+	int err = 0;
+
+	mntfile = setmntent("/proc/mounts", "r");
+	if (!mntfile)
+		return -1;
+
+	build_fn_table = tab;
+	build_fn_type = type;
+
+	while ((mntent = getmntent(mntfile))) {
+		char *path = mntent->mnt_dir;
+
+		if (strncmp(mntent->mnt_type, "bpf", 3) != 0)
+			continue;
+		err = nftw(path, do_build_table_cb, nopenfd, flags);
+		if (err)
+			break;
+	}
+	fclose(mntfile);
+	return err;
+}
 
 int map_parse_fds(int *argc, char ***argv, int **fds)
 {
@@ -443,4 +544,56 @@ int prog_parse_fd(int *argc, char ***argv)
 exit_free:
 	free(fds);
 	return fd;
+}
+
+int map_parse_fd(int *argc, char ***argv)
+{
+	int *fds = NULL;
+	int nb_fds, fd;
+
+	fds = malloc(sizeof(int));
+	if (!fds) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+	nb_fds = map_parse_fds(argc, argv, &fds);
+	if (nb_fds != 1) {
+		if (nb_fds > 1) {
+			p_err("several maps match this handle");
+			while (nb_fds--)
+				close(fds[nb_fds]);
+		}
+		fd = -1;
+		goto exit_free;
+	}
+
+	fd = fds[0];
+exit_free:
+	free(fds);
+	return fd;
+}
+
+int map_parse_fd_and_info(int *argc, char ***argv, struct bpf_map_info *info,
+			  __u32 *info_len)
+{
+	int err;
+	int fd;
+
+	fd = map_parse_fd(argc, argv);
+	if (fd < 0)
+		return -1;
+
+	err = bpf_map_get_info_by_fd(fd, info, info_len);
+	if (err) {
+		p_err("can't get map info: %s", strerror(errno));
+		close(fd);
+		return err;
+	}
+
+	return fd;
+}
+
+size_t hash_fn_for_key_as_id(long key, void *ctx)
+{
+	return key;
 }
