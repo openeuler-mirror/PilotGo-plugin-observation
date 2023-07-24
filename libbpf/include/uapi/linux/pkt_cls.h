@@ -80,3 +80,35 @@ struct tc_police {
 	int			bindcnt;
 	__u32			capab;
 };
+
+struct tcf_t {
+	__u64   install;
+	__u64   lastuse;
+	__u64   expires;
+	__u64   firstuse;
+};
+
+struct tc_cnt {
+	int                   refcnt;
+	int                   bindcnt;
+};
+
+#define tc_gen \
+	__u32                 index; \
+	__u32                 capab; \
+	int                   action; \
+	int                   refcnt; \
+	int                   bindcnt
+
+enum {
+	TCA_POLICE_UNSPEC,
+	TCA_POLICE_TBF,
+	TCA_POLICE_RATE,
+	TCA_POLICE_PEAKRATE,
+	TCA_POLICE_AVRATE,
+	TCA_POLICE_RESULT,
+	TCA_POLICE_TM,
+	TCA_POLICE_PAD,
+	__TCA_POLICE_MAX
+#define TCA_POLICE_RESULT TCA_POLICE_RESULT
+};
