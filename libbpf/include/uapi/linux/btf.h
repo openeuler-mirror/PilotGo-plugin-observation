@@ -81,3 +81,120 @@ enum {
 	NR_BTF_KINDS,
 	BTF_KIND_MAX		= NR_BTF_KINDS - 1,
 };
+
+/* For some specific BTF_KIND, "struct btf_type" is immediately
+ * followed by extra data.
+ */
+
+/* BTF_KIND_INT is followed by a u32 and the following
+ * is the 32 bits arrangement:
+ */
+#define BTF_INT_ENCODING(VAL)	(((VAL) & 0x0f000000) >> 24)
+#define BTF_INT_OFFSET(VAL)	(((VAL) & 0x00ff0000) >> 16)
+#define BTF_INT_BITS(VAL)	((VAL)  & 0x000000ff)
+
+/* Attributes stored in the BTF_INT_ENCODING */
+#define BTF_INT_SIGNED	(1 << 0)
+#define BTF_INT_CHAR	(1 << 1)
+#define BTF_INT_BOOL	(1 << 2)
+
+/* BTF_KIND_ENUM is followed by multiple "struct btf_enum".
+ * The exact number of btf_enum is stored in the vlen (of the
+ * info in "struct btf_type").
+ */
+struct btf_enum {
+	__u32	name_off;
+	__s32	val;
+};
+
+/* BTF_KIND_ARRAY is followed by one "struct btf_array" */
+struct btf_array {
+	__u32	type;
+	__u32	index_type;
+	__u32	nelems;
+};
+
+/* BTF_KIND_STRUCT and BTF_KIND_UNION are followed
+ * by multiple "struct btf_member".  The exact number
+ * of btf_member is stored in the vlen (of the info in
+ * "struct btf_type").
+ */
+struct btf_member {
+	__u32	name_off;
+	__u32	type;
+	/* If the type info kind_flag is set, the btf_member offset
+	 * contains both member bitfield size and bit offset. The
+	 * bitfield size is set for bitfield members. If the type
+	 * info kind_flag is not set, the offset contains only bit
+	 * offset.
+	 */
+	__u32	offset;
+};
+
+/* If the struct/union type info kind_flag is set, the
+ * following two macros are used to access bitfield_size
+ * and bit_offset from btf_member.offset.
+ */
+#define BTF_MEMBER_BITFIELD_SIZE(val)	((val) >> 24)
+#define BTF_MEMBER_BIT_OFFSET(val)	((val) & 0xffffff)
+
+/* BTF_KIND_FUNC_PROTO is followed by multiple "struct btf_param".
+ * The exact number of btf_param is stored in the vlen (of the
+ * info in "struct btf_type").
+ */
+struct btf_param {
+	__u32	name_off;
+	__u32	type;
+};
+
+enum {
+	BTF_VAR_STATIC = 0,
+	BTF_VAR_GLOBAL_ALLOCATED = 1,
+	BTF_VAR_GLOBAL_EXTERN = 2,
+};
+
+enum btf_func_linkage {
+	BTF_FUNC_STATIC = 0,
+	BTF_FUNC_GLOBAL = 1,
+	BTF_FUNC_EXTERN = 2,
+};
+
+/* BTF_KIND_VAR is followed by a single "struct btf_var" to describe
+ * additional information related to the variable such as its linkage.
+ */
+struct btf_var {
+	__u32	linkage;
+};
+
+/* BTF_KIND_DATASEC is followed by multiple "struct btf_var_secinfo"
+ * to describe all BTF_KIND_VAR types it contains along with it's
+ * in-section offset as well as size.
+ */
+struct btf_var_secinfo {
+	__u32	type;
+	__u32	offset;
+	__u32	size;
+};
+
+/* BTF_KIND_DECL_TAG is followed by a single "struct btf_decl_tag" to describe
+ * additional information related to the tag applied location.
+ * If component_idx == -1, the tag is applied to a struct, union,
+ * variable or function. Otherwise, it is applied to a struct/union
+ * member or a func argument, and component_idx indicates which member
+ * or argument (0 ... vlen-1).
+ */
+struct btf_decl_tag {
+       __s32   component_idx;
+};
+
+/* BTF_KIND_ENUM64 is followed by multiple "struct btf_enum64".
+ * The exact number of btf_enum64 is stored in the vlen (of the
+ * info in "struct btf_type").
+ */
+struct btf_enum64 {
+	__u32	name_off;
+	__u32	val_lo32;
+	__u32	val_hi32;
+};
+
+#endif /* _UAPI__LINUX_BTF_H__ */
