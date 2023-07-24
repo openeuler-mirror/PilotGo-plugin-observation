@@ -1267,3 +1267,15 @@ err_out:
 	return NULL;
 }
 
+void partitions__free(struct partitions *partitions)
+{
+	int i;
+
+	if (!partitions)
+		return;
+
+	for (i = 0; i < partitions->sz; i++)
+		free(partitions->items[i].name);
+	free(partitions->items);
+	free(partitions);
+}
