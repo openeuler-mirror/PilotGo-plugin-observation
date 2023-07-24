@@ -1184,3 +1184,23 @@ void syms_cache__free(struct syms_cache *syms_cache)
 	free(syms_cache->data);
 	free(syms_cache);
 }
+
+struct syms *syms_cache__get_syms(struct syms_cache *syms_cache, int tgid)
+{
+	void *tmp;
+	int i;
+
+	for (i = 0; i < syms_cache->nr; i++) {
+		if (syms_cache->data[i].tgid == tgid)
+			return syms_cache->data[i].syms;
+	}
+
+	tmp = realloc(syms_cache->data, (syms_cache->nr + 1) *
+		      sizeof(*syms_cache->data));
+	if (!tmp)
+		return NULL;
+	syms_cache->data = tmp;
+	syms_cache->data[syms_cache->nr].syms = syms__load_pid(tgid);
+	syms_cache->data[syms_cache->nr].tgid = tgid;
+	return syms_cache->data[syms_cache->nr++].syms;
+}
