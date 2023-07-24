@@ -1854,3 +1854,40 @@ struct bpf_sk_lookup {
 	__u32 local_port;	/* Host byte order */
 	__u32 ingress_ifindex;		/* The arriving interface. Determined by inet_iif. */
 };
+
+enum bpf_core_relo_kind {
+	BPF_CORE_FIELD_BYTE_OFFSET = 0,      /* field byte offset */
+	BPF_CORE_FIELD_BYTE_SIZE = 1,        /* field size in bytes */
+	BPF_CORE_FIELD_EXISTS = 2,           /* field existence in target kernel */
+	BPF_CORE_FIELD_SIGNED = 3,           /* field signedness (0 - unsigned, 1 - signed) */
+	BPF_CORE_FIELD_LSHIFT_U64 = 4,       /* bitfield-specific left bitshift */
+	BPF_CORE_FIELD_RSHIFT_U64 = 5,       /* bitfield-specific right bitshift */
+	BPF_CORE_TYPE_ID_LOCAL = 6,          /* type ID in local BPF object */
+	BPF_CORE_TYPE_ID_TARGET = 7,         /* type ID in target kernel */
+	BPF_CORE_TYPE_EXISTS = 8,            /* type existence in target kernel */
+	BPF_CORE_TYPE_SIZE = 9,              /* type size in bytes */
+	BPF_CORE_ENUMVAL_EXISTS = 10,        /* enum value existence in target kernel */
+	BPF_CORE_ENUMVAL_VALUE = 11,         /* enum value integer value */
+	BPF_CORE_TYPE_MATCHES = 12,          /* type match in target kernel */
+};
+
+struct bpf_core_relo {
+	__u32 insn_off;
+	__u32 type_id;
+	__u32 access_str_off;
+	enum bpf_core_relo_kind kind;
+};
+
+enum {
+	BPF_F_TIMER_ABS = (1ULL << 0),
+};
+
+/* BPF numbers iterator state */
+struct bpf_iter_num {
+	/* opaque iterator state; having __u64 here allows to preserve correct
+	 * alignment requirements in vmlinux.h, generated from BTF
+	 */
+	__u64 __opaque[1];
+} __attribute__((aligned(8)));
+
+#endif /* _UAPI__LINUX_BPF_H__ */
