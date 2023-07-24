@@ -664,6 +664,61 @@ static int do_loadall(int argc, char **argv)
 	return load_with_options(argc, argv, false);
 }
 
+static int parse_attach_detach_args(int argc, char **argv, int *progfd,
+				    enum bpf_attach_type *attach_type,
+				    int *mapfd)
+{
+	if (!REQ_ARGS(3))
+		return -EINVAL;
+
+	*progfd = prog_parse_fd(&argc, &argv);
+	if (*progfd < 0)
+		return *progfd;
+
+	*attach_type = parse_attach_type(*argv);
+	if (*attach_type == __MAX_BPF_ATTACH_TYPE) {
+		p_err("invalid attach/detach type");
+		return -EINVAL;
+	}
+
+	if (*attach_type == BPF_FLOW_DISSECTOR) {
+		*mapfd = 0;
+		return 0;
+	}
+
+	NEXT_ARG();
+	if (!REQ_ARGS(2))
+		return -EINVAL;
+
+	*mapfd = map_parse_fd(&argc, &argv);
+	if (*mapfd < 0)
+		return *mapfd;
+
+	return 0;
+}
+
+static int do_attach(int argc, char **argv)
+{
+	enum bpf_attach_type attach_type;
+	int err, progfd;
+	int mapfd;
+
+	err = parse_attach_detach_args(argc, argv,
+				       &progfd, &attach_type, &mapfd);
+	if (err)
+		return err;
+
+	err = bpf_prog_attach(progfd, mapfd, attach_type, 0);
+	if (err) {
+		p_err("failed prog attach to map");
+		return -EINVAL;
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+	return 0;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
