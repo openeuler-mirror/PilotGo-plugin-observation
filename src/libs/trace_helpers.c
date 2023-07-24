@@ -1204,3 +1204,27 @@ struct syms *syms_cache__get_syms(struct syms_cache *syms_cache, int tgid)
 	syms_cache->data[syms_cache->nr].tgid = tgid;
 	return syms_cache->data[syms_cache->nr++].syms;
 }
+
+struct partitions {
+	struct partition *items;
+	int sz;
+};
+
+static int partitions__add_partition(struct partitions *partitions,
+				     const char *name, unsigned int dev)
+{
+	struct partition *partition;
+	void *tmp;
+
+	tmp = realloc(partitions->items, (partitions->sz + 1) *
+		sizeof(*partitions->items));
+	if (!tmp)
+		return -1;
+	partitions->items = tmp;
+	partition = &partitions->items[partitions->sz];
+	partition->name = strdup(name);
+	partition->dev = dev;
+	partitions->sz++;
+
+	return 0;
+}
