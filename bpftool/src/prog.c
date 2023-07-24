@@ -988,28 +988,303 @@ free_data_in:
 	return err;
 }
 
-
-static const struct cmd cmds[] = {
-	{ "show",	do_show },
-	{ "list",	do_show },
-	{ "help",	do_help },
-	{ "dump",	do_dump },
-	{ "pin",	do_pin },
-	{ "load",	do_load },
-	{ "loadall",	do_loadall },
-	{ "attach",	do_attach },
-	{ "detach",	do_detach },
-	{ "tracelog",	do_tracelog },
-	{ "run",	do_run },
-	{ "profile",	do_profile },
-	{ 0 }
-};
-
 int do_prog(int argc, char **argv)
 {
 	return cmd_select(cmds, argc, argv, do_help);
 }
 
+
+
+static __u64 profile_total_count;
+
+#define MAX_NUM_PROFILE_METRICS 4
+
+static int profile_parse_metrics(int argc, char **argv)
+{
+	unsigned int metric_cnt;
+	int selected_cnt = 0;
+	unsigned int i;
+
+	metric_cnt = ARRAY_SIZE(metrics);
+
+	while (argc > 0) {
+		for (i = 0; i < metric_cnt; i++) {
+			if (is_prefix(argv[0], metrics[i].name)) {
+				if (!metrics[i].selected)
+					selected_cnt++;
+				metrics[i].selected = true;
+				break;
+			}
+		}
+		if (i == metric_cnt) {
+			p_err("unknown metric %s", argv[0]);
+			return -1;
+		}
+		NEXT_ARG();
+	}
+	if (selected_cnt > MAX_NUM_PROFILE_METRICS) {
+		p_err("too many (%d) metrics, please specify no more than %d metrics at at time",
+		      selected_cnt, MAX_NUM_PROFILE_METRICS);
+		return -1;
+	}
+	return selected_cnt;
+}
+
+static void profile_read_values(struct profiler_bpf *obj)
+{
+	__u32 m, cpu, num_cpu = obj->rodata->num_cpu;
+	int reading_map_fd, count_map_fd;
+	__u64 counts[num_cpu];
+	__u32 key = 0;
+	int err;
+
+	reading_map_fd = bpf_map__fd(obj->maps.accum_readings);
+	count_map_fd = bpf_map__fd(obj->maps.counts);
+	if (reading_map_fd < 0 || count_map_fd < 0) {
+		p_err("failed to get fd for map");
+		return;
+	}
+
+	err = bpf_map_lookup_elem(count_map_fd, &key, counts);
+	if (err) {
+		p_err("failed to read count_map: %s", strerror(errno));
+		return;
+	}
+
+	profile_total_count = 0;
+	for (cpu = 0; cpu < num_cpu; cpu++)
+		profile_total_count += counts[cpu];
+
+	for (m = 0; m < ARRAY_SIZE(metrics); m++) {
+		struct bpf_perf_event_value values[num_cpu];
+
+		if (!metrics[m].selected)
+			continue;
+
+		err = bpf_map_lookup_elem(reading_map_fd, &key, values);
+		if (err) {
+			p_err("failed to read reading_map: %s",
+			      strerror(errno));
+			return;
+		}
+		for (cpu = 0; cpu < num_cpu; cpu++) {
+			metrics[m].val.counter += values[cpu].counter;
+			metrics[m].val.enabled += values[cpu].enabled;
+			metrics[m].val.running += values[cpu].running;
+		}
+		key++;
+	}
+}
+
+static void profile_print_readings_json(void)
+{
+	__u32 m;
+
+	jsonw_start_array(json_wtr);
+	for (m = 0; m < ARRAY_SIZE(metrics); m++) {
+		if (!metrics[m].selected)
+			continue;
+		jsonw_start_object(json_wtr);
+		jsonw_string_field(json_wtr, "metric", metrics[m].name);
+		jsonw_lluint_field(json_wtr, "run_cnt", profile_total_count);
+		jsonw_lluint_field(json_wtr, "value", metrics[m].val.counter);
+		jsonw_lluint_field(json_wtr, "enabled", metrics[m].val.enabled);
+		jsonw_lluint_field(json_wtr, "running", metrics[m].val.running);
+
+		jsonw_end_object(json_wtr);
+	}
+	jsonw_end_array(json_wtr);
+}
+
+static void profile_print_readings_plain(void)
+{
+	__u32 m;
+
+	printf("\n%18llu %-20s\n", profile_total_count, "run_cnt");
+	for (m = 0; m < ARRAY_SIZE(metrics); m++) {
+		struct bpf_perf_event_value *val = &metrics[m].val;
+		int r;
+
+		if (!metrics[m].selected)
+			continue;
+		printf("%18llu %-20s", val->counter, metrics[m].name);
+
+		r = metrics[m].ratio_metric - 1;
+		if (r >= 0 && metrics[r].selected &&
+		    metrics[r].val.counter > 0) {
+			printf("# %8.2f %-30s",
+			       val->counter * metrics[m].ratio_mul /
+			       metrics[r].val.counter,
+			       metrics[m].ratio_desc);
+		} else {
+			printf("%-41s", "");
+		}
+
+		if (val->enabled > val->running)
+			printf("(%4.2f%%)",
+			       val->running * 100.0 / val->enabled);
+		printf("\n");
+	}
+}
+
+static void profile_print_readings(void)
+{
+	if (json_output)
+		profile_print_readings_json();
+	else
+		profile_print_readings_plain();
+}
+
+static char *profile_target_name(int tgt_fd)
+{
+	struct bpf_func_info func_info;
+	struct bpf_prog_info info = {};
+	__u32 info_len = sizeof(info);
+	const struct btf_type *t;
+	__u32 func_info_rec_size;
+	struct btf *btf = NULL;
+	char *name = NULL;
+	int err;
+
+	err = bpf_prog_get_info_by_fd(tgt_fd, &info, &info_len);
+	if (err) {
+		p_err("failed to get info for prog FD %d", tgt_fd);
+		goto out;
+	}
+
+	if (info.btf_id == 0) {
+		p_err("prog FD %d doesn't have valid btf", tgt_fd);
+		goto out;
+	}
+
+	func_info_rec_size = info.func_info_rec_size;
+	if (info.nr_func_info == 0) {
+		p_err("found 0 func_info for prog FD %d", tgt_fd);
+		goto out;
+	}
+
+	memset(&info, 0, sizeof(info));
+	info.nr_func_info = 1;
+	info.func_info_rec_size = func_info_rec_size;
+	info.func_info = ptr_to_u64(&func_info);
+
+	err = bpf_prog_get_info_by_fd(tgt_fd, &info, &info_len);
+	if (err) {
+		p_err("failed to get func_info for prog FD %d", tgt_fd);
+		goto out;
+	}
+
+	btf = btf__load_from_kernel_by_id(info.btf_id);
+	if (!btf) {
+		p_err("failed to load btf for prog FD %d", tgt_fd);
+		goto out;
+	}
+
+	t = btf__type_by_id(btf, func_info.type_id);
+	if (!t) {
+		p_err("btf %d doesn't have type %d",
+		      info.btf_id, func_info.type_id);
+		goto out;
+	}
+	name = strdup(btf__name_by_offset(btf, t->name_off));
+out:
+	btf__free(btf);
+	return name;
+}
+
+static struct profiler_bpf *profile_obj;
+static int profile_tgt_fd = -1;
+static char *profile_tgt_name;
+static int *profile_perf_events;
+static int profile_perf_event_cnt;
+
+static void profile_close_perf_events(struct profiler_bpf *obj)
+{
+	int i;
+
+	for (i = profile_perf_event_cnt - 1; i >= 0; i--)
+		close(profile_perf_events[i]);
+
+	free(profile_perf_events);
+	profile_perf_event_cnt = 0;
+}
+
+static int profile_open_perf_event(int mid, int cpu, int map_fd)
+{
+	int pmu_fd;
+
+	pmu_fd = syscall(__NR_perf_event_open, &metrics[mid].attr,
+			 -1 /*pid*/, cpu, -1 /*group_fd*/, 0);
+	if (pmu_fd < 0) {
+		if (errno == ENODEV) {
+			p_info("cpu %d may be offline, skip %s profiling.",
+				cpu, metrics[mid].name);
+			profile_perf_event_cnt++;
+			return 0;
+		}
+		return -1;
+	}
+
+	if (bpf_map_update_elem(map_fd,
+				&profile_perf_event_cnt,
+				&pmu_fd, BPF_ANY) ||
+	    ioctl(pmu_fd, PERF_EVENT_IOC_ENABLE, 0)) {
+		close(pmu_fd);
+		return -1;
+	}
+
+	profile_perf_events[profile_perf_event_cnt++] = pmu_fd;
+	return 0;
+}
+
+static int profile_open_perf_events(struct profiler_bpf *obj)
+{
+	unsigned int cpu, m;
+	int map_fd;
+
+	profile_perf_events = calloc(
+		sizeof(int), obj->rodata->num_cpu * obj->rodata->num_metric);
+	if (!profile_perf_events) {
+		p_err("failed to allocate memory for perf_event array: %s",
+		      strerror(errno));
+		return -1;
+	}
+	map_fd = bpf_map__fd(obj->maps.events);
+	if (map_fd < 0) {
+		p_err("failed to get fd for events map");
+		return -1;
+	}
+
+	for (m = 0; m < ARRAY_SIZE(metrics); m++) {
+		if (!metrics[m].selected)
+			continue;
+		for (cpu = 0; cpu < obj->rodata->num_cpu; cpu++) {
+			if (profile_open_perf_event(m, cpu, map_fd)) {
+				p_err("failed to create event %s on cpu %d",
+				      metrics[m].name, cpu);
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
+static void profile_print_and_cleanup(void)
+{
+	profile_close_perf_events(profile_obj);
+	profile_read_values(profile_obj);
+	profile_print_readings();
+	profiler_bpf__destroy(profile_obj);
+
+	close(profile_tgt_fd);
+	free(profile_tgt_name);
+}
+
+static void int_exit(int signo)
+{
+	profile_print_and_cleanup();
+	exit(0);
+}
 
 static int do_profile(int argc, char **argv)
 {
@@ -1109,6 +1384,8 @@ out:
 	free(profile_tgt_name);
 	return err;
 }
+
+#endif /* BPFTOOL_WITHOUT_SKELETONS */
 
 static int do_help(int argc, char **argv)
 {
