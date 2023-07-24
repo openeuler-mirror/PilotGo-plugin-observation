@@ -65,6 +65,75 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
+static int do_show(int argc, char **argv)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	__u32 id = 0;
+	int err;
+	int fd;
+
+	if (show_pinned) {
+		map_table = hashmap__new(hash_fn_for_key_as_id,
+					 equal_fn_for_key_as_id, NULL);
+		if (IS_ERR(map_table)) {
+			p_err("failed to create hashmap for pinned paths");
+			return -1;
+		}
+		build_pinned_obj_table(map_table, BPF_OBJ_MAP);
+	}
+	build_obj_refs_table(&refs_table, BPF_OBJ_MAP);
+
+	if (argc == 2)
+		return do_show_subset(argc, argv);
+
+	if (argc)
+		return BAD_ARG();
+
+	if (json_output)
+		jsonw_start_array(json_wtr);
+	while (true) {
+		err = bpf_map_get_next_id(id, &id);
+		if (err) {
+			if (errno == ENOENT)
+				break;
+			p_err("can't get next map: %s%s", strerror(errno),
+			      errno == EINVAL ? " -- kernel too old?" : "");
+			break;
+		}
+
+		fd = bpf_map_get_fd_by_id(id);
+		if (fd < 0) {
+			if (errno == ENOENT)
+				continue;
+			p_err("can't get map by id (%u): %s",
+			      id, strerror(errno));
+			break;
+		}
+
+		err = bpf_map_get_info_by_fd(fd, &info, &len);
+		if (err) {
+			p_err("can't get map info: %s", strerror(errno));
+			close(fd);
+			break;
+		}
+
+		if (json_output)
+			show_map_close_json(fd, &info);
+		else
+			show_map_close_plain(fd, &info);
+	}
+	if (json_output)
+		jsonw_end_array(json_wtr);
+
+	delete_obj_refs_table(refs_table);
+
+	if (show_pinned)
+		delete_pinned_obj_table(map_table);
+
+	return errno == ENOENT ? 0 : -1;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
