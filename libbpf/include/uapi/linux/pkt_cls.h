@@ -112,3 +112,39 @@ enum {
 	__TCA_POLICE_MAX
 #define TCA_POLICE_RESULT TCA_POLICE_RESULT
 };
+
+#define TCA_POLICE_MAX (__TCA_POLICE_MAX - 1)
+
+/* tca flags definitions */
+#define TCA_CLS_FLAGS_SKIP_HW	(1 << 0) /* don't offload filter to HW */
+#define TCA_CLS_FLAGS_SKIP_SW	(1 << 1) /* don't use filter in SW */
+#define TCA_CLS_FLAGS_IN_HW	(1 << 2) /* filter is offloaded to HW */
+#define TCA_CLS_FLAGS_NOT_IN_HW (1 << 3) /* filter isn't offloaded to HW */
+#define TCA_CLS_FLAGS_VERBOSE	(1 << 4) /* verbose logging */
+
+/* U32 filters */
+
+#define TC_U32_HTID(h) ((h)&0xFFF00000)
+#define TC_U32_USERHTID(h) (TC_U32_HTID(h)>>20)
+#define TC_U32_HASH(h) (((h)>>12)&0xFF)
+#define TC_U32_NODE(h) ((h)&0xFFF)
+#define TC_U32_KEY(h) ((h)&0xFFFFF)
+#define TC_U32_UNSPEC	0
+#define TC_U32_ROOT	(0xFFF00000)
+
+enum {
+	TCA_U32_UNSPEC,
+	TCA_U32_CLASSID,
+	TCA_U32_HASH,
+	TCA_U32_LINK,
+	TCA_U32_DIVISOR,
+	TCA_U32_SEL,
+	TCA_U32_POLICE,
+	TCA_U32_ACT,
+	TCA_U32_INDEV,
+	TCA_U32_PCNT,
+	TCA_U32_MARK,
+	TCA_U32_FLAGS,
+	TCA_U32_PAD,
+	__TCA_U32_MAX
+};
