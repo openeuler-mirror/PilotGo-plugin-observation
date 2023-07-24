@@ -1151,3 +1151,24 @@ const struct sym *syms__map_addr_dso(const struct syms *syms, unsigned long addr
 
 	return dso__find_sym(dso, offset);
 }
+
+struct syms_cache {
+	struct {
+		struct syms *syms;
+		int tgid;
+	} *data;
+	int nr;
+};
+
+struct syms_cache *syms_cache__new(int nr)
+{
+	struct syms_cache *syms_cache;
+
+	syms_cache = calloc(1, sizeof(*syms_cache));
+	if (!syms_cache)
+		return NULL;
+	if (nr > 0)
+		syms_cache->data = calloc(nr, sizeof(*syms_cache->data));
+	return syms_cache;
+}
+
