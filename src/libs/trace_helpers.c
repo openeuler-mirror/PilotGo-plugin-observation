@@ -1228,3 +1228,42 @@ static int partitions__add_partition(struct partitions *partitions,
 
 	return 0;
 }
+
+struct partitions *partitions__load(void)
+{
+	char part_name[DISK_NAME_LEN];
+	unsigned int devmaj, devmin;
+	unsigned long long nop;
+	struct partitions *partitions;
+	char buf[64];
+	FILE *f;
+
+	f = fopen("/proc/partitions", "r");
+	if (!f)
+		return NULL;
+
+	partitions = calloc(1, sizeof(*partitions));
+	if (!partitions)
+		goto err_out;
+
+	while (fgets(buf, sizeof(buf), f) != NULL) {
+		/* skip heading */
+		if (buf[0] != ' ' || buf[0] == '\n')
+			continue;
+		if (sscanf(buf, "%u %u %llu %s", &devmaj, &devmin, &nop,
+				part_name) != 4)
+			goto err_out;
+		if (partitions__add_partition(partitions, part_name,
+						MKDEV(devmaj, devmin)))
+			goto err_out;
+	}
+
+	fclose(f);
+	return partitions;
+
+err_out:
+	partitions__free(partitions);
+	fclose(f);
+	return NULL;
+}
+
