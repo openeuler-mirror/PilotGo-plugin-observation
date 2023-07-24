@@ -1172,3 +1172,15 @@ struct syms_cache *syms_cache__new(int nr)
 	return syms_cache;
 }
 
+void syms_cache__free(struct syms_cache *syms_cache)
+{
+	int i;
+
+	if (!syms_cache)
+		return;
+
+	for (i = 0; i < syms_cache->nr; i++)
+		syms__free(syms_cache->data[i].syms);
+	free(syms_cache->data);
+	free(syms_cache);
+}
