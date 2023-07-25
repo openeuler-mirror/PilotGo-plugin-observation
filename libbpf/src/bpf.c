@@ -996,6 +996,19 @@ int bpf_task_fd_query(int pid, int fd, __u32 flags, char *buf, __u32 *buf_len,
 	return libbpf_err_errno(err);
 }
 
+int bpf_enable_stats(enum bpf_stats_type type)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, enable_stats);
+	union bpf_attr attr;
+	int fd;
+
+	memset(&attr, 0, attr_sz);
+	attr.enable_stats.type = type;
+
+	fd = sys_bpf_fd(BPF_ENABLE_STATS, &attr, attr_sz);
+	return libbpf_err_errno(fd);
+}
+
 int bpf_prog_bind_map(int prog_fd, int map_fd,
 		      const struct bpf_prog_bind_opts *opts)
 {
