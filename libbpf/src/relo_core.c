@@ -479,3 +479,124 @@ static int bpf_core_match_member(const struct btf *local_btf,
 
 	return 0;
 }
+
+static int bpf_core_spec_match(struct bpf_core_spec *local_spec,
+			       const struct btf *targ_btf, __u32 targ_id,
+			       struct bpf_core_spec *targ_spec)
+{
+	const struct btf_type *targ_type;
+	const struct bpf_core_accessor *local_acc;
+	struct bpf_core_accessor *targ_acc;
+	int i, sz, matched;
+	__u32 name_off;
+
+	memset(targ_spec, 0, sizeof(*targ_spec));
+	targ_spec->btf = targ_btf;
+	targ_spec->root_type_id = targ_id;
+	targ_spec->relo_kind = local_spec->relo_kind;
+
+	if (core_relo_is_type_based(local_spec->relo_kind)) {
+		if (local_spec->relo_kind == BPF_CORE_TYPE_MATCHES)
+			return bpf_core_types_match(local_spec->btf,
+						    local_spec->root_type_id,
+						    targ_btf, targ_id);
+		else
+			return bpf_core_types_are_compat(local_spec->btf,
+							 local_spec->root_type_id,
+							 targ_btf, targ_id);
+	}
+
+	local_acc = &local_spec->spec[0];
+	targ_acc = &targ_spec->spec[0];
+
+	if (core_relo_is_enumval_based(local_spec->relo_kind)) {
+		size_t local_essent_len, targ_essent_len;
+		const char *targ_name;
+
+		/* has to resolve to an enum */
+		targ_type = skip_mods_and_typedefs(targ_spec->btf, targ_id, &targ_id);
+		if (!btf_is_any_enum(targ_type))
+			return 0;
+
+		local_essent_len = bpf_core_essential_name_len(local_acc->name);
+
+		for (i = 0; i < btf_vlen(targ_type); i++) {
+			if (btf_is_enum(targ_type))
+				name_off = btf_enum(targ_type)[i].name_off;
+			else
+				name_off = btf_enum64(targ_type)[i].name_off;
+
+			targ_name = btf__name_by_offset(targ_spec->btf, name_off);
+			targ_essent_len = bpf_core_essential_name_len(targ_name);
+			if (targ_essent_len != local_essent_len)
+				continue;
+			if (strncmp(local_acc->name, targ_name, local_essent_len) == 0) {
+				targ_acc->type_id = targ_id;
+				targ_acc->idx = i;
+				targ_acc->name = targ_name;
+				targ_spec->len++;
+				targ_spec->raw_spec[targ_spec->raw_len] = targ_acc->idx;
+				targ_spec->raw_len++;
+				return 1;
+			}
+		}
+		return 0;
+	}
+
+	if (!core_relo_is_field_based(local_spec->relo_kind))
+		return -EINVAL;
+
+	for (i = 0; i < local_spec->len; i++, local_acc++, targ_acc++) {
+		targ_type = skip_mods_and_typedefs(targ_spec->btf, targ_id,
+						   &targ_id);
+		if (!targ_type)
+			return -EINVAL;
+
+		if (local_acc->name) {
+			matched = bpf_core_match_member(local_spec->btf,
+							local_acc,
+							targ_btf, targ_id,
+							targ_spec, &targ_id);
+			if (matched <= 0)
+				return matched;
+		} else {
+			/* for i=0, targ_id is already treated as array element
+			 * type (because it's the original struct), for others
+			 * we should find array element type first
+			 */
+			if (i > 0) {
+				const struct btf_array *a;
+				bool flex;
+
+				if (!btf_is_array(targ_type))
+					return 0;
+
+				a = btf_array(targ_type);
+				flex = is_flex_arr(targ_btf, targ_acc - 1, a);
+				if (!flex && local_acc->idx >= a->nelems)
+					return 0;
+				if (!skip_mods_and_typedefs(targ_btf, a->type,
+							    &targ_id))
+					return -EINVAL;
+			}
+
+			/* too deep struct/union/array nesting */
+			if (targ_spec->raw_len == BPF_CORE_SPEC_MAX_LEN)
+				return -E2BIG;
+
+			targ_acc->type_id = targ_id;
+			targ_acc->idx = local_acc->idx;
+			targ_acc->name = NULL;
+			targ_spec->len++;
+			targ_spec->raw_spec[targ_spec->raw_len] = targ_acc->idx;
+			targ_spec->raw_len++;
+
+			sz = btf__resolve_size(targ_btf, targ_id);
+			if (sz < 0)
+				return sz;
+			targ_spec->bit_offset += local_acc->idx * sz * 8;
+		}
+	}
+
+	return 1;
+}
