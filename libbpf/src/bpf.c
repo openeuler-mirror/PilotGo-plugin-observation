@@ -693,6 +693,41 @@ int bpf_prog_query(int target_fd, enum bpf_attach_type type, __u32 query_flags,
 	return libbpf_err_errno(ret);
 }
 
+int bpf_prog_test_run_opts(int prog_fd, struct bpf_test_run_opts *opts)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, test);
+	union bpf_attr attr;
+	int ret;
+
+	if (!OPTS_VALID(opts, bpf_test_run_opts))
+		return libbpf_err(-EINVAL);
+
+	memset(&attr, 0, attr_sz);
+	attr.test.prog_fd = prog_fd;
+	attr.test.batch_size = OPTS_GET(opts, batch_size, 0);
+	attr.test.cpu = OPTS_GET(opts, cpu, 0);
+	attr.test.flags = OPTS_GET(opts, flags, 0);
+	attr.test.repeat = OPTS_GET(opts, repeat, 0);
+	attr.test.duration = OPTS_GET(opts, duration, 0);
+	attr.test.ctx_size_in = OPTS_GET(opts, ctx_size_in, 0);
+	attr.test.ctx_size_out = OPTS_GET(opts, ctx_size_out, 0);
+	attr.test.data_size_in = OPTS_GET(opts, data_size_in, 0);
+	attr.test.data_size_out = OPTS_GET(opts, data_size_out, 0);
+	attr.test.ctx_in = ptr_to_u64(OPTS_GET(opts, ctx_in, NULL));
+	attr.test.ctx_out = ptr_to_u64(OPTS_GET(opts, ctx_out, NULL));
+	attr.test.data_in = ptr_to_u64(OPTS_GET(opts, data_in, NULL));
+	attr.test.data_out = ptr_to_u64(OPTS_GET(opts, data_out, NULL));
+
+	ret = sys_bpf(BPF_PROG_TEST_RUN, &attr, attr_sz);
+
+	OPTS_SET(opts, data_size_out, attr.test.data_size_out);
+	OPTS_SET(opts, ctx_size_out, attr.test.ctx_size_out);
+	OPTS_SET(opts, duration, attr.test.duration);
+	OPTS_SET(opts, retval, attr.test.retval);
+
+	return libbpf_err_errno(ret);
+}
+
 static int bpf_obj_get_next_id(__u32 start_id, __u32 *next_id, int cmd)
 {
 	const size_t attr_sz = offsetofend(union bpf_attr, open_flags);
