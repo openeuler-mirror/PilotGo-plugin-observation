@@ -65,6 +65,116 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
+static int parse_elem(char **argv, struct bpf_map_info *info,
+		      void *key, void *value, __u32 key_size, __u32 value_size,
+		      __u32 *flags, __u32 **value_fd)
+{
+	if (!*argv) {
+		if (!key && !value)
+			return 0;
+		p_err("did not find %s", key ? "key" : "value");
+		return -1;
+	}
+
+	if (is_prefix(*argv, "key")) {
+		if (!key) {
+			if (key_size)
+				p_err("duplicate key");
+			else
+				p_err("unnecessary key");
+			return -1;
+		}
+
+		argv = parse_bytes(argv + 1, "key", key, key_size);
+		if (!argv)
+			return -1;
+
+		return parse_elem(argv, info, NULL, value, key_size, value_size,
+				  flags, value_fd);
+	} else if (is_prefix(*argv, "value")) {
+		int fd;
+
+		if (!value) {
+			if (value_size)
+				p_err("duplicate value");
+			else
+				p_err("unnecessary value");
+			return -1;
+		}
+
+		argv++;
+
+		if (map_is_map_of_maps(info->type)) {
+			int argc = 2;
+
+			if (value_size != 4) {
+				p_err("value smaller than 4B for map in map?");
+				return -1;
+			}
+			if (!argv[0] || !argv[1]) {
+				p_err("not enough value arguments for map in map");
+				return -1;
+			}
+
+			fd = map_parse_fd(&argc, &argv);
+			if (fd < 0)
+				return -1;
+
+			*value_fd = value;
+			**value_fd = fd;
+		} else if (map_is_map_of_progs(info->type)) {
+			int argc = 2;
+
+			if (value_size != 4) {
+				p_err("value smaller than 4B for map of progs?");
+				return -1;
+			}
+			if (!argv[0] || !argv[1]) {
+				p_err("not enough value arguments for map of progs");
+				return -1;
+			}
+			if (is_prefix(*argv, "id"))
+				p_info("Warning: updating program array via MAP_ID, make sure this map is kept open\n"
+				       "         by some process or pinned otherwise update will be lost");
+
+			fd = prog_parse_fd(&argc, &argv);
+			if (fd < 0)
+				return -1;
+
+			*value_fd = value;
+			**value_fd = fd;
+		} else {
+			argv = parse_bytes(argv, "value", value, value_size);
+			if (!argv)
+				return -1;
+
+			fill_per_cpu_value(info, value);
+		}
+
+		return parse_elem(argv, info, key, NULL, key_size, value_size,
+				  flags, NULL);
+	} else if (is_prefix(*argv, "any") || is_prefix(*argv, "noexist") ||
+		   is_prefix(*argv, "exist")) {
+		if (!flags) {
+			p_err("flags specified multiple times: %s", *argv);
+			return -1;
+		}
+
+		if (is_prefix(*argv, "any"))
+			*flags = BPF_ANY;
+		else if (is_prefix(*argv, "noexist"))
+			*flags = BPF_NOEXIST;
+		else if (is_prefix(*argv, "exist"))
+			*flags = BPF_EXIST;
+
+		return parse_elem(argv + 1, info, key, value, key_size,
+				  value_size, NULL, value_fd);
+	}
+
+	p_err("expected key or value, got: %s", *argv);
+	return -1;
+}
+
 static void print_entry_json(struct bpf_map_info *info, unsigned char *key,
 			     unsigned char *value, struct btf *btf)
 {
@@ -472,6 +582,32 @@ exit_free:
 	free(fds);
 	btf__free(btf_vmlinux);
 	return err;
+}
+
+static int alloc_key_value(struct bpf_map_info *info, void **key, void **value)
+{
+	*key = NULL;
+	*value = NULL;
+
+	if (info->key_size) {
+		*key = malloc(info->key_size);
+		if (!*key) {
+			p_err("key mem alloc failed");
+			return -1;
+		}
+	}
+
+	if (info->value_size) {
+		*value = alloc_value(info);
+		if (!*value) {
+			p_err("value mem alloc failed");
+			free(*key);
+			*key = NULL;
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 static int do_update(int argc, char **argv)
