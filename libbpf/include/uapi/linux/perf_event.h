@@ -334,6 +334,48 @@ struct perf_event_attr {
 	__u64			sample_type;
 	__u64			read_format;
 
+		__u64			disabled       :  1, /* off by default        */
+				inherit	       :  1, /* children inherit it   */
+				pinned	       :  1, /* must always be on PMU */
+				exclusive      :  1, /* only group on PMU     */
+				exclude_user   :  1, /* don't count user      */
+				exclude_kernel :  1, /* ditto kernel          */
+				exclude_hv     :  1, /* ditto hypervisor      */
+				exclude_idle   :  1, /* don't count when idle */
+				mmap           :  1, /* include mmap data     */
+				comm	       :  1, /* include comm data     */
+				freq           :  1, /* use freq, not period  */
+				inherit_stat   :  1, /* per task counts       */
+				enable_on_exec :  1, /* next exec enables     */
+				task           :  1, /* trace fork/exit       */
+				watermark      :  1, /* wakeup_watermark      */
+				
+				precise_ip     :  2, /* skid constraint       */
+				mmap_data      :  1, /* non-exec mmap data    */
+				sample_id_all  :  1, /* sample_type all events */
+
+				exclude_host   :  1, /* don't count in host   */
+				exclude_guest  :  1, /* don't count in guest  */
+
+				exclude_callchain_kernel : 1, /* exclude kernel callchains */
+				exclude_callchain_user   : 1, /* exclude user callchains */
+				mmap2          :  1, /* include mmap with inode data     */
+				comm_exec      :  1, /* flag comm events that are due to an exec */
+				use_clockid    :  1, /* use @clockid for time fields */
+				context_switch :  1, /* context switch data */
+				write_backward :  1, /* Write ring buffer from end to beginning */
+				namespaces     :  1, /* include namespaces data */
+				ksymbol        :  1, /* include ksymbol events */
+				bpf_event      :  1, /* include bpf events */
+				aux_output     :  1, /* generate AUX records instead of events */
+				cgroup         :  1, /* include cgroup events */
+				text_poke      :  1, /* include text poke events */
+				build_id       :  1, /* use build id in mmap2 events */
+				inherit_thread :  1, /* children only inherit if cloned with CLONE_THREAD */
+				remove_on_exec :  1, /* event is removed from task on exec */
+				sigtrap        :  1, /* send synchronous SIGTRAP on event */
+				__reserved_1   : 26;
+
 	union {
 		__u32		wakeup_events;	  /* wakeup every n events */
 		__u32		wakeup_watermark; /* bytes before wakeup   */
