@@ -441,3 +441,87 @@ void bpf_gen__load_btf(struct bpf_gen *gen, const void *btf_raw_data,
 	/* remember btf_fd in the stack, if successful */
 	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_10, BPF_REG_7, stack_off(btf_fd)));
 }
+
+void bpf_gen__map_create(struct bpf_gen *gen,
+						 enum bpf_map_type map_type,
+						 const char *map_name,
+						 __u32 key_size, __u32 value_size, __u32 max_entries,
+						 struct bpf_map_create_opts *map_attr, int map_idx)
+{
+	int attr_size = offsetofend(union bpf_attr, map_extra);
+	bool close_inner_map_fd = false;
+	int map_create_attr, idx;
+	union bpf_attr attr;
+
+	memset(&attr, 0, attr_size);
+	attr.map_type = map_type;
+	attr.key_size = key_size;
+	attr.value_size = value_size;
+	attr.map_flags = map_attr->map_flags;
+	attr.map_extra = map_attr->map_extra;
+	if (map_name)
+		libbpf_strlcpy(attr.map_name, map_name, sizeof(attr.map_name));
+	attr.numa_node = map_attr->numa_node;
+	attr.map_ifindex = map_attr->map_ifindex;
+	attr.max_entries = max_entries;
+	attr.btf_key_type_id = map_attr->btf_key_type_id;
+	attr.btf_value_type_id = map_attr->btf_value_type_id;
+
+	pr_debug("gen: map_create: %s idx %d type %d value_type_id %d\n",
+			 attr.map_name, map_idx, map_type, attr.btf_value_type_id);
+
+	map_create_attr = add_data(gen, &attr, attr_size);
+	if (attr.btf_value_type_id)
+		/* populate union bpf_attr with btf_fd saved in the stack earlier */
+		move_stack2blob(gen, attr_field(map_create_attr, btf_fd), 4,
+						stack_off(btf_fd));
+	switch (attr.map_type)
+	{
+	case BPF_MAP_TYPE_ARRAY_OF_MAPS:
+	case BPF_MAP_TYPE_HASH_OF_MAPS:
+		move_stack2blob(gen, attr_field(map_create_attr, inner_map_fd), 4,
+						stack_off(inner_map_fd));
+		close_inner_map_fd = true;
+		break;
+	default:
+		break;
+	}
+	/* conditionally update max_entries */
+	if (map_idx >= 0)
+		move_ctx2blob(gen, attr_field(map_create_attr, max_entries), 4,
+					  sizeof(struct bpf_loader_ctx) +
+						  sizeof(struct bpf_map_desc) * map_idx +
+						  offsetof(struct bpf_map_desc, max_entries),
+					  true /* check that max_entries != 0 */);
+	/* emit MAP_CREATE command */
+	emit_sys_bpf(gen, BPF_MAP_CREATE, map_create_attr, attr_size);
+	debug_ret(gen, "map_create %s idx %d type %d value_size %d value_btf_id %d",
+			  attr.map_name, map_idx, map_type, value_size,
+			  attr.btf_value_type_id);
+	emit_check_err(gen);
+	/* remember map_fd in the stack, if successful */
+	if (map_idx < 0)
+	{
+		/* This bpf_gen__map_create() function is called with map_idx >= 0
+		 * for all maps that libbpf loading logic tracks.
+		 * It's called with -1 to create an inner map.
+		 */
+		emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_10, BPF_REG_7,
+							  stack_off(inner_map_fd)));
+	}
+	else if (map_idx != gen->nr_maps)
+	{
+		gen->error = -EDOM; /* internal bug */
+		return;
+	}
+	else
+	{
+		/* add_map_fd does gen->nr_maps++ */
+		idx = add_map_fd(gen);
+		emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+										 0, 0, 0, blob_fd_array_off(gen, idx)));
+		emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_1, BPF_REG_7, 0));
+	}
+	if (close_inner_map_fd)
+		emit_sys_close_stack(gen, stack_off(inner_map_fd));
+}
