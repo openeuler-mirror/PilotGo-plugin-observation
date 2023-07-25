@@ -243,3 +243,51 @@ static void move_ctx2blob(struct bpf_gen *gen, int off, int size, int ctx_off,
 									 0, 0, 0, off));
 	emit(gen, BPF_STX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_1, BPF_REG_0, 0));
 }
+
+static void move_stack2blob(struct bpf_gen *gen, int off, int size, int stack_off)
+{
+	emit(gen, BPF_LDX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_0, BPF_REG_10, stack_off));
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, off));
+	emit(gen, BPF_STX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_1, BPF_REG_0, 0));
+}
+
+static void move_stack2ctx(struct bpf_gen *gen, int ctx_off, int size, int stack_off)
+{
+	emit(gen, BPF_LDX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_0, BPF_REG_10, stack_off));
+	emit(gen, BPF_STX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_6, BPF_REG_0, ctx_off));
+}
+
+static void emit_sys_bpf(struct bpf_gen *gen, int cmd, int attr, int attr_size)
+{
+	emit(gen, BPF_MOV64_IMM(BPF_REG_1, cmd));
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_2, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, attr));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_3, attr_size));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_sys_bpf));
+	/* remember the result in R7 */
+	emit(gen, BPF_MOV64_REG(BPF_REG_7, BPF_REG_0));
+}
+
+static bool is_simm16(__s64 value)
+{
+	return value == (__s64)(__s16)value;
+}
+
+static void emit_check_err(struct bpf_gen *gen)
+{
+	__s64 off = -(gen->insn_cur - gen->insn_start - gen->cleanup_label) / 8 - 1;
+
+	/* R7 contains result of last sys_bpf command.
+	 * if (R7 < 0) goto cleanup;
+	 */
+	if (is_simm16(off))
+	{
+		emit(gen, BPF_JMP_IMM(BPF_JSLT, BPF_REG_7, 0, off));
+	}
+	else
+	{
+		gen->error = -ERANGE;
+		emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, -1));
+	}
+}
