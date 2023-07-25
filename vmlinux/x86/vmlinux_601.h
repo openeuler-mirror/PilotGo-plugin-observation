@@ -1460,3 +1460,61 @@ struct page {
 	atomic_t _refcount;
 	long unsigned int memcg_data;
 };
+
+struct tracepoint_func {
+	void *func;
+	void *data;
+	int prio;
+};
+
+struct tracepoint {
+	const char *name;
+	struct static_key key;
+	struct static_call_key *static_call_key;
+	void *static_call_tramp;
+	void *iterator;
+	int (*regfunc)();
+	void (*unregfunc)();
+	struct tracepoint_func *funcs;
+};
+
+typedef const int tracepoint_ptr_t;
+
+struct bpf_raw_event_map {
+	struct tracepoint *tp;
+	void *bpf_func;
+	u32 num_args;
+	u32 writable_size;
+	long: 64;
+};
+
+enum xfeature {
+	XFEATURE_FP = 0,
+	XFEATURE_SSE = 1,
+	XFEATURE_YMM = 2,
+	XFEATURE_BNDREGS = 3,
+	XFEATURE_BNDCSR = 4,
+	XFEATURE_OPMASK = 5,
+	XFEATURE_ZMM_Hi256 = 6,
+	XFEATURE_Hi16_ZMM = 7,
+	XFEATURE_PT_UNIMPLEMENTED_SO_FAR = 8,
+	XFEATURE_PKRU = 9,
+	XFEATURE_PASID = 10,
+	XFEATURE_RSRVD_COMP_11 = 11,
+	XFEATURE_RSRVD_COMP_12 = 12,
+	XFEATURE_RSRVD_COMP_13 = 13,
+	XFEATURE_RSRVD_COMP_14 = 14,
+	XFEATURE_LBR = 15,
+	XFEATURE_RSRVD_COMP_16 = 16,
+	XFEATURE_XTILE_CFG = 17,
+	XFEATURE_XTILE_DATA = 18,
+	XFEATURE_MAX = 19,
+};
+
+struct fpu_state_config {
+	unsigned int max_size;
+	unsigned int default_size;
+	u64 max_features;
+	u64 default_features;
+	u64 legacy_features;
+};
