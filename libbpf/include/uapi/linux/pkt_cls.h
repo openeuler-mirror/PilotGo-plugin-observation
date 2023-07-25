@@ -214,3 +214,40 @@ struct tc_rsvp_gpi {
 	__u32	mask;
 	int	offset;
 };
+
+struct tc_rsvp_pinfo {
+	struct tc_rsvp_gpi dpi;
+	struct tc_rsvp_gpi spi;
+	__u8	protocol;
+	__u8	tunnelid;
+	__u8	tunnelhdr;
+	__u8	pad;
+};
+
+/* ROUTE filter */
+
+enum {
+	TCA_ROUTE4_UNSPEC,
+	TCA_ROUTE4_CLASSID,
+	TCA_ROUTE4_TO,
+	TCA_ROUTE4_FROM,
+	TCA_ROUTE4_IIF,
+	TCA_ROUTE4_POLICE,
+	TCA_ROUTE4_ACT,
+	__TCA_ROUTE4_MAX
+};
+
+#define TCA_ROUTE4_MAX (__TCA_ROUTE4_MAX - 1)
+
+
+/* FW filter */
+
+enum {
+	TCA_FW_UNSPEC,
+	TCA_FW_CLASSID,
+	TCA_FW_POLICE,
+	TCA_FW_INDEV,
+	TCA_FW_ACT, /* used by CONFIG_NET_CLS_ACT */
+	TCA_FW_MASK,
+	__TCA_FW_MAX
+};
