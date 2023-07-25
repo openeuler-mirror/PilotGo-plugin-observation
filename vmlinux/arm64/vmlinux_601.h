@@ -502,3 +502,23 @@ struct rb_root_cached {
 	struct rb_root rb_root;
 	struct rb_node *rb_leftmost;
 };
+
+struct timerqueue_head {
+	struct rb_root_cached rb_root;
+};
+
+struct posix_cputimer_base {
+	u64 nextevt;
+	struct timerqueue_head tqhead;
+};
+
+struct posix_cputimers {
+	struct posix_cputimer_base bases[3];
+	unsigned int timers_active;
+	unsigned int expiry_active;
+};
+
+struct posix_cputimers_work {
+	struct callback_head work;
+	unsigned int scheduled;
+};
