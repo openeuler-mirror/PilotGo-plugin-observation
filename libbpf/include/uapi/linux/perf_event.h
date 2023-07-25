@@ -320,3 +320,55 @@ enum perf_event_read_format {
 #define PERF_ATTR_SIZE_VER7	128	/* add: sig_data */
 #define PERF_ATTR_SIZE_VER8	136	/* add: config3 */
 
+struct perf_event_attr {
+
+	__u32			type;
+	__u32			size;
+	__u64			config;
+
+	union {
+		__u64		sample_period;
+		__u64		sample_freq;
+	};
+
+	__u64			sample_type;
+	__u64			read_format;
+
+	union {
+		__u32		wakeup_events;	  /* wakeup every n events */
+		__u32		wakeup_watermark; /* bytes before wakeup   */
+	};
+
+	__u32			bp_type;
+	union {
+		__u64		bp_addr;
+		__u64		kprobe_func; /* for perf_kprobe */
+		__u64		uprobe_path; /* for perf_uprobe */
+		__u64		config1; /* extension of config */
+	};
+	union {
+		__u64		bp_len;
+		__u64		kprobe_addr; /* when kprobe_func == NULL */
+		__u64		probe_offset; /* for perf_[k,u]probe */
+		__u64		config2; /* extension of config1 */
+	};
+	__u64	branch_sample_type; /* enum perf_branch_sample_type */
+
+	__u64	sample_regs_user;
+
+	__u32	sample_stack_user;
+
+	__s32	clockid;
+
+	__u64	sample_regs_intr;
+
+	__u32	aux_watermark;
+	__u16	sample_max_stack;
+	__u16	__reserved_2;
+	__u32	aux_sample_size;
+	__u32	__reserved_3;
+
+	__u64	sig_data;
+
+	__u64	config3; /* extension of config2 */
+};
