@@ -183,3 +183,34 @@ struct tc_u32_pcnt {
 	__u64 rhit;
 	__u64 kcnts[];
 };
+
+/* Flags */
+
+#define TC_U32_TERMINAL		1
+#define TC_U32_OFFSET		2
+#define TC_U32_VAROFFSET	4
+#define TC_U32_EAT		8
+
+#define TC_U32_MAXDEPTH 8
+
+
+/* RSVP filter */
+
+enum {
+	TCA_RSVP_UNSPEC,
+	TCA_RSVP_CLASSID,
+	TCA_RSVP_DST,
+	TCA_RSVP_SRC,
+	TCA_RSVP_PINFO,
+	TCA_RSVP_POLICE,
+	TCA_RSVP_ACT,
+	__TCA_RSVP_MAX
+};
+
+#define TCA_RSVP_MAX (__TCA_RSVP_MAX - 1 )
+
+struct tc_rsvp_gpi {
+	__u32	key;
+	__u32	mask;
+	int	offset;
+};
