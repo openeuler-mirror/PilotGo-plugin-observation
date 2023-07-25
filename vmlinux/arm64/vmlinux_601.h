@@ -493,3 +493,12 @@ struct prev_cputime {
 	u64 stime;
 	raw_spinlock_t lock;
 };
+
+struct rb_root {
+	struct rb_node *rb_node;
+};
+
+struct rb_root_cached {
+	struct rb_root rb_root;
+	struct rb_node *rb_leftmost;
+};
