@@ -996,3 +996,21 @@ int bpf_task_fd_query(int pid, int fd, __u32 flags, char *buf, __u32 *buf_len,
 	return libbpf_err_errno(err);
 }
 
+int bpf_prog_bind_map(int prog_fd, int map_fd,
+		      const struct bpf_prog_bind_opts *opts)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, prog_bind_map);
+	union bpf_attr attr;
+	int ret;
+
+	if (!OPTS_VALID(opts, bpf_prog_bind_opts))
+		return libbpf_err(-EINVAL);
+
+	memset(&attr, 0, attr_sz);
+	attr.prog_bind_map.prog_fd = prog_fd;
+	attr.prog_bind_map.map_fd = map_fd;
+	attr.prog_bind_map.flags = OPTS_GET(opts, flags, 0);
+
+	ret = sys_bpf(BPF_PROG_BIND_MAP, &attr, attr_sz);
+	return libbpf_err_errno(ret);
+}
