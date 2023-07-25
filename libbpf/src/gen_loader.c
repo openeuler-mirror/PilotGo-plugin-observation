@@ -525,3 +525,36 @@ void bpf_gen__map_create(struct bpf_gen *gen,
 	if (close_inner_map_fd)
 		emit_sys_close_stack(gen, stack_off(inner_map_fd));
 }
+
+void bpf_gen__record_attach_target(struct bpf_gen *gen, const char *attach_name,
+								   enum bpf_attach_type type)
+{
+	const char *prefix;
+	int kind, ret;
+
+	btf_get_kernel_prefix_kind(type, &prefix, &kind);
+	gen->attach_kind = kind;
+	ret = snprintf(gen->attach_target, sizeof(gen->attach_target), "%s%s",
+				   prefix, attach_name);
+	if (ret >= sizeof(gen->attach_target))
+		gen->error = -ENOSPC;
+}
+
+static void emit_find_attach_target(struct bpf_gen *gen)
+{
+	int name, len = strlen(gen->attach_target) + 1;
+
+	pr_debug("gen: find_attach_tgt %s %d\n", gen->attach_target, gen->attach_kind);
+	name = add_data(gen, gen->attach_target, len);
+
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, name));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_2, len));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_3, gen->attach_kind));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_4, 0));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_btf_find_by_name_kind));
+	emit(gen, BPF_MOV64_REG(BPF_REG_7, BPF_REG_0));
+	debug_ret(gen, "find_by_name_kind(%s,%d)",
+			  gen->attach_target, gen->attach_kind);
+	emit_check_err(gen);
+}
