@@ -646,6 +646,19 @@ int bpf_link_update(int link_fd, int new_prog_fd,
 	return libbpf_err_errno(ret);
 }
 
+int bpf_iter_create(int link_fd)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, iter_create);
+	union bpf_attr attr;
+	int fd;
+
+	memset(&attr, 0, attr_sz);
+	attr.iter_create.link_fd = link_fd;
+
+	fd = sys_bpf_fd(BPF_ITER_CREATE, &attr, attr_sz);
+	return libbpf_err_errno(fd);
+}
+
 int bpf_prog_query_opts(int target_fd,
 			enum bpf_attach_type type,
 			struct bpf_prog_query_opts *opts)
