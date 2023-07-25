@@ -522,3 +522,13 @@ struct posix_cputimers_work {
 	struct callback_head work;
 	unsigned int scheduled;
 };
+
+struct sem_undo_list;
+
+struct sysv_sem {
+	struct sem_undo_list *undo_list;
+};
+
+struct sysv_shm {
+	struct list_head shm_clist;
+};
