@@ -359,3 +359,54 @@ static void emit_sys_close_blob(struct bpf_gen *gen, int blob_off)
 	emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0));
 	__emit_sys_close(gen);
 }
+
+int bpf_gen__finish(struct bpf_gen *gen, int nr_progs, int nr_maps)
+{
+	int i;
+
+	if (nr_progs < gen->nr_progs || nr_maps != gen->nr_maps)
+	{
+		pr_warn("nr_progs %d/%d nr_maps %d/%d mismatch\n",
+				nr_progs, gen->nr_progs, nr_maps, gen->nr_maps);
+		gen->error = -EFAULT;
+		return gen->error;
+	}
+	emit_sys_close_stack(gen, stack_off(btf_fd));
+	for (i = 0; i < gen->nr_progs; i++)
+		move_stack2ctx(gen,
+					   sizeof(struct bpf_loader_ctx) +
+						   sizeof(struct bpf_map_desc) * gen->nr_maps +
+						   sizeof(struct bpf_prog_desc) * i +
+						   offsetof(struct bpf_prog_desc, prog_fd),
+					   4,
+					   stack_off(prog_fd[i]));
+	for (i = 0; i < gen->nr_maps; i++)
+		move_blob2ctx(gen,
+					  sizeof(struct bpf_loader_ctx) +
+						  sizeof(struct bpf_map_desc) * i +
+						  offsetof(struct bpf_map_desc, map_fd),
+					  4,
+					  blob_fd_array_off(gen, i));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_0, 0));
+	emit(gen, BPF_EXIT_INSN());
+	pr_debug("gen: finish %d\n", gen->error);
+	if (!gen->error)
+	{
+		struct gen_loader_opts *opts = gen->opts;
+
+		opts->insns = gen->insn_start;
+		opts->insns_sz = gen->insn_cur - gen->insn_start;
+		opts->data = gen->data_start;
+		opts->data_sz = gen->data_cur - gen->data_start;
+	}
+	return gen->error;
+}
+
+void bpf_gen__free(struct bpf_gen *gen)
+{
+	if (!gen)
+		return;
+	free(gen->data_start);
+	free(gen->insn_start);
+	free(gen);
+}
