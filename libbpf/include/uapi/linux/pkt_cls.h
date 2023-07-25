@@ -148,3 +148,38 @@ enum {
 	TCA_U32_PAD,
 	__TCA_U32_MAX
 };
+
+#define TCA_U32_MAX (__TCA_U32_MAX - 1)
+
+struct tc_u32_key {
+	__be32		mask;
+	__be32		val;
+	int		off;
+	int		offmask;
+};
+
+struct tc_u32_sel {
+	unsigned char		flags;
+	unsigned char		offshift;
+	unsigned char		nkeys;
+
+	__be16			offmask;
+	__u16			off;
+	short			offoff;
+
+	short			hoff;
+	__be32			hmask;
+	struct tc_u32_key	keys[];
+};
+
+struct tc_u32_mark {
+	__u32		val;
+	__u32		mask;
+	__u32		success;
+};
+
+struct tc_u32_pcnt {
+	__u64 rcnt;
+	__u64 rhit;
+	__u64 kcnts[];
+};
