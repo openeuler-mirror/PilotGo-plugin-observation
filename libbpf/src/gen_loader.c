@@ -15,12 +15,13 @@
 #include "skel_internal.h"
 #include <asm/byteorder.h>
 
-#define MAX_USED_MAPS	64
-#define MAX_USED_PROGS	32
+#define MAX_USED_MAPS 64
+#define MAX_USED_PROGS 32
 #define MAX_KFUNC_DESCS 256
 #define MAX_FD_ARRAY_SZ (MAX_USED_MAPS + MAX_KFUNC_DESCS)
 
-struct loader_stack {
+struct loader_stack
+{
 	__u32 btf_fd;
 	__u32 inner_map_fd;
 	__u32 prog_fd[MAX_USED_PROGS];
@@ -43,12 +44,14 @@ static int realloc_insn_buf(struct bpf_gen *gen, __u32 size)
 
 	if (gen->error)
 		return gen->error;
-	if (size > INT32_MAX || off + size > INT32_MAX) {
+	if (size > INT32_MAX || off + size > INT32_MAX)
+	{
 		gen->error = -ERANGE;
 		return -ERANGE;
 	}
 	insn_start = realloc(gen->insn_start, off + size);
-	if (!insn_start) {
+	if (!insn_start)
+	{
 		gen->error = -ENOMEM;
 		free(gen->insn_start);
 		gen->insn_start = NULL;
@@ -66,12 +69,14 @@ static int realloc_data_buf(struct bpf_gen *gen, __u32 size)
 
 	if (gen->error)
 		return gen->error;
-	if (size > INT32_MAX || off + size > INT32_MAX) {
+	if (size > INT32_MAX || off + size > INT32_MAX)
+	{
 		gen->error = -ERANGE;
 		return -ERANGE;
 	}
 	data_start = realloc(gen->data_start, off + size);
-	if (!data_start) {
+	if (!data_start)
+	{
 		gen->error = -ENOMEM;
 		free(gen->data_start);
 		gen->data_start = NULL;
@@ -88,4 +93,57 @@ static void emit(struct bpf_gen *gen, struct bpf_insn insn)
 		return;
 	memcpy(gen->insn_cur, &insn, sizeof(insn));
 	gen->insn_cur += sizeof(insn);
+}
+
+static void emit2(struct bpf_gen *gen, struct bpf_insn insn1, struct bpf_insn insn2)
+{
+	emit(gen, insn1);
+	emit(gen, insn2);
+}
+
+static int add_data(struct bpf_gen *gen, const void *data, __u32 size);
+static void emit_sys_close_blob(struct bpf_gen *gen, int blob_off);
+
+void bpf_gen__init(struct bpf_gen *gen, int log_level, int nr_progs, int nr_maps)
+{
+	size_t stack_sz = sizeof(struct loader_stack), nr_progs_sz;
+	int i;
+
+	gen->fd_array = add_data(gen, NULL, MAX_FD_ARRAY_SZ * sizeof(int));
+	gen->log_level = log_level;
+	/* save ctx pointer into R6 */
+	emit(gen, BPF_MOV64_REG(BPF_REG_6, BPF_REG_1));
+
+	/* bzero stack */
+	emit(gen, BPF_MOV64_REG(BPF_REG_1, BPF_REG_10));
+	emit(gen, BPF_ALU64_IMM(BPF_ADD, BPF_REG_1, -stack_sz));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_2, stack_sz));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_3, 0));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_probe_read_kernel));
+
+	/* amount of stack actually used, only used to calculate iterations, not stack offset */
+	nr_progs_sz = offsetof(struct loader_stack, prog_fd[nr_progs]);
+	/* jump over cleanup code */
+	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0,
+						  /* size of cleanup code below (including map fd cleanup) */
+						  (nr_progs_sz / 4) * 3 + 2 +
+							  /* 6 insns for emit_sys_close_blob,
+							   * 6 insns for debug_regs in emit_sys_close_blob
+							   */
+							  nr_maps * (6 + (gen->log_level ? 6 : 0))));
+
+	/* remember the label where all error branches will jump to */
+	gen->cleanup_label = gen->insn_cur - gen->insn_start;
+	/* emit cleanup code: close all temp FDs */
+	for (i = 0; i < nr_progs_sz; i += 4)
+	{
+		emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_10, -stack_sz + i));
+		emit(gen, BPF_JMP_IMM(BPF_JSLE, BPF_REG_1, 0, 1));
+		emit(gen, BPF_EMIT_CALL(BPF_FUNC_sys_close));
+	}
+	for (i = 0; i < nr_maps; i++)
+		emit_sys_close_blob(gen, blob_fd_array_off(gen, i));
+	/* R7 contains the error code from sys_bpf. Copy it into R0 and exit. */
+	emit(gen, BPF_MOV64_REG(BPF_REG_0, BPF_REG_7));
+	emit(gen, BPF_EXIT_INSN());
 }
