@@ -354,3 +354,56 @@ int bpf_core_parse_spec(const char *prog_name, const struct btf *btf,
 
 	return 0;
 }
+
+static int bpf_core_fields_are_compat(const struct btf *local_btf,
+				      __u32 local_id,
+				      const struct btf *targ_btf,
+				      __u32 targ_id)
+{
+	const struct btf_type *local_type, *targ_type;
+
+recur:
+	local_type = skip_mods_and_typedefs(local_btf, local_id, &local_id);
+	targ_type = skip_mods_and_typedefs(targ_btf, targ_id, &targ_id);
+	if (!local_type || !targ_type)
+		return -EINVAL;
+
+	if (btf_is_composite(local_type) && btf_is_composite(targ_type))
+		return 1;
+	if (!btf_kind_core_compat(local_type, targ_type))
+		return 0;
+
+	switch (btf_kind(local_type)) {
+	case BTF_KIND_PTR:
+	case BTF_KIND_FLOAT:
+		return 1;
+	case BTF_KIND_FWD:
+	case BTF_KIND_ENUM64:
+	case BTF_KIND_ENUM: {
+		const char *local_name, *targ_name;
+		size_t local_len, targ_len;
+
+		local_name = btf__name_by_offset(local_btf,
+						 local_type->name_off);
+		targ_name = btf__name_by_offset(targ_btf, targ_type->name_off);
+		local_len = bpf_core_essential_name_len(local_name);
+		targ_len = bpf_core_essential_name_len(targ_name);
+		/* one of them is anonymous or both w/ same flavor-less names */
+		return local_len == 0 || targ_len == 0 ||
+		       (local_len == targ_len &&
+			strncmp(local_name, targ_name, local_len) == 0);
+	}
+	case BTF_KIND_INT:
+		/* just reject deprecated bitfield-like integers; all other
+		 * integers are by default compatible between each other
+		 */
+		return btf_int_offset(local_type) == 0 &&
+		       btf_int_offset(targ_type) == 0;
+	case BTF_KIND_ARRAY:
+		local_id = btf_array(local_type)->type;
+		targ_id = btf_array(targ_type)->type;
+		goto recur;
+	default:
+		return 0;
+	}
+}
