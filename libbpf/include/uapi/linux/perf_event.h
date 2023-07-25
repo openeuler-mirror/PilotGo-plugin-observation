@@ -298,3 +298,25 @@ enum {
 	PERF_TXN_ABORT_MASK  = (0xffffffffULL << 32),
 	PERF_TXN_ABORT_SHIFT = 32,
 };
+
+enum perf_event_read_format {
+	PERF_FORMAT_TOTAL_TIME_ENABLED		= 1U << 0,
+	PERF_FORMAT_TOTAL_TIME_RUNNING		= 1U << 1,
+	PERF_FORMAT_ID				= 1U << 2,
+	PERF_FORMAT_GROUP			= 1U << 3,
+	PERF_FORMAT_LOST			= 1U << 4,
+
+	PERF_FORMAT_MAX = 1U << 5,		/* non-ABI */
+};
+
+#define PERF_ATTR_SIZE_VER0	64	/* sizeof first published struct */
+#define PERF_ATTR_SIZE_VER1	72	/* add: config2 */
+#define PERF_ATTR_SIZE_VER2	80	/* add: branch_sample_type */
+#define PERF_ATTR_SIZE_VER3	96	/* add: sample_regs_user */
+					/* add: sample_stack_user */
+#define PERF_ATTR_SIZE_VER4	104	/* add: sample_regs_intr */
+#define PERF_ATTR_SIZE_VER5	112	/* add: aux_watermark */
+#define PERF_ATTR_SIZE_VER6	120	/* add: aux_sample_size */
+#define PERF_ATTR_SIZE_VER7	128	/* add: sig_data */
+#define PERF_ATTR_SIZE_VER8	136	/* add: config3 */
+
