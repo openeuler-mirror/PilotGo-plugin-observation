@@ -65,6 +65,38 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
+
+static json_writer_t *get_btf_writer(void)
+{
+	json_writer_t *jw = jsonw_new(stdout);
+
+	if (!jw)
+		return NULL;
+	jsonw_pretty(jw, true);
+
+	return jw;
+}
+
+static int maps_have_btf(int *fds, int nb_fds)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	int err, i;
+
+	for (i = 0; i < nb_fds; i++) {
+		err = bpf_map_get_info_by_fd(fds[i], &info, &len);
+		if (err) {
+			p_err("can't get map info: %s", strerror(errno));
+			return -1;
+		}
+
+		if (!info.btf_id)
+			return 0;
+	}
+
+	return 1;
+}
+
 static int do_show(int argc, char **argv)
 {
 	struct bpf_map_info info = {};
@@ -184,6 +216,80 @@ int map_parse_fds(int *argc, char ***argv, int **fds)
 
 	p_err("expected 'id', 'name' or 'pinned', got: '%s'?", **argv);
 	return -1;
+}
+
+
+static int
+map_dump(int fd, struct bpf_map_info *info, json_writer_t *wtr,
+	 bool show_header)
+{
+	void *key, *value, *prev_key;
+	unsigned int num_elems = 0;
+	struct btf *btf = NULL;
+	int err;
+
+	key = malloc(info->key_size);
+	value = alloc_value(info);
+	if (!key || !value) {
+		p_err("mem alloc failed");
+		err = -1;
+		goto exit_free;
+	}
+
+	prev_key = NULL;
+
+	if (wtr) {
+		err = get_map_kv_btf(info, &btf);
+		if (err) {
+			goto exit_free;
+		}
+
+		if (show_header) {
+			jsonw_start_object(wtr);	/* map object */
+			show_map_header_json(info, wtr);
+			jsonw_name(wtr, "elements");
+		}
+		jsonw_start_array(wtr);		/* elements */
+	} else if (show_header) {
+		show_map_header_plain(info);
+	}
+
+	if (info->type == BPF_MAP_TYPE_REUSEPORT_SOCKARRAY &&
+	    info->value_size != 8) {
+		const char *map_type_str;
+
+		map_type_str = libbpf_bpf_map_type_str(info->type);
+		p_info("Warning: cannot read values from %s map with value_size != 8",
+		       map_type_str);
+	}
+	while (true) {
+		err = bpf_map_get_next_key(fd, prev_key, key);
+		if (err) {
+			if (errno == ENOENT)
+				err = 0;
+			break;
+		}
+		if (!dump_map_elem(fd, key, value, info, btf, wtr))
+			num_elems++;
+		prev_key = key;
+	}
+
+	if (wtr) {
+		jsonw_end_array(wtr);	/* elements */
+		if (show_header)
+			jsonw_end_object(wtr);	/* map object */
+	} else {
+		printf("Found %u element%s\n", num_elems,
+		       num_elems != 1 ? "s" : "");
+	}
+
+exit_free:
+	free(key);
+	free(value);
+	close(fd);
+	free_map_kv_btf(btf);
+
+	return err;
 }
 
 static int do_dump(int argc, char **argv)
