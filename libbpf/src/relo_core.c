@@ -222,3 +222,135 @@ recur:
 		return 0;
 	}
 }
+
+int bpf_core_parse_spec(const char *prog_name, const struct btf *btf,
+			const struct bpf_core_relo *relo,
+			struct bpf_core_spec *spec)
+{
+	int access_idx, parsed_len, i;
+	struct bpf_core_accessor *acc;
+	const struct btf_type *t;
+	const char *name, *spec_str;
+	__u32 id, name_off;
+	__s64 sz;
+
+	spec_str = btf__name_by_offset(btf, relo->access_str_off);
+	if (str_is_empty(spec_str) || *spec_str == ':')
+		return -EINVAL;
+
+	memset(spec, 0, sizeof(*spec));
+	spec->btf = btf;
+	spec->root_type_id = relo->type_id;
+	spec->relo_kind = relo->kind;
+
+	/* type-based relocations don't have a field access string */
+	if (core_relo_is_type_based(relo->kind)) {
+		if (strcmp(spec_str, "0"))
+			return -EINVAL;
+		return 0;
+	}
+
+	/* parse spec_str="0:1:2:3:4" into array raw_spec=[0, 1, 2, 3, 4] */
+	while (*spec_str) {
+		if (*spec_str == ':')
+			++spec_str;
+		if (sscanf(spec_str, "%d%n", &access_idx, &parsed_len) != 1)
+			return -EINVAL;
+		if (spec->raw_len == BPF_CORE_SPEC_MAX_LEN)
+			return -E2BIG;
+		spec_str += parsed_len;
+		spec->raw_spec[spec->raw_len++] = access_idx;
+	}
+
+	if (spec->raw_len == 0)
+		return -EINVAL;
+
+	t = skip_mods_and_typedefs(btf, relo->type_id, &id);
+	if (!t)
+		return -EINVAL;
+
+	access_idx = spec->raw_spec[0];
+	acc = &spec->spec[0];
+	acc->type_id = id;
+	acc->idx = access_idx;
+	spec->len++;
+
+	if (core_relo_is_enumval_based(relo->kind)) {
+		if (!btf_is_any_enum(t) || spec->raw_len > 1 || access_idx >= btf_vlen(t))
+			return -EINVAL;
+
+		/* record enumerator name in a first accessor */
+		name_off = btf_is_enum(t) ? btf_enum(t)[access_idx].name_off
+					  : btf_enum64(t)[access_idx].name_off;
+		acc->name = btf__name_by_offset(btf, name_off);
+		return 0;
+	}
+
+	if (!core_relo_is_field_based(relo->kind))
+		return -EINVAL;
+
+	sz = btf__resolve_size(btf, id);
+	if (sz < 0)
+		return sz;
+	spec->bit_offset = access_idx * sz * 8;
+
+	for (i = 1; i < spec->raw_len; i++) {
+		t = skip_mods_and_typedefs(btf, id, &id);
+		if (!t)
+			return -EINVAL;
+
+		access_idx = spec->raw_spec[i];
+		acc = &spec->spec[spec->len];
+
+		if (btf_is_composite(t)) {
+			const struct btf_member *m;
+			__u32 bit_offset;
+
+			if (access_idx >= btf_vlen(t))
+				return -EINVAL;
+
+			bit_offset = btf_member_bit_offset(t, access_idx);
+			spec->bit_offset += bit_offset;
+
+			m = btf_members(t) + access_idx;
+			if (m->name_off) {
+				name = btf__name_by_offset(btf, m->name_off);
+				if (str_is_empty(name))
+					return -EINVAL;
+
+				acc->type_id = id;
+				acc->idx = access_idx;
+				acc->name = name;
+				spec->len++;
+			}
+
+			id = m->type;
+		} else if (btf_is_array(t)) {
+			const struct btf_array *a = btf_array(t);
+			bool flex;
+
+			t = skip_mods_and_typedefs(btf, a->type, &id);
+			if (!t)
+				return -EINVAL;
+
+			flex = is_flex_arr(btf, acc - 1, a);
+			if (!flex && access_idx >= a->nelems)
+				return -EINVAL;
+
+			spec->spec[spec->len].type_id = id;
+			spec->spec[spec->len].idx = access_idx;
+			spec->len++;
+
+			sz = btf__resolve_size(btf, id);
+			if (sz < 0)
+				return sz;
+			spec->bit_offset += access_idx * sz * 8;
+		} else {
+			pr_warn("prog '%s': relo for [%u] %s (at idx %d) captures type [%d] of unexpected kind %s\n",
+				prog_name, relo->type_id, spec_str, i, id, btf_kind_str(t));
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
