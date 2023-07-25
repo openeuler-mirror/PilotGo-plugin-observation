@@ -90,3 +90,46 @@ struct btf_member {
 	
 	__u32	offset;
 };
+#define BTF_MEMBER_BITFIELD_SIZE(val)	((val) >> 24)
+#define BTF_MEMBER_BIT_OFFSET(val)	((val) & 0xffffff)
+
+
+struct btf_param {
+	__u32	name_off;
+	__u32	type;
+};
+
+enum {
+	BTF_VAR_STATIC = 0,
+	BTF_VAR_GLOBAL_ALLOCATED = 1,
+	BTF_VAR_GLOBAL_EXTERN = 2,
+};
+
+enum btf_func_linkage {
+	BTF_FUNC_STATIC = 0,
+	BTF_FUNC_GLOBAL = 1,
+	BTF_FUNC_EXTERN = 2,
+};
+
+struct btf_var {
+	__u32	linkage;
+};
+
+
+struct btf_var_secinfo {
+	__u32	type;
+	__u32	offset;
+	__u32	size;
+};
+
+struct btf_decl_tag {
+       __s32   component_idx;
+};
+
+struct btf_enum64 {
+	__u32	name_off;
+	__u32	val_lo32;
+	__u32	val_hi32;
+};
+
+#endif /* _UAPI__LINUX_BTF_H__ */
