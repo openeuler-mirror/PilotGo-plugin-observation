@@ -407,3 +407,75 @@ recur:
 		return 0;
 	}
 }
+
+static int bpf_core_match_member(const struct btf *local_btf,
+				 const struct bpf_core_accessor *local_acc,
+				 const struct btf *targ_btf,
+				 __u32 targ_id,
+				 struct bpf_core_spec *spec,
+				 __u32 *next_targ_id)
+{
+	const struct btf_type *local_type, *targ_type;
+	const struct btf_member *local_member, *m;
+	const char *local_name, *targ_name;
+	__u32 local_id;
+	int i, n, found;
+
+	targ_type = skip_mods_and_typedefs(targ_btf, targ_id, &targ_id);
+	if (!targ_type)
+		return -EINVAL;
+	if (!btf_is_composite(targ_type))
+		return 0;
+
+	local_id = local_acc->type_id;
+	local_type = btf_type_by_id(local_btf, local_id);
+	local_member = btf_members(local_type) + local_acc->idx;
+	local_name = btf__name_by_offset(local_btf, local_member->name_off);
+
+	n = btf_vlen(targ_type);
+	m = btf_members(targ_type);
+	for (i = 0; i < n; i++, m++) {
+		__u32 bit_offset;
+
+		bit_offset = btf_member_bit_offset(targ_type, i);
+
+		/* too deep struct/union/array nesting */
+		if (spec->raw_len == BPF_CORE_SPEC_MAX_LEN)
+			return -E2BIG;
+
+		/* speculate this member will be the good one */
+		spec->bit_offset += bit_offset;
+		spec->raw_spec[spec->raw_len++] = i;
+
+		targ_name = btf__name_by_offset(targ_btf, m->name_off);
+		if (str_is_empty(targ_name)) {
+			/* embedded struct/union, we need to go deeper */
+			found = bpf_core_match_member(local_btf, local_acc,
+						      targ_btf, m->type,
+						      spec, next_targ_id);
+			if (found) /* either found or error */
+				return found;
+		} else if (strcmp(local_name, targ_name) == 0) {
+			/* matching named field */
+			struct bpf_core_accessor *targ_acc;
+
+			targ_acc = &spec->spec[spec->len++];
+			targ_acc->type_id = targ_id;
+			targ_acc->idx = i;
+			targ_acc->name = targ_name;
+
+			*next_targ_id = m->type;
+			found = bpf_core_fields_are_compat(local_btf,
+							   local_member->type,
+							   targ_btf, m->type);
+			if (!found)
+				spec->len--; /* pop accessor */
+			return found;
+		}
+		/* member turned out not to be what we looked for */
+		spec->bit_offset -= bit_offset;
+		spec->raw_len--;
+	}
+
+	return 0;
+}
