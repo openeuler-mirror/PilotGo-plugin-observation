@@ -123,18 +123,11 @@ void bpf_gen__init(struct bpf_gen *gen, int log_level, int nr_progs, int nr_maps
 
 	/* amount of stack actually used, only used to calculate iterations, not stack offset */
 	nr_progs_sz = offsetof(struct loader_stack, prog_fd[nr_progs]);
-	/* jump over cleanup code */
 	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0,
-						  /* size of cleanup code below (including map fd cleanup) */
 						  (nr_progs_sz / 4) * 3 + 2 +
-							  /* 6 insns for emit_sys_close_blob,
-							   * 6 insns for debug_regs in emit_sys_close_blob
-							   */
 							  nr_maps * (6 + (gen->log_level ? 6 : 0))));
 
-	/* remember the label where all error branches will jump to */
 	gen->cleanup_label = gen->insn_cur - gen->insn_start;
-	/* emit cleanup code: close all temp FDs */
 	for (i = 0; i < nr_progs_sz; i += 4)
 	{
 		emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_10, -stack_sz + i));
@@ -143,7 +136,51 @@ void bpf_gen__init(struct bpf_gen *gen, int log_level, int nr_progs, int nr_maps
 	}
 	for (i = 0; i < nr_maps; i++)
 		emit_sys_close_blob(gen, blob_fd_array_off(gen, i));
-	/* R7 contains the error code from sys_bpf. Copy it into R0 and exit. */
 	emit(gen, BPF_MOV64_REG(BPF_REG_0, BPF_REG_7));
 	emit(gen, BPF_EXIT_INSN());
+}
+
+static int add_data(struct bpf_gen *gen, const void *data, __u32 size)
+{
+	__u32 size8 = roundup(size, 8);
+	__u64 zero = 0;
+	void *prev;
+
+	if (realloc_data_buf(gen, size8))
+		return 0;
+	prev = gen->data_cur;
+	if (data)
+	{
+		memcpy(gen->data_cur, data, size);
+		memcpy(gen->data_cur + size, &zero, size8 - size);
+	}
+	else
+	{
+		memset(gen->data_cur, 0, size8);
+	}
+	gen->data_cur += size8;
+	return prev - gen->data_start;
+}
+
+static int add_map_fd(struct bpf_gen *gen)
+{
+	if (gen->nr_maps == MAX_USED_MAPS)
+	{
+		pr_warn("Total maps exceeds %d\n", MAX_USED_MAPS);
+		gen->error = -E2BIG;
+		return 0;
+	}
+	return gen->nr_maps++;
+}
+
+static int add_kfunc_btf_fd(struct bpf_gen *gen)
+{
+	int cur;
+
+	if (gen->nr_fd_array == MAX_KFUNC_DESCS)
+	{
+		cur = add_data(gen, NULL, sizeof(int));
+		return (cur - gen->fd_array) / sizeof(int);
+	}
+	return MAX_USED_MAPS + gen->nr_fd_array++;
 }
