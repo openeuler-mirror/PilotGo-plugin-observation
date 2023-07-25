@@ -324,3 +324,38 @@ static void debug_regs(struct bpf_gen *gen, int reg1, int reg2, const char *fmt,
 	emit_debug(gen, reg1, reg2, fmt, args);
 	va_end(args);
 }
+
+static void debug_ret(struct bpf_gen *gen, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	emit_debug(gen, BPF_REG_7, -1, fmt, args);
+	va_end(args);
+}
+
+static void __emit_sys_close(struct bpf_gen *gen)
+{
+	emit(gen, BPF_JMP_IMM(BPF_JSLE, BPF_REG_1, 0,
+						  /* 2 is the number of the following insns
+						   * * 6 is additional insns in debug_regs
+						   */
+						  2 + (gen->log_level ? 6 : 0)));
+	emit(gen, BPF_MOV64_REG(BPF_REG_9, BPF_REG_1));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_sys_close));
+	debug_regs(gen, BPF_REG_9, BPF_REG_0, "close(%%d) = %%d");
+}
+
+static void emit_sys_close_stack(struct bpf_gen *gen, int stack_off)
+{
+	emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_10, stack_off));
+	__emit_sys_close(gen);
+}
+
+static void emit_sys_close_blob(struct bpf_gen *gen, int blob_off)
+{
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_0, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, blob_off));
+	emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0));
+	__emit_sys_close(gen);
+}
