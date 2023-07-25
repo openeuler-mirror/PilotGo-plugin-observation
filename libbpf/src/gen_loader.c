@@ -410,3 +410,34 @@ void bpf_gen__free(struct bpf_gen *gen)
 	free(gen->insn_start);
 	free(gen);
 }
+
+void bpf_gen__load_btf(struct bpf_gen *gen, const void *btf_raw_data,
+					   __u32 btf_raw_size)
+{
+	int attr_size = offsetofend(union bpf_attr, btf_log_level);
+	int btf_data, btf_load_attr;
+	union bpf_attr attr;
+
+	memset(&attr, 0, attr_size);
+	pr_debug("gen: load_btf: size %d\n", btf_raw_size);
+	btf_data = add_data(gen, btf_raw_data, btf_raw_size);
+
+	attr.btf_size = btf_raw_size;
+	btf_load_attr = add_data(gen, &attr, attr_size);
+
+	/* populate union bpf_attr with user provided log details */
+	move_ctx2blob(gen, attr_field(btf_load_attr, btf_log_level), 4,
+				  offsetof(struct bpf_loader_ctx, log_level), false);
+	move_ctx2blob(gen, attr_field(btf_load_attr, btf_log_size), 4,
+				  offsetof(struct bpf_loader_ctx, log_size), false);
+	move_ctx2blob(gen, attr_field(btf_load_attr, btf_log_buf), 8,
+				  offsetof(struct bpf_loader_ctx, log_buf), false);
+	/* populate union bpf_attr with a pointer to the BTF data */
+	emit_rel_store(gen, attr_field(btf_load_attr, btf), btf_data);
+	/* emit BTF_LOAD command */
+	emit_sys_bpf(gen, BPF_BTF_LOAD, btf_load_attr, attr_size);
+	debug_ret(gen, "btf_load size %d", btf_raw_size);
+	emit_check_err(gen);
+	/* remember btf_fd in the stack, if successful */
+	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_10, BPF_REG_7, stack_off(btf_fd)));
+}
