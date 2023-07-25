@@ -474,6 +474,50 @@ exit_free:
 	return err;
 }
 
+static int do_update(int argc, char **argv)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	__u32 *value_fd = NULL;
+	__u32 flags = BPF_ANY;
+	void *key, *value;
+	int fd, err;
+
+	if (argc < 2)
+		usage();
+
+	fd = map_parse_fd_and_info(&argc, &argv, &info, &len);
+	if (fd < 0)
+		return -1;
+
+	err = alloc_key_value(&info, &key, &value);
+	if (err)
+		goto exit_free;
+
+	err = parse_elem(argv, &info, key, value, info.key_size,
+			 info.value_size, &flags, &value_fd);
+	if (err)
+		goto exit_free;
+
+	err = bpf_map_update_elem(fd, key, value, flags);
+	if (err) {
+		p_err("update failed: %s", strerror(errno));
+		goto exit_free;
+	}
+
+exit_free:
+	if (value_fd)
+		close(*value_fd);
+	free(key);
+	free(value);
+	close(fd);
+
+	if (!err && json_output)
+		jsonw_null(json_wtr);
+	return err;
+}
+
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
