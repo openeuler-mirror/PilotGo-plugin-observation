@@ -1279,3 +1279,16 @@ void partitions__free(struct partitions *partitions)
 	free(partitions->items);
 	free(partitions);
 }
+
+const struct partition *
+partitions__get_by_dev(const struct partitions *partitions, unsigned int dev)
+{
+	int i;
+
+	for (i = 0; i < partitions->sz; i++) {
+		if (partitions->items[i].dev == dev)
+			return &partitions->items[i];
+	}
+
+	return NULL;
+}
