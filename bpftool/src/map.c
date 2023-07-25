@@ -65,6 +65,90 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
+static void print_entry_json(struct bpf_map_info *info, unsigned char *key,
+			     unsigned char *value, struct btf *btf)
+{
+	jsonw_start_object(json_wtr);
+
+	if (!map_is_per_cpu(info->type)) {
+		jsonw_name(json_wtr, "key");
+		print_hex_data_json(key, info->key_size);
+		jsonw_name(json_wtr, "value");
+		print_hex_data_json(value, info->value_size);
+		if (btf) {
+			struct btf_dumper d = {
+				.btf = btf,
+				.jw = json_wtr,
+				.is_plain_text = false,
+			};
+
+			jsonw_name(json_wtr, "formatted");
+			do_dump_btf(&d, info, key, value);
+		}
+	} else {
+		unsigned int i, n, step;
+
+		n = get_possible_cpus();
+		step = round_up(info->value_size, 8);
+
+		jsonw_name(json_wtr, "key");
+		print_hex_data_json(key, info->key_size);
+
+		jsonw_name(json_wtr, "values");
+		jsonw_start_array(json_wtr);
+		for (i = 0; i < n; i++) {
+			jsonw_start_object(json_wtr);
+
+			jsonw_int_field(json_wtr, "cpu", i);
+
+			jsonw_name(json_wtr, "value");
+			print_hex_data_json(value + i * step,
+					    info->value_size);
+
+			jsonw_end_object(json_wtr);
+		}
+		jsonw_end_array(json_wtr);
+		if (btf) {
+			struct btf_dumper d = {
+				.btf = btf,
+				.jw = json_wtr,
+				.is_plain_text = false,
+			};
+
+			jsonw_name(json_wtr, "formatted");
+			do_dump_btf(&d, info, key, value);
+		}
+	}
+
+	jsonw_end_object(json_wtr);
+}
+
+
+static int dump_map_elem(int fd, void *key, void *value,
+			 struct bpf_map_info *map_info, struct btf *btf,
+			 json_writer_t *btf_wtr)
+{
+	if (bpf_map_lookup_elem(fd, key, value)) {
+		print_entry_error(map_info, key, errno);
+		return -1;
+	}
+
+	if (json_output) {
+		print_entry_json(map_info, key, value, btf);
+	} else if (btf) {
+		struct btf_dumper d = {
+			.btf = btf,
+			.jw = btf_wtr,
+			.is_plain_text = true,
+		};
+
+		do_dump_btf(&d, map_info, key, value);
+	} else {
+		print_entry_plain(map_info, key, value);
+	}
+
+	return 0;
+}
 
 static json_writer_t *get_btf_writer(void)
 {
@@ -218,6 +302,37 @@ int map_parse_fds(int *argc, char ***argv, int **fds)
 	return -1;
 }
 
+static int get_map_kv_btf(const struct bpf_map_info *info, struct btf **btf)
+{
+	int err = 0;
+
+	if (info->btf_vmlinux_value_type_id) {
+		if (!btf_vmlinux) {
+			btf_vmlinux = libbpf_find_kernel_btf();
+			if (!btf_vmlinux) {
+				p_err("failed to get kernel btf");
+				return -errno;
+			}
+		}
+		*btf = btf_vmlinux;
+	} else if (info->btf_value_type_id) {
+		*btf = btf__load_from_kernel_by_id(info->btf_id);
+		if (!*btf) {
+			err = -errno;
+			p_err("failed to get btf");
+		}
+	} else {
+		*btf = NULL;
+	}
+
+	return err;
+}
+
+static void free_map_kv_btf(struct btf *btf)
+{
+	if (btf != btf_vmlinux)
+		btf__free(btf);
+}
 
 static int
 map_dump(int fd, struct bpf_map_info *info, json_writer_t *wtr,
