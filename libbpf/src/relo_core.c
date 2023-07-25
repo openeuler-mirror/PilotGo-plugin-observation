@@ -600,3 +600,128 @@ static int bpf_core_spec_match(struct bpf_core_spec *local_spec,
 
 	return 1;
 }
+
+static int bpf_core_calc_field_relo(const char *prog_name,
+				    const struct bpf_core_relo *relo,
+				    const struct bpf_core_spec *spec,
+				    __u64 *val, __u32 *field_sz, __u32 *type_id,
+				    bool *validate)
+{
+	const struct bpf_core_accessor *acc;
+	const struct btf_type *t;
+	__u32 byte_off, byte_sz, bit_off, bit_sz, field_type_id;
+	const struct btf_member *m;
+	const struct btf_type *mt;
+	bool bitfield;
+	__s64 sz;
+
+	*field_sz = 0;
+
+	if (relo->kind == BPF_CORE_FIELD_EXISTS) {
+		*val = spec ? 1 : 0;
+		return 0;
+	}
+
+	if (!spec)
+		return -EUCLEAN; /* request instruction poisoning */
+
+	acc = &spec->spec[spec->len - 1];
+	t = btf_type_by_id(spec->btf, acc->type_id);
+
+	/* a[n] accessor needs special handling */
+	if (!acc->name) {
+		if (relo->kind == BPF_CORE_FIELD_BYTE_OFFSET) {
+			*val = spec->bit_offset / 8;
+			/* remember field size for load/store mem size */
+			sz = btf__resolve_size(spec->btf, acc->type_id);
+			if (sz < 0)
+				return -EINVAL;
+			*field_sz = sz;
+			*type_id = acc->type_id;
+		} else if (relo->kind == BPF_CORE_FIELD_BYTE_SIZE) {
+			sz = btf__resolve_size(spec->btf, acc->type_id);
+			if (sz < 0)
+				return -EINVAL;
+			*val = sz;
+		} else {
+			pr_warn("prog '%s': relo %d at insn #%d can't be applied to array access\n",
+				prog_name, relo->kind, relo->insn_off / 8);
+			return -EINVAL;
+		}
+		if (validate)
+			*validate = true;
+		return 0;
+	}
+
+	m = btf_members(t) + acc->idx;
+	mt = skip_mods_and_typedefs(spec->btf, m->type, &field_type_id);
+	bit_off = spec->bit_offset;
+	bit_sz = btf_member_bitfield_size(t, acc->idx);
+
+	bitfield = bit_sz > 0;
+	if (bitfield) {
+		byte_sz = mt->size;
+		byte_off = bit_off / 8 / byte_sz * byte_sz;
+		/* figure out smallest int size necessary for bitfield load */
+		while (bit_off + bit_sz - byte_off * 8 > byte_sz * 8) {
+			if (byte_sz >= 8) {
+				/* bitfield can't be read with 64-bit read */
+				pr_warn("prog '%s': relo %d at insn #%d can't be satisfied for bitfield\n",
+					prog_name, relo->kind, relo->insn_off / 8);
+				return -E2BIG;
+			}
+			byte_sz *= 2;
+			byte_off = bit_off / 8 / byte_sz * byte_sz;
+		}
+	} else {
+		sz = btf__resolve_size(spec->btf, field_type_id);
+		if (sz < 0)
+			return -EINVAL;
+		byte_sz = sz;
+		byte_off = spec->bit_offset / 8;
+		bit_sz = byte_sz * 8;
+	}
+
+	/* for bitfields, all the relocatable aspects are ambiguous and we
+	 * might disagree with compiler, so turn off validation of expected
+	 * value, except for signedness
+	 */
+	if (validate)
+		*validate = !bitfield;
+
+	switch (relo->kind) {
+	case BPF_CORE_FIELD_BYTE_OFFSET:
+		*val = byte_off;
+		if (!bitfield) {
+			*field_sz = byte_sz;
+			*type_id = field_type_id;
+		}
+		break;
+	case BPF_CORE_FIELD_BYTE_SIZE:
+		*val = byte_sz;
+		break;
+	case BPF_CORE_FIELD_SIGNED:
+		*val = (btf_is_any_enum(mt) && BTF_INFO_KFLAG(mt->info)) ||
+		       (btf_int_encoding(mt) & BTF_INT_SIGNED);
+		if (validate)
+			*validate = true; /* signedness is never ambiguous */
+		break;
+	case BPF_CORE_FIELD_LSHIFT_U64:
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		*val = 64 - (bit_off + bit_sz - byte_off  * 8);
+#else
+		*val = (8 - byte_sz) * 8 + (bit_off - byte_off * 8);
+#endif
+		break;
+	case BPF_CORE_FIELD_RSHIFT_U64:
+		*val = 64 - bit_sz;
+		if (validate)
+			*validate = true; /* right shift is never ambiguous */
+		break;
+	case BPF_CORE_FIELD_EXISTS:
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
