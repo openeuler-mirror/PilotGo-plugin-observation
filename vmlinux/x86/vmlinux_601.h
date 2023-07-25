@@ -1345,3 +1345,118 @@ struct old_timespec32 {
 	old_time32_t tv_sec;
 	s32 tv_nsec;
 };
+
+struct pt_regs {
+	long unsigned int r15;
+	long unsigned int r14;
+	long unsigned int r13;
+	long unsigned int r12;
+	long unsigned int bp;
+	long unsigned int bx;
+	long unsigned int r11;
+	long unsigned int r10;
+	long unsigned int r9;
+	long unsigned int r8;
+	long unsigned int ax;
+	long unsigned int cx;
+	long unsigned int dx;
+	long unsigned int si;
+	long unsigned int di;
+	long unsigned int orig_ax;
+	long unsigned int ip;
+	long unsigned int cs;
+	long unsigned int flags;
+	long unsigned int sp;
+	long unsigned int ss;
+};
+
+struct math_emu_info {
+	long int ___orig_eip;
+	struct pt_regs *regs;
+};
+
+typedef long unsigned int pgdval_t;
+
+typedef long unsigned int pgprotval_t;
+
+struct pgprot {
+	pgprotval_t pgprot;
+};
+
+typedef struct pgprot pgprot_t;
+
+typedef struct {
+	pgdval_t pgd;
+} pgd_t;
+
+typedef struct page *pgtable_t;
+
+struct address_space;
+
+struct page_pool;
+
+struct dev_pagemap;
+
+struct page {
+	long unsigned int flags;
+	union {
+		struct {
+			union {
+				struct list_head lru;
+				struct {
+					void *__filler;
+					unsigned int mlock_count;
+				};
+				struct list_head buddy_list;
+				struct list_head pcp_list;
+			};
+			struct address_space *mapping;
+			long unsigned int index;
+			long unsigned int private;
+		};
+		struct {
+			long unsigned int pp_magic;
+			struct page_pool *pp;
+			long unsigned int _pp_mapping_pad;
+			long unsigned int dma_addr;
+			union {
+				long unsigned int dma_addr_upper;
+				atomic_long_t pp_frag_count;
+			};
+		};
+		struct {
+			long unsigned int compound_head;
+			unsigned char compound_dtor;
+			unsigned char compound_order;
+			atomic_t compound_mapcount;
+			atomic_t compound_pincount;
+			unsigned int compound_nr;
+		};
+		struct {
+			long unsigned int _compound_pad_1;
+			long unsigned int _compound_pad_2;
+			struct list_head deferred_list;
+		};
+		struct {
+			long unsigned int _pt_pad_1;
+			pgtable_t pmd_huge_pte;
+			long unsigned int _pt_pad_2;
+			union {
+				struct mm_struct *pt_mm;
+				atomic_t pt_frag_refcount;
+			};
+			spinlock_t *ptl;
+		};
+		struct {
+			struct dev_pagemap *pgmap;
+			void *zone_device_data;
+		};
+		struct callback_head callback_head;
+	};
+	union {
+		atomic_t _mapcount;
+		unsigned int page_type;
+	};
+	atomic_t _refcount;
+	long unsigned int memcg_data;
+};
