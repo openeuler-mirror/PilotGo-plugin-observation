@@ -291,3 +291,36 @@ static void emit_check_err(struct bpf_gen *gen)
 		emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, -1));
 	}
 }
+
+static void emit_debug(struct bpf_gen *gen, int reg1, int reg2,
+					   const char *fmt, va_list args)
+{
+	char buf[1024];
+	int addr, len, ret;
+
+	if (!gen->log_level)
+		return;
+	ret = vsnprintf(buf, sizeof(buf), fmt, args);
+	if (ret < 1024 - 7 && reg1 >= 0 && reg2 < 0)
+		strcat(buf, " r=%d");
+	len = strlen(buf) + 1;
+	addr = add_data(gen, buf, len);
+
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, addr));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_2, len));
+	if (reg1 >= 0)
+		emit(gen, BPF_MOV64_REG(BPF_REG_3, reg1));
+	if (reg2 >= 0)
+		emit(gen, BPF_MOV64_REG(BPF_REG_4, reg2));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_trace_printk));
+}
+
+static void debug_regs(struct bpf_gen *gen, int reg1, int reg2, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	emit_debug(gen, reg1, reg2, fmt, args);
+	va_end(args);
+}
