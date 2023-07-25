@@ -893,6 +893,20 @@ int bpf_link_get_info_by_fd(int link_fd, struct bpf_link_info *info, __u32 *info
 	return bpf_obj_get_info_by_fd(link_fd, info, info_len);
 }
 
+int bpf_raw_tracepoint_open(const char *name, int prog_fd)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, raw_tracepoint);
+	union bpf_attr attr;
+	int fd;
+
+	memset(&attr, 0, attr_sz);
+	attr.raw_tracepoint.name = ptr_to_u64(name);
+	attr.raw_tracepoint.prog_fd = prog_fd;
+
+	fd = sys_bpf_fd(BPF_RAW_TRACEPOINT_OPEN, &attr, attr_sz);
+	return libbpf_err_errno(fd);
+}
+
 int bpf_btf_load(const void *btf_data, size_t btf_size, struct bpf_btf_load_opts *opts)
 {
 	const size_t attr_sz = offsetofend(union bpf_attr, btf_log_true_size);
