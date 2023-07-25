@@ -1518,3 +1518,60 @@ struct fpu_state_config {
 	u64 default_features;
 	u64 legacy_features;
 };
+
+struct cpuinfo_x86 {
+	__u8 x86;
+	__u8 x86_vendor;
+	__u8 x86_model;
+	__u8 x86_stepping;
+	int x86_tlbsize;
+	__u32 vmx_capability[5];
+	__u8 x86_virt_bits;
+	__u8 x86_phys_bits;
+	__u8 x86_coreid_bits;
+	__u8 cu_id;
+	__u32 extended_cpuid_level;
+	int cpuid_level;
+	union {
+		__u32 x86_capability[21];
+		long unsigned int x86_capability_alignment;
+	};
+	char x86_vendor_id[16];
+	char x86_model_id[64];
+	unsigned int x86_cache_size;
+	int x86_cache_alignment;
+	int x86_cache_max_rmid;
+	int x86_cache_occ_scale;
+	int x86_cache_mbm_width_offset;
+	int x86_power;
+	long unsigned int loops_per_jiffy;
+	u64 ppin;
+	u16 x86_max_cores;
+	u16 apicid;
+	u16 initial_apicid;
+	u16 x86_clflush_size;
+	u16 booted_cores;
+	u16 phys_proc_id;
+	u16 logical_proc_id;
+	u16 cpu_core_id;
+	u16 cpu_die_id;
+	u16 logical_die_id;
+	u16 cpu_index;
+	bool smt_active;
+	u32 microcode;
+	u8 x86_cache_bits;
+	unsigned int initialized: 1;
+};
+
+typedef struct {
+	arch_rwlock_t raw_lock;
+	unsigned int magic;
+	unsigned int owner_cpu;
+	void *owner;
+	struct lockdep_map dep_map;
+} rwlock_t;
+
+struct wait_queue_head {
+	spinlock_t lock;
+	struct list_head head;
+};
