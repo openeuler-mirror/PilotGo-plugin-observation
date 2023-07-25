@@ -63,3 +63,30 @@ enum {
 	NR_BTF_KINDS,
 	BTF_KIND_MAX		= NR_BTF_KINDS - 1,
 };
+#define BTF_INT_ENCODING(VAL)	(((VAL) & 0x0f000000) >> 24)
+#define BTF_INT_OFFSET(VAL)	(((VAL) & 0x00ff0000) >> 16)
+#define BTF_INT_BITS(VAL)	((VAL)  & 0x000000ff)
+
+/* Attributes stored in the BTF_INT_ENCODING */
+#define BTF_INT_SIGNED	(1 << 0)
+#define BTF_INT_CHAR	(1 << 1)
+#define BTF_INT_BOOL	(1 << 2)
+
+struct btf_enum {
+	__u32	name_off;
+	__s32	val;
+};
+
+/* BTF_KIND_ARRAY is followed by one "struct btf_array" */
+struct btf_array {
+	__u32	type;
+	__u32	index_type;
+	__u32	nelems;
+};
+
+struct btf_member {
+	__u32	name_off;
+	__u32	type;
+	
+	__u32	offset;
+};
