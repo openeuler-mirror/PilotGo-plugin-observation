@@ -1305,3 +1305,20 @@ partitions__get_by_name(const struct partitions *partitions, const char *name)
 
 	return NULL;
 }
+
+static void print_stars(unsigned int val, unsigned int val_max, int width)
+{
+	int num_stars, num_spaces, i;
+	bool need_plus;
+
+	num_stars = min(val, val_max) * width / val_max;
+	num_spaces = width - num_stars;
+	need_plus = val > val_max;
+
+	for (i = 0; i < num_stars; i++)
+		printf("*");
+	for (i = 0; i < num_spaces; i++)
+		printf(" ");
+	if (need_plus)
+		printf("+");
+}
