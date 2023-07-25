@@ -254,3 +254,181 @@ struct rtnl_link_ifmap {
 	__u8	dma;
 	__u8	port;
 };
+
+/*
+ * IFLA_AF_SPEC
+ *   Contains nested attributes for address family specific attributes.
+ *   Each address family may create a attribute with the address family
+ *   number as type and create its own attribute structure in it.
+ *
+ *   Example:
+ *   [IFLA_AF_SPEC] = {
+ *       [AF_INET] = {
+ *           [IFLA_INET_CONF] = ...,
+ *       },
+ *       [AF_INET6] = {
+ *           [IFLA_INET6_FLAGS] = ...,
+ *           [IFLA_INET6_CONF] = ...,
+ *       }
+ *   }
+ */
+
+enum {
+	IFLA_UNSPEC,
+	IFLA_ADDRESS,
+	IFLA_BROADCAST,
+	IFLA_IFNAME,
+	IFLA_MTU,
+	IFLA_LINK,
+	IFLA_QDISC,
+	IFLA_STATS,
+	IFLA_COST,
+#define IFLA_COST IFLA_COST
+	IFLA_PRIORITY,
+#define IFLA_PRIORITY IFLA_PRIORITY
+	IFLA_MASTER,
+#define IFLA_MASTER IFLA_MASTER
+	IFLA_WIRELESS,		/* Wireless Extension event - see wireless.h */
+#define IFLA_WIRELESS IFLA_WIRELESS
+	IFLA_PROTINFO,		/* Protocol specific information for a link */
+#define IFLA_PROTINFO IFLA_PROTINFO
+	IFLA_TXQLEN,
+#define IFLA_TXQLEN IFLA_TXQLEN
+	IFLA_MAP,
+#define IFLA_MAP IFLA_MAP
+	IFLA_WEIGHT,
+#define IFLA_WEIGHT IFLA_WEIGHT
+	IFLA_OPERSTATE,
+	IFLA_LINKMODE,
+	IFLA_LINKINFO,
+#define IFLA_LINKINFO IFLA_LINKINFO
+	IFLA_NET_NS_PID,
+	IFLA_IFALIAS,
+	IFLA_NUM_VF,		/* Number of VFs if device is SR-IOV PF */
+	IFLA_VFINFO_LIST,
+	IFLA_STATS64,
+	IFLA_VF_PORTS,
+	IFLA_PORT_SELF,
+	IFLA_AF_SPEC,
+	IFLA_GROUP,		/* Group the device belongs to */
+	IFLA_NET_NS_FD,
+	IFLA_EXT_MASK,		/* Extended info mask, VFs, etc */
+	IFLA_PROMISCUITY,	/* Promiscuity count: > 0 means acts PROMISC */
+#define IFLA_PROMISCUITY IFLA_PROMISCUITY
+	IFLA_NUM_TX_QUEUES,
+	IFLA_NUM_RX_QUEUES,
+	IFLA_CARRIER,
+	IFLA_PHYS_PORT_ID,
+	IFLA_CARRIER_CHANGES,
+	IFLA_PHYS_SWITCH_ID,
+	IFLA_LINK_NETNSID,
+	IFLA_PHYS_PORT_NAME,
+	IFLA_PROTO_DOWN,
+	IFLA_GSO_MAX_SEGS,
+	IFLA_GSO_MAX_SIZE,
+	IFLA_PAD,
+	IFLA_XDP,
+	IFLA_EVENT,
+	IFLA_NEW_NETNSID,
+	IFLA_IF_NETNSID,
+	IFLA_TARGET_NETNSID = IFLA_IF_NETNSID, /* new alias */
+	IFLA_CARRIER_UP_COUNT,
+	IFLA_CARRIER_DOWN_COUNT,
+	IFLA_NEW_IFINDEX,
+	IFLA_MIN_MTU,
+	IFLA_MAX_MTU,
+	IFLA_PROP_LIST,
+	IFLA_ALT_IFNAME, /* Alternative ifname */
+	IFLA_PERM_ADDRESS,
+	IFLA_PROTO_DOWN_REASON,
+
+	/* device (sysfs) name as parent, used instead
+	 * of IFLA_LINK where there's no parent netdev
+	 */
+	IFLA_PARENT_DEV_NAME,
+	IFLA_PARENT_DEV_BUS_NAME,
+	IFLA_GRO_MAX_SIZE,
+	IFLA_TSO_MAX_SIZE,
+	IFLA_TSO_MAX_SEGS,
+
+	__IFLA_MAX
+};
+
+
+#define IFLA_MAX (__IFLA_MAX - 1)
+
+enum {
+	IFLA_PROTO_DOWN_REASON_UNSPEC,
+	IFLA_PROTO_DOWN_REASON_MASK,	/* u32, mask for reason bits */
+	IFLA_PROTO_DOWN_REASON_VALUE,   /* u32, reason bit value */
+
+	__IFLA_PROTO_DOWN_REASON_CNT,
+	IFLA_PROTO_DOWN_REASON_MAX = __IFLA_PROTO_DOWN_REASON_CNT - 1
+};
+
+/* backwards compatibility for userspace */
+#ifndef __KERNEL__
+#define IFLA_RTA(r)  ((struct rtattr*)(((char*)(r)) + NLMSG_ALIGN(sizeof(struct ifinfomsg))))
+#define IFLA_PAYLOAD(n) NLMSG_PAYLOAD(n,sizeof(struct ifinfomsg))
+#endif
+
+enum {
+	IFLA_INET_UNSPEC,
+	IFLA_INET_CONF,
+	__IFLA_INET_MAX,
+};
+
+#define IFLA_INET_MAX (__IFLA_INET_MAX - 1)
+
+/* ifi_flags.
+
+   IFF_* flags.
+
+   The only change is:
+   IFF_LOOPBACK, IFF_BROADCAST and IFF_POINTOPOINT are
+   more not changeable by user. They describe link media
+   characteristics and set by device driver.
+
+   Comments:
+   - Combination IFF_BROADCAST|IFF_POINTOPOINT is invalid
+   - If neither of these three flags are set;
+     the interface is NBMA.
+
+   - IFF_MULTICAST does not mean anything special:
+   multicasts can be used on all not-NBMA links.
+   IFF_MULTICAST means that this media uses special encapsulation
+   for multicast frames. Apparently, all IFF_POINTOPOINT and
+   IFF_BROADCAST devices are able to use multicasts too.
+ */
+
+/* IFLA_LINK.
+   For usual devices it is equal ifi_index.
+   If it is a "virtual interface" (f.e. tunnel), ifi_link
+   can point to real physical interface (f.e. for bandwidth calculations),
+   or maybe 0, what means, that real media is unknown (usual
+   for IPIP tunnels, when route to endpoint is allowed to change)
+ */
+
+/* Subtype attributes for IFLA_PROTINFO */
+enum {
+	IFLA_INET6_UNSPEC,
+	IFLA_INET6_FLAGS,	/* link flags			*/
+	IFLA_INET6_CONF,	/* sysctl parameters		*/
+	IFLA_INET6_STATS,	/* statistics			*/
+	IFLA_INET6_MCAST,	/* MC things. What of them?	*/
+	IFLA_INET6_CACHEINFO,	/* time values and max reasm size */
+	IFLA_INET6_ICMP6STATS,	/* statistics (icmpv6)		*/
+	IFLA_INET6_TOKEN,	/* device token			*/
+	IFLA_INET6_ADDR_GEN_MODE, /* implicit address generator mode */
+	IFLA_INET6_RA_MTU,	/* mtu carried in the RA message */
+	__IFLA_INET6_MAX
+};
+
+#define IFLA_INET6_MAX	(__IFLA_INET6_MAX - 1)
+
+enum in6_addr_gen_mode {
+	IN6_ADDR_GEN_MODE_EUI64,
+	IN6_ADDR_GEN_MODE_NONE,
+	IN6_ADDR_GEN_MODE_STABLE_PRIVACY,
+	IN6_ADDR_GEN_MODE_RANDOM,
+};
