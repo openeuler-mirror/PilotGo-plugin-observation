@@ -134,6 +134,73 @@ static int do_show(int argc, char **argv)
 	return errno == ENOENT ? 0 : -1;
 }
 
+static int do_dump(int argc, char **argv)
+{
+	json_writer_t *wtr = NULL, *btf_wtr = NULL;
+	struct bpf_map_info info = {};
+	int nb_fds, i = 0;
+	__u32 len = sizeof(info);
+	int *fds = NULL;
+	int err = -1;
+
+	if (argc != 2)
+		usage();
+
+	fds = malloc(sizeof(int));
+	if (!fds) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+	nb_fds = map_parse_fds(&argc, &argv, &fds);
+	if (nb_fds < 1)
+		goto exit_free;
+
+	if (json_output) {
+		wtr = json_wtr;
+	} else {
+		int do_plain_btf;
+
+		do_plain_btf = maps_have_btf(fds, nb_fds);
+		if (do_plain_btf < 0)
+			goto exit_close;
+
+		if (do_plain_btf) {
+			btf_wtr = get_btf_writer();
+			wtr = btf_wtr;
+			if (!btf_wtr)
+				p_info("failed to create json writer for btf. falling back to plain output");
+		}
+	}
+
+	if (wtr && nb_fds > 1)
+		jsonw_start_array(wtr);	/* root array */
+	for (i = 0; i < nb_fds; i++) {
+		if (bpf_map_get_info_by_fd(fds[i], &info, &len)) {
+			p_err("can't get map info: %s", strerror(errno));
+			break;
+		}
+		err = map_dump(fds[i], &info, wtr, nb_fds > 1);
+		if (!wtr && i != nb_fds - 1)
+			printf("\n");
+
+		if (err)
+			break;
+		close(fds[i]);
+	}
+	if (wtr && nb_fds > 1)
+		jsonw_end_array(wtr);	/* root array */
+
+	if (btf_wtr)
+		jsonw_destroy(&btf_wtr);
+exit_close:
+	for (; i < nb_fds; i++)
+		close(fds[i]);
+exit_free:
+	free(fds);
+	btf__free(btf_vmlinux);
+	return err;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
