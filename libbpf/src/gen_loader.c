@@ -184,3 +184,62 @@ static int add_kfunc_btf_fd(struct bpf_gen *gen)
 	}
 	return MAX_USED_MAPS + gen->nr_fd_array++;
 }
+
+static int insn_bytes_to_bpf_size(__u32 sz)
+{
+	switch (sz)
+	{
+	case 8:
+		return BPF_DW;
+	case 4:
+		return BPF_W;
+	case 2:
+		return BPF_H;
+	case 1:
+		return BPF_B;
+	default:
+		return -1;
+	}
+}
+
+/* *(u64 *)(blob + off) = (u64)(void *)(blob + data) */
+static void emit_rel_store(struct bpf_gen *gen, int off, int data)
+{
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_0, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, data));
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, off));
+	emit(gen, BPF_STX_MEM(BPF_DW, BPF_REG_1, BPF_REG_0, 0));
+}
+
+static void move_blob2blob(struct bpf_gen *gen, int off, int size, int blob_off)
+{
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_2, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, blob_off));
+	emit(gen, BPF_LDX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_0, BPF_REG_2, 0));
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, off));
+	emit(gen, BPF_STX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_1, BPF_REG_0, 0));
+}
+
+static void move_blob2ctx(struct bpf_gen *gen, int ctx_off, int size, int blob_off)
+{
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, blob_off));
+	emit(gen, BPF_LDX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_0, BPF_REG_1, 0));
+	emit(gen, BPF_STX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_6, BPF_REG_0, ctx_off));
+}
+
+static void move_ctx2blob(struct bpf_gen *gen, int off, int size, int ctx_off,
+						  bool check_non_zero)
+{
+	emit(gen, BPF_LDX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_0, BPF_REG_6, ctx_off));
+	if (check_non_zero)
+		/* If value in ctx is zero don't update the blob.
+		 * For example: when ctx->map.max_entries == 0, keep default max_entries from bpf.c
+		 */
+		emit(gen, BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 3));
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, off));
+	emit(gen, BPF_STX_MEM(insn_bytes_to_bpf_size(size), BPF_REG_1, BPF_REG_0, 0));
+}
