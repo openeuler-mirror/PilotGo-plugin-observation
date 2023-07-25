@@ -1292,3 +1292,16 @@ partitions__get_by_dev(const struct partitions *partitions, unsigned int dev)
 
 	return NULL;
 }
+
+const struct partition *
+partitions__get_by_name(const struct partitions *partitions, const char *name)
+{
+	int i;
+
+	for (i = 0; i < partitions->sz; i++) {
+		if (strcmp(partitions->items[i].name, name) == 0)
+			return &partitions->items[i];
+	}
+
+	return NULL;
+}
