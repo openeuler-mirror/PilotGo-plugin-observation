@@ -889,3 +889,41 @@ static void cleanup_core_relo(struct bpf_gen *gen)
 	gen->core_relo_cnt = 0;
 	gen->core_relos = NULL;
 }
+
+static void cleanup_relos(struct bpf_gen *gen, int insns)
+{
+	struct ksym_desc *kdesc;
+	int i, insn;
+
+	for (i = 0; i < gen->nr_ksyms; i++)
+	{
+		kdesc = &gen->ksyms[i];
+		/* only close fds for typed ksyms and kfuncs */
+		if (kdesc->is_ld64 && !kdesc->typeless)
+		{
+			/* close fd recorded in insn[insn_idx + 1].imm */
+			insn = kdesc->insn;
+			insn += sizeof(struct bpf_insn) + offsetof(struct bpf_insn, imm);
+			emit_sys_close_blob(gen, insn);
+		}
+		else if (!kdesc->is_ld64)
+		{
+			emit_sys_close_blob(gen, blob_fd_array_off(gen, kdesc->off));
+			if (kdesc->off < MAX_FD_ARRAY_SZ)
+				gen->nr_fd_array--;
+		}
+	}
+	if (gen->nr_ksyms)
+	{
+		free(gen->ksyms);
+		gen->nr_ksyms = 0;
+		gen->ksyms = NULL;
+	}
+	if (gen->relo_cnt)
+	{
+		free(gen->relos);
+		gen->relo_cnt = 0;
+		gen->relos = NULL;
+	}
+	cleanup_core_relo(gen);
+}
