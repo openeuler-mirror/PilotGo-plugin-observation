@@ -2743,3 +2743,84 @@ struct vm_area_struct
 };
 
 typedef unsigned int vm_fault_t;
+
+enum page_entry_size
+{
+	PE_SIZE_PTE = 0,
+	PE_SIZE_PMD = 1,
+	PE_SIZE_PUD = 2,
+};
+
+struct vm_fault;
+
+struct vm_operations_struct
+{
+	void (*open)(struct vm_area_struct *);
+	void (*close)(struct vm_area_struct *);
+	int (*may_split)(struct vm_area_struct *, long unsigned int);
+	int (*mremap)(struct vm_area_struct *);
+	int (*mprotect)(struct vm_area_struct *, long unsigned int, long unsigned int, long unsigned int);
+	vm_fault_t (*fault)(struct vm_fault *);
+	vm_fault_t (*huge_fault)(struct vm_fault *, enum page_entry_size);
+	vm_fault_t (*map_pages)(struct vm_fault *, long unsigned int, long unsigned int);
+	long unsigned int (*pagesize)(struct vm_area_struct *);
+	vm_fault_t (*page_mkwrite)(struct vm_fault *);
+	vm_fault_t (*pfn_mkwrite)(struct vm_fault *);
+	int (*access)(struct vm_area_struct *, long unsigned int, void *, int, int);
+	const char *(*name)(struct vm_area_struct *);
+	int (*set_policy)(struct vm_area_struct *, struct mempolicy *);
+	struct mempolicy *(*get_policy)(struct vm_area_struct *, long unsigned int);
+	struct page *(*find_special_page)(struct vm_area_struct *, long unsigned int);
+};
+
+struct iovec
+{
+	void *iov_base;
+	__kernel_size_t iov_len;
+};
+
+struct kvec
+{
+	void *iov_base;
+	size_t iov_len;
+};
+
+struct bio_vec
+{
+	struct page *bv_page;
+	unsigned int bv_len;
+	unsigned int bv_offset;
+};
+
+struct iov_iter
+{
+	u8 iter_type;
+	bool nofault;
+	bool data_source;
+	bool user_backed;
+	union
+	{
+		size_t iov_offset;
+		int last_offset;
+	};
+	size_t count;
+	union
+	{
+		const struct iovec *iov;
+		const struct kvec *kvec;
+		const struct bio_vec *bvec;
+		struct xarray *xarray;
+		struct pipe_inode_info *pipe;
+		void *ubuf;
+	};
+	union
+	{
+		long unsigned int nr_segs;
+		struct
+		{
+			unsigned int head;
+			unsigned int start_head;
+		};
+		loff_t xarray_start;
+	};
+};
