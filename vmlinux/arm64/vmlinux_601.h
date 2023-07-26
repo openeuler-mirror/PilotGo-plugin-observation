@@ -541,3 +541,15 @@ struct sigpending {
 	struct list_head list;
 	sigset_t signal;
 };
+
+typedef struct {
+	uid_t val;
+} kuid_t;
+
+struct seccomp_filter;
+
+struct seccomp {
+	int mode;
+	atomic_t filter_count;
+	struct seccomp_filter *filter;
+};
