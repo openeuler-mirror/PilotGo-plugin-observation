@@ -2364,3 +2364,101 @@ struct key
 	};
 	struct key_restriction *restrict_link;
 };
+
+struct sighand_struct
+{
+	spinlock_t siglock;
+	refcount_t count;
+	wait_queue_head_t signalfd_wqh;
+	struct k_sigaction action[64];
+};
+
+struct io_context
+{
+	atomic_long_t refcount;
+	atomic_t active_ref;
+	short unsigned int ioprio;
+};
+
+enum uprobe_task_state
+{
+	UTASK_RUNNING = 0,
+	UTASK_SSTEP = 1,
+	UTASK_SSTEP_ACK = 2,
+	UTASK_SSTEP_TRAPPED = 3,
+};
+
+struct arch_uprobe_task
+{
+	long unsigned int saved_scratch_register;
+	unsigned int saved_trap_nr;
+	unsigned int saved_tf;
+};
+
+struct uprobe;
+
+struct return_instance;
+
+struct uprobe_task
+{
+	enum uprobe_task_state state;
+	union
+	{
+		struct
+		{
+			struct arch_uprobe_task autask;
+			long unsigned int vaddr;
+		};
+		struct
+		{
+			struct callback_head dup_xol_work;
+			long unsigned int dup_xol_addr;
+		};
+	};
+	struct uprobe *active_uprobe;
+	long unsigned int xol_vaddr;
+	struct return_instance *return_instances;
+	unsigned int depth;
+};
+
+struct vm_struct
+{
+	struct vm_struct *next;
+	void *addr;
+	long unsigned int size;
+	long unsigned int flags;
+	struct page **pages;
+	unsigned int page_order;
+	unsigned int nr_pages;
+	phys_addr_t phys_addr;
+	const void *caller;
+};
+
+struct kstat
+{
+	u32 result_mask;
+	umode_t mode;
+	unsigned int nlink;
+	uint32_t blksize;
+	u64 attributes;
+	u64 attributes_mask;
+	u64 ino;
+	dev_t dev;
+	dev_t rdev;
+	kuid_t uid;
+	kgid_t gid;
+	loff_t size;
+	struct timespec64 atime;
+	struct timespec64 mtime;
+	struct timespec64 ctime;
+	struct timespec64 btime;
+	u64 blocks;
+	u64 mnt_id;
+	u32 dio_mem_align;
+	u32 dio_offset_align;
+};
+
+struct kref
+{
+	refcount_t refcount;
+};
