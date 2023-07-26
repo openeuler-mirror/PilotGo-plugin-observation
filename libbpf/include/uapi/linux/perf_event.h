@@ -512,3 +512,26 @@ struct perf_event_mmap_page {
  * Reserve the last bit to indicate some extended misc field
  */
 #define PERF_RECORD_MISC_EXT_RESERVED		(1 << 15)
+
+struct perf_event_header {
+	__u32	type;
+	__u16	misc;
+	__u16	size;
+};
+
+struct perf_ns_link_info {
+	__u64	dev;
+	__u64	ino;
+};
+
+enum {
+	NET_NS_INDEX		= 0,
+	UTS_NS_INDEX		= 1,
+	IPC_NS_INDEX		= 2,
+	PID_NS_INDEX		= 3,
+	USER_NS_INDEX		= 4,
+	MNT_NS_INDEX		= 5,
+	CGROUP_NS_INDEX		= 6,
+
+	NR_NAMESPACES,		/* number of available namespaces */
+};
