@@ -600,3 +600,17 @@ struct task_io_accounting {
 typedef struct {
 	long unsigned int bits[1];
 } nodemask_t;
+
+struct seqcount {
+	unsigned int sequence;
+	struct lockdep_map dep_map;
+};
+
+typedef struct seqcount seqcount_t;
+
+struct seqcount_spinlock {
+	seqcount_t seqcount;
+	spinlock_t *lock;
+};
+
+typedef struct seqcount_spinlock seqcount_spinlock_t;
