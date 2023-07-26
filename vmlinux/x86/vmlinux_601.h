@@ -1764,3 +1764,43 @@ struct work_struct
 	work_func_t func;
 	struct lockdep_map lockdep_map;
 };
+
+struct workqueue_struct;
+
+struct delayed_work
+{
+	struct work_struct work;
+	struct timer_list timer;
+	struct workqueue_struct *wq;
+	int cpu;
+};
+
+struct seqcount_raw_spinlock
+{
+	seqcount_t seqcount;
+	raw_spinlock_t *lock;
+};
+
+typedef struct seqcount_raw_spinlock seqcount_raw_spinlock_t;
+
+typedef struct
+{
+	seqcount_spinlock_t seqcount;
+	spinlock_t lock;
+} seqlock_t;
+
+struct hrtimer_cpu_base;
+
+struct hrtimer_clock_base
+{
+	struct hrtimer_cpu_base *cpu_base;
+	unsigned int index;
+	clockid_t clockid;
+	seqcount_raw_spinlock_t seq;
+	struct hrtimer *running;
+	struct timerqueue_head active;
+	ktime_t (*get_time)();
+	ktime_t offset;
+	long : 64;
+	long : 64;
+};
