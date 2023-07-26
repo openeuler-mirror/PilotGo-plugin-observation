@@ -3327,3 +3327,78 @@ struct core_state
 	struct core_thread dumper;
 	struct completion startup;
 };
+
+struct delayed_call
+{
+	void (*fn)(void *);
+	void *arg;
+};
+
+typedef struct
+{
+	uid_t val;
+} vfsuid_t;
+
+typedef struct
+{
+	gid_t val;
+} vfsgid_t;
+
+struct iattr
+{
+	unsigned int ia_valid;
+	umode_t ia_mode;
+	union
+	{
+		kuid_t ia_uid;
+		vfsuid_t ia_vfsuid;
+	};
+	union
+	{
+		kgid_t ia_gid;
+		vfsgid_t ia_vfsgid;
+	};
+	loff_t ia_size;
+	struct timespec64 ia_atime;
+	struct timespec64 ia_mtime;
+	struct timespec64 ia_ctime;
+	struct file *ia_file;
+};
+
+typedef __kernel_uid32_t projid_t;
+
+typedef struct
+{
+	projid_t val;
+} kprojid_t;
+
+enum quota_type
+{
+	USRQUOTA = 0,
+	GRPQUOTA = 1,
+	PRJQUOTA = 2,
+};
+
+struct kqid
+{
+	union
+	{
+		kuid_t uid;
+		kgid_t gid;
+		kprojid_t projid;
+	};
+	enum quota_type type;
+};
+
+struct mem_dqblk
+{
+	qsize_t dqb_bhardlimit;
+	qsize_t dqb_bsoftlimit;
+	qsize_t dqb_curspace;
+	qsize_t dqb_rsvspace;
+	qsize_t dqb_ihardlimit;
+	qsize_t dqb_isoftlimit;
+	qsize_t dqb_curinodes;
+	time64_t dqb_btime;
+	time64_t dqb_itime;
+};
