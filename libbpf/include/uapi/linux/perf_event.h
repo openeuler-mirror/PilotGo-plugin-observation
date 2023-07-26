@@ -580,3 +580,27 @@ enum perf_bpf_event_type {
 	PERF_BPF_EVENT_PROG_UNLOAD	= 2,
 	PERF_BPF_EVENT_MAX,		/* non-ABI */
 };
+
+#define PERF_MAX_STACK_DEPTH		127
+#define PERF_MAX_CONTEXTS_PER_STACK	  8
+
+enum perf_callchain_context {
+	PERF_CONTEXT_HV			= (__u64)-32,
+	PERF_CONTEXT_KERNEL		= (__u64)-128,
+	PERF_CONTEXT_USER		= (__u64)-512,
+
+	PERF_CONTEXT_GUEST		= (__u64)-2048,
+	PERF_CONTEXT_GUEST_KERNEL	= (__u64)-2176,
+	PERF_CONTEXT_GUEST_USER		= (__u64)-2560,
+
+	PERF_CONTEXT_MAX		= (__u64)-4095,
+};
+
+/**
+ * PERF_RECORD_AUX::flags bits
+ */
+#define PERF_AUX_FLAG_TRUNCATED			0x01	/* record was truncated to fit */
+#define PERF_AUX_FLAG_OVERWRITE			0x02	/* snapshot from overwrite mode */
+#define PERF_AUX_FLAG_PARTIAL			0x04	/* record contains gaps */
+#define PERF_AUX_FLAG_COLLISION			0x08	/* sample collided with another */
+#define PERF_AUX_FLAG_PMU_FORMAT_TYPE_MASK	0xff00	/* PMU specific trace format type */
