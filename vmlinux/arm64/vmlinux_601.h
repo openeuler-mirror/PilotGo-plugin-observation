@@ -586,3 +586,17 @@ struct held_lock {
 	unsigned int references: 12;
 	unsigned int pin_count;
 };
+
+struct task_io_accounting {
+	u64 rchar;
+	u64 wchar;
+	u64 syscr;
+	u64 syscw;
+	u64 read_bytes;
+	u64 write_bytes;
+	u64 cancelled_write_bytes;
+};
+
+typedef struct {
+	long unsigned int bits[1];
+} nodemask_t;
