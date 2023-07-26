@@ -614,3 +614,16 @@ struct seqcount_spinlock {
 };
 
 typedef struct seqcount_spinlock seqcount_spinlock_t;
+
+struct optimistic_spin_queue {
+	atomic_t tail;
+};
+
+struct mutex {
+	atomic_long_t owner;
+	raw_spinlock_t wait_lock;
+	struct optimistic_spin_queue osq;
+	struct list_head wait_list;
+	void *magic;
+	struct lockdep_map dep_map;
+};
