@@ -653,6 +653,56 @@ exit_free:
 	return err;
 }
 
+static int do_lookup(int argc, char **argv)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	void *key, *value;
+	int err;
+	int fd;
+
+	if (argc < 2)
+		usage();
+
+	fd = map_parse_fd_and_info(&argc, &argv, &info, &len);
+	if (fd < 0)
+		return -1;
+
+	err = alloc_key_value(&info, &key, &value);
+	if (err)
+		goto exit_free;
+
+	err = parse_elem(argv, &info, key, NULL, info.key_size, 0, NULL, NULL);
+	if (err)
+		goto exit_free;
+
+	err = bpf_map_lookup_elem(fd, key, value);
+	if (err) {
+		if (errno == ENOENT) {
+			if (json_output) {
+				jsonw_null(json_wtr);
+			} else {
+				printf("key:\n");
+				fprint_hex(stdout, key, info.key_size, " ");
+				printf("\n\nNot found\n");
+			}
+		} else {
+			p_err("lookup failed: %s", strerror(errno));
+		}
+
+		goto exit_free;
+	}
+
+	/* here means bpf_map_lookup_elem() succeeded */
+	print_key_value(&info, key, value);
+
+exit_free:
+	free(key);
+	free(value);
+	close(fd);
+
+	return err;
+}
 
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
