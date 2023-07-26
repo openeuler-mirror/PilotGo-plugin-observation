@@ -1029,3 +1029,50 @@ void bpf_gen__prog_load(struct bpf_gen *gen,
 						  stack_off(prog_fd[gen->nr_progs])));
 	gen->nr_progs++;
 }
+
+void bpf_gen__map_update_elem(struct bpf_gen *gen, int map_idx, void *pvalue,
+							  __u32 value_size)
+{
+	int attr_size = offsetofend(union bpf_attr, flags);
+	int map_update_attr, value, key;
+	union bpf_attr attr;
+	int zero = 0;
+
+	memset(&attr, 0, attr_size);
+	pr_debug("gen: map_update_elem: idx %d\n", map_idx);
+
+	value = add_data(gen, pvalue, value_size);
+	key = add_data(gen, &zero, sizeof(zero));
+
+	/* if (map_desc[map_idx].initial_value) {
+	 *    if (ctx->flags & BPF_SKEL_KERNEL)
+	 *        bpf_probe_read_kernel(value, value_size, initial_value);
+	 *    else
+	 *        bpf_copy_from_user(value, value_size, initial_value);
+	 * }
+	 */
+	emit(gen, BPF_LDX_MEM(BPF_DW, BPF_REG_3, BPF_REG_6,
+						  sizeof(struct bpf_loader_ctx) +
+							  sizeof(struct bpf_map_desc) * map_idx +
+							  offsetof(struct bpf_map_desc, initial_value)));
+	emit(gen, BPF_JMP_IMM(BPF_JEQ, BPF_REG_3, 0, 8));
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_1, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, value));
+	emit(gen, BPF_MOV64_IMM(BPF_REG_2, value_size));
+	emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_0, BPF_REG_6,
+						  offsetof(struct bpf_loader_ctx, flags)));
+	emit(gen, BPF_JMP_IMM(BPF_JSET, BPF_REG_0, BPF_SKEL_KERNEL, 2));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_copy_from_user));
+	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, 1));
+	emit(gen, BPF_EMIT_CALL(BPF_FUNC_probe_read_kernel));
+
+	map_update_attr = add_data(gen, &attr, attr_size);
+	move_blob2blob(gen, attr_field(map_update_attr, map_fd), 4,
+				   blob_fd_array_off(gen, map_idx));
+	emit_rel_store(gen, attr_field(map_update_attr, key), key);
+	emit_rel_store(gen, attr_field(map_update_attr, value), value);
+	/* emit MAP_UPDATE_ELEM command */
+	emit_sys_bpf(gen, BPF_MAP_UPDATE_ELEM, map_update_attr, attr_size);
+	debug_ret(gen, "update_elem idx %d value_size %d", map_idx, value_size);
+	emit_check_err(gen);
+}
