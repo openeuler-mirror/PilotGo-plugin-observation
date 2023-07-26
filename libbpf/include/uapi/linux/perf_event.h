@@ -440,3 +440,49 @@ struct perf_event_query_bpf {
 enum perf_event_ioc_flags {
 	PERF_IOC_FLAG_GROUP		= 1U << 0,
 };
+
+/*
+ * Structure of the page that can be mapped via mmap
+ */
+struct perf_event_mmap_page {
+	__u32	version;		/* version number of this structure */
+	__u32	compat_version;		/* lowest version this is compat with */
+
+	__u32	lock;			/* seqlock for synchronization */
+	__u32	index;			/* hardware event identifier */
+	__s64	offset;			/* add to hardware event value */
+	__u64	time_enabled;		/* time event active */
+	__u64	time_running;		/* time event on cpu */
+	union {
+		__u64	capabilities;
+		struct {
+			__u64	cap_bit0		: 1, /* Always 0, deprecated, see commit 860f085b74e9 */
+				cap_bit0_is_deprecated	: 1, /* Always 1, signals that bit 0 is zero */
+
+				cap_user_rdpmc		: 1, /* The RDPMC instruction can be used to read counts */
+				cap_user_time		: 1, /* The time_{shift,mult,offset} fields are used */
+				cap_user_time_zero	: 1, /* The time_zero field is used */
+				cap_user_time_short	: 1, /* the time_{cycle,mask} fields are used */
+				cap_____res		: 58;
+		};
+	};
+
+	__u16	pmc_width;
+	__u16	time_shift;
+	__u32	time_mult;
+	__u64	time_offset;
+	__u64	time_zero;
+	__u32	size;			/* Header size up to __reserved[] fields. */
+	__u32	__reserved_1;
+	__u64	time_cycles;
+	__u64	time_mask;
+	__u8	__reserved[116*8];	/* align to 1k. */
+	__u64   data_head;		/* head in the data section */
+	__u64	data_tail;		/* user-space written tail */
+	__u64	data_offset;		/* where the buffer starts */
+	__u64	data_size;		/* data buffer size */
+	__u64	aux_head;
+	__u64	aux_tail;
+	__u64	aux_offset;
+	__u64	aux_size;
+};
