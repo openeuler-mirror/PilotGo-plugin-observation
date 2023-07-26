@@ -834,3 +834,58 @@ clear_src_reg:
 
 	emit_ksym_relo_log(gen, relo, kdesc->ref);
 }
+
+void bpf_gen__record_relo_core(struct bpf_gen *gen,
+							   const struct bpf_core_relo *core_relo)
+{
+	struct bpf_core_relo *relos;
+
+	relos = libbpf_reallocarray(gen->core_relos, gen->core_relo_cnt + 1, sizeof(*relos));
+	if (!relos)
+	{
+		gen->error = -ENOMEM;
+		return;
+	}
+	gen->core_relos = relos;
+	relos += gen->core_relo_cnt;
+	memcpy(relos, core_relo, sizeof(*relos));
+	gen->core_relo_cnt++;
+}
+
+static void emit_relo(struct bpf_gen *gen, struct ksym_relo_desc *relo, int insns)
+{
+	int insn;
+
+	pr_debug("gen: emit_relo (%d): %s at %d %s\n",
+			 relo->kind, relo->name, relo->insn_idx, relo->is_ld64 ? "ld64" : "call");
+	insn = insns + sizeof(struct bpf_insn) * relo->insn_idx;
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_8, BPF_PSEUDO_MAP_IDX_VALUE, 0, 0, 0, insn));
+	if (relo->is_ld64)
+	{
+		if (relo->is_typeless)
+			emit_relo_ksym_typeless(gen, relo, insn);
+		else
+			emit_relo_ksym_btf(gen, relo, insn);
+	}
+	else
+	{
+		emit_relo_kfunc_btf(gen, relo, insn);
+	}
+}
+
+static void emit_relos(struct bpf_gen *gen, int insns)
+{
+	int i;
+
+	for (i = 0; i < gen->relo_cnt; i++)
+		emit_relo(gen, gen->relos + i, insns);
+}
+
+static void cleanup_core_relo(struct bpf_gen *gen)
+{
+	if (!gen->core_relo_cnt)
+		return;
+	free(gen->core_relos);
+	gen->core_relo_cnt = 0;
+	gen->core_relos = NULL;
+}
