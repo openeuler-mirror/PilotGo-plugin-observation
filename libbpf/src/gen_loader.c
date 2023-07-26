@@ -558,3 +558,58 @@ static void emit_find_attach_target(struct bpf_gen *gen)
 			  gen->attach_target, gen->attach_kind);
 	emit_check_err(gen);
 }
+
+void bpf_gen__record_extern(struct bpf_gen *gen, const char *name, bool is_weak,
+							bool is_typeless, bool is_ld64, int kind, int insn_idx)
+{
+	struct ksym_relo_desc *relo;
+
+	relo = libbpf_reallocarray(gen->relos, gen->relo_cnt + 1, sizeof(*relo));
+	if (!relo)
+	{
+		gen->error = -ENOMEM;
+		return;
+	}
+	gen->relos = relo;
+	relo += gen->relo_cnt;
+	relo->name = name;
+	relo->is_weak = is_weak;
+	relo->is_typeless = is_typeless;
+	relo->is_ld64 = is_ld64;
+	relo->kind = kind;
+	relo->insn_idx = insn_idx;
+	gen->relo_cnt++;
+}
+
+/* returns existing ksym_desc with ref incremented, or inserts a new one */
+static struct ksym_desc *get_ksym_desc(struct bpf_gen *gen, struct ksym_relo_desc *relo)
+{
+	struct ksym_desc *kdesc;
+	int i;
+
+	for (i = 0; i < gen->nr_ksyms; i++)
+	{
+		kdesc = &gen->ksyms[i];
+		if (kdesc->kind == relo->kind && kdesc->is_ld64 == relo->is_ld64 &&
+			!strcmp(kdesc->name, relo->name))
+		{
+			kdesc->ref++;
+			return kdesc;
+		}
+	}
+	kdesc = libbpf_reallocarray(gen->ksyms, gen->nr_ksyms + 1, sizeof(*kdesc));
+	if (!kdesc)
+	{
+		gen->error = -ENOMEM;
+		return NULL;
+	}
+	gen->ksyms = kdesc;
+	kdesc = &gen->ksyms[gen->nr_ksyms++];
+	kdesc->name = relo->name;
+	kdesc->kind = relo->kind;
+	kdesc->ref = 1;
+	kdesc->off = 0;
+	kdesc->insn = 0;
+	kdesc->is_ld64 = relo->is_ld64;
+	return kdesc;
+}
