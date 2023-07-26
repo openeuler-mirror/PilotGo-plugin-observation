@@ -769,3 +769,68 @@ static void emit_relo_ksym_typeless(struct bpf_gen *gen,
 log:
 	emit_ksym_relo_log(gen, relo, kdesc->ref);
 }
+
+static __u32 src_reg_mask(void)
+{
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	return 0x0f; /* src_reg,dst_reg,... */
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	return 0xf0; /* dst_reg,src_reg,... */
+#else
+#error "Unsupported bit endianness, cannot proceed"
+#endif
+}
+
+/* Expects:
+ * BPF_REG_8 - pointer to instruction
+ */
+static void emit_relo_ksym_btf(struct bpf_gen *gen, struct ksym_relo_desc *relo, int insn)
+{
+	struct ksym_desc *kdesc;
+	__u32 reg_mask;
+
+	kdesc = get_ksym_desc(gen, relo);
+	if (!kdesc)
+		return;
+	/* try to copy from existing ldimm64 insn */
+	if (kdesc->ref > 1)
+	{
+		move_blob2blob(gen, insn + sizeof(struct bpf_insn) + offsetof(struct bpf_insn, imm), 4,
+					   kdesc->insn + sizeof(struct bpf_insn) + offsetof(struct bpf_insn, imm));
+		move_blob2blob(gen, insn + offsetof(struct bpf_insn, imm), 4,
+					   kdesc->insn + offsetof(struct bpf_insn, imm));
+		/* jump over src_reg adjustment if imm (btf_id) is not 0, reuse BPF_REG_0 from move_blob2blob
+		 * If btf_id is zero, clear BPF_PSEUDO_BTF_ID flag in src_reg of ld_imm64 insn
+		 */
+		emit(gen, BPF_JMP_IMM(BPF_JNE, BPF_REG_0, 0, 3));
+		goto clear_src_reg;
+	}
+	/* remember insn offset, so we can copy BTF ID and FD later */
+	kdesc->insn = insn;
+	emit_bpf_find_by_name_kind(gen, relo);
+	if (!relo->is_weak)
+		emit_check_err(gen);
+	/* jump to success case */
+	emit(gen, BPF_JMP_IMM(BPF_JSGE, BPF_REG_7, 0, 3));
+	/* set values for insn[insn_idx].imm, insn[insn_idx + 1].imm as 0 */
+	emit(gen, BPF_ST_MEM(BPF_W, BPF_REG_8, offsetof(struct bpf_insn, imm), 0));
+	emit(gen, BPF_ST_MEM(BPF_W, BPF_REG_8, sizeof(struct bpf_insn) + offsetof(struct bpf_insn, imm), 0));
+	/* skip success case for ret < 0 */
+	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, 4));
+	/* store btf_id into insn[insn_idx].imm */
+	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_8, BPF_REG_7, offsetof(struct bpf_insn, imm)));
+	/* store btf_obj_fd into insn[insn_idx + 1].imm */
+	emit(gen, BPF_ALU64_IMM(BPF_RSH, BPF_REG_7, 32));
+	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_8, BPF_REG_7,
+						  sizeof(struct bpf_insn) + offsetof(struct bpf_insn, imm)));
+	/* skip src_reg adjustment */
+	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, 3));
+clear_src_reg:
+	/* clear bpf_object__relocate_data's src_reg assignment, otherwise we get a verifier failure */
+	reg_mask = src_reg_mask();
+	emit(gen, BPF_LDX_MEM(BPF_B, BPF_REG_9, BPF_REG_8, offsetofend(struct bpf_insn, code)));
+	emit(gen, BPF_ALU32_IMM(BPF_AND, BPF_REG_9, reg_mask));
+	emit(gen, BPF_STX_MEM(BPF_B, BPF_REG_8, BPF_REG_9, offsetofend(struct bpf_insn, code)));
+
+	emit_ksym_relo_log(gen, relo, kdesc->ref);
+}
