@@ -838,6 +838,77 @@ exit_free:
 	return err;
 }
 
+static int do_getnext(int argc, char **argv)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	void *key, *nextkey;
+	int err;
+	int fd;
+
+	if (argc < 2)
+		usage();
+
+	fd = map_parse_fd_and_info(&argc, &argv, &info, &len);
+	if (fd < 0)
+		return -1;
+
+	key = malloc(info.key_size);
+	nextkey = malloc(info.key_size);
+	if (!key || !nextkey) {
+		p_err("mem alloc failed");
+		err = -1;
+		goto exit_free;
+	}
+
+	if (argc) {
+		err = parse_elem(argv, &info, key, NULL, info.key_size, 0,
+				 NULL, NULL);
+		if (err)
+			goto exit_free;
+	} else {
+		free(key);
+		key = NULL;
+	}
+
+	err = bpf_map_get_next_key(fd, key, nextkey);
+	if (err) {
+		p_err("can't get next key: %s", strerror(errno));
+		goto exit_free;
+	}
+
+	if (json_output) {
+		jsonw_start_object(json_wtr);
+		if (key) {
+			jsonw_name(json_wtr, "key");
+			print_hex_data_json(key, info.key_size);
+		} else {
+			jsonw_null_field(json_wtr, "key");
+		}
+		jsonw_name(json_wtr, "next_key");
+		print_hex_data_json(nextkey, info.key_size);
+		jsonw_end_object(json_wtr);
+	} else {
+		if (key) {
+			printf("key:\n");
+			fprint_hex(stdout, key, info.key_size, " ");
+			printf("\n");
+		} else {
+			printf("key: None\n");
+		}
+		printf("next key:\n");
+		fprint_hex(stdout, nextkey, info.key_size, " ");
+		printf("\n");
+	}
+
+exit_free:
+	free(nextkey);
+	free(key);
+	close(fd);
+
+	return err;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
