@@ -927,3 +927,105 @@ static void cleanup_relos(struct bpf_gen *gen, int insns)
 	}
 	cleanup_core_relo(gen);
 }
+
+void bpf_gen__prog_load(struct bpf_gen *gen,
+						enum bpf_prog_type prog_type, const char *prog_name,
+						const char *license, struct bpf_insn *insns, size_t insn_cnt,
+						struct bpf_prog_load_opts *load_attr, int prog_idx)
+{
+	int prog_load_attr, license_off, insns_off, func_info, line_info, core_relos;
+	int attr_size = offsetofend(union bpf_attr, core_relo_rec_size);
+	union bpf_attr attr;
+
+	memset(&attr, 0, attr_size);
+	pr_debug("gen: prog_load: type %d insns_cnt %zd progi_idx %d\n",
+			 prog_type, insn_cnt, prog_idx);
+	/* add license string to blob of bytes */
+	license_off = add_data(gen, license, strlen(license) + 1);
+	/* add insns to blob of bytes */
+	insns_off = add_data(gen, insns, insn_cnt * sizeof(struct bpf_insn));
+
+	attr.prog_type = prog_type;
+	attr.expected_attach_type = load_attr->expected_attach_type;
+	attr.attach_btf_id = load_attr->attach_btf_id;
+	attr.prog_ifindex = load_attr->prog_ifindex;
+	attr.kern_version = 0;
+	attr.insn_cnt = (__u32)insn_cnt;
+	attr.prog_flags = load_attr->prog_flags;
+
+	attr.func_info_rec_size = load_attr->func_info_rec_size;
+	attr.func_info_cnt = load_attr->func_info_cnt;
+	func_info = add_data(gen, load_attr->func_info,
+						 attr.func_info_cnt * attr.func_info_rec_size);
+
+	attr.line_info_rec_size = load_attr->line_info_rec_size;
+	attr.line_info_cnt = load_attr->line_info_cnt;
+	line_info = add_data(gen, load_attr->line_info,
+						 attr.line_info_cnt * attr.line_info_rec_size);
+
+	attr.core_relo_rec_size = sizeof(struct bpf_core_relo);
+	attr.core_relo_cnt = gen->core_relo_cnt;
+	core_relos = add_data(gen, gen->core_relos,
+						  attr.core_relo_cnt * attr.core_relo_rec_size);
+
+	libbpf_strlcpy(attr.prog_name, prog_name, sizeof(attr.prog_name));
+	prog_load_attr = add_data(gen, &attr, attr_size);
+
+	/* populate union bpf_attr with a pointer to license */
+	emit_rel_store(gen, attr_field(prog_load_attr, license), license_off);
+
+	/* populate union bpf_attr with a pointer to instructions */
+	emit_rel_store(gen, attr_field(prog_load_attr, insns), insns_off);
+
+	/* populate union bpf_attr with a pointer to func_info */
+	emit_rel_store(gen, attr_field(prog_load_attr, func_info), func_info);
+
+	/* populate union bpf_attr with a pointer to line_info */
+	emit_rel_store(gen, attr_field(prog_load_attr, line_info), line_info);
+
+	/* populate union bpf_attr with a pointer to core_relos */
+	emit_rel_store(gen, attr_field(prog_load_attr, core_relos), core_relos);
+
+	/* populate union bpf_attr fd_array with a pointer to data where map_fds are saved */
+	emit_rel_store(gen, attr_field(prog_load_attr, fd_array), gen->fd_array);
+
+	/* populate union bpf_attr with user provided log details */
+	move_ctx2blob(gen, attr_field(prog_load_attr, log_level), 4,
+				  offsetof(struct bpf_loader_ctx, log_level), false);
+	move_ctx2blob(gen, attr_field(prog_load_attr, log_size), 4,
+				  offsetof(struct bpf_loader_ctx, log_size), false);
+	move_ctx2blob(gen, attr_field(prog_load_attr, log_buf), 8,
+				  offsetof(struct bpf_loader_ctx, log_buf), false);
+	/* populate union bpf_attr with btf_fd saved in the stack earlier */
+	move_stack2blob(gen, attr_field(prog_load_attr, prog_btf_fd), 4,
+					stack_off(btf_fd));
+	if (gen->attach_kind)
+	{
+		emit_find_attach_target(gen);
+		/* populate union bpf_attr with btf_id and btf_obj_fd found by helper */
+		emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_0, BPF_PSEUDO_MAP_IDX_VALUE,
+										 0, 0, 0, prog_load_attr));
+		emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_0, BPF_REG_7,
+							  offsetof(union bpf_attr, attach_btf_id)));
+		emit(gen, BPF_ALU64_IMM(BPF_RSH, BPF_REG_7, 32));
+		emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_0, BPF_REG_7,
+							  offsetof(union bpf_attr, attach_btf_obj_fd)));
+	}
+	emit_relos(gen, insns_off);
+	/* emit PROG_LOAD command */
+	emit_sys_bpf(gen, BPF_PROG_LOAD, prog_load_attr, attr_size);
+	debug_ret(gen, "prog_load %s insn_cnt %d", attr.prog_name, attr.insn_cnt);
+	/* successful or not, close btf module FDs used in extern ksyms and attach_btf_obj_fd */
+	cleanup_relos(gen, insns_off);
+	if (gen->attach_kind)
+	{
+		emit_sys_close_blob(gen,
+							attr_field(prog_load_attr, attach_btf_obj_fd));
+		gen->attach_kind = 0;
+	}
+	emit_check_err(gen);
+	/* remember prog_fd in the stack, if successful */
+	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_10, BPF_REG_7,
+						  stack_off(prog_fd[gen->nr_progs])));
+	gen->nr_progs++;
+}
