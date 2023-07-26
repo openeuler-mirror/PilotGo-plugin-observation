@@ -1961,3 +1961,33 @@ struct thread_group_cputimer
 {
 	struct task_cputime_atomic cputime_atomic;
 };
+
+struct pacct_struct
+{
+	int ac_flag;
+	long int ac_exitcode;
+	long unsigned int ac_mem;
+	u64 ac_utime;
+	u64 ac_stime;
+	long unsigned int ac_minflt;
+	long unsigned int ac_majflt;
+};
+
+struct rw_semaphore
+{
+	atomic_long_t count;
+	atomic_long_t owner;
+	struct optimistic_spin_queue osq;
+	raw_spinlock_t wait_lock;
+	struct list_head wait_list;
+	void *magic;
+	struct lockdep_map dep_map;
+};
+
+struct core_state;
+
+struct tty_struct;
+
+struct taskstats;
+
+struct tty_audit_buf;
