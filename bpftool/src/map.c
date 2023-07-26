@@ -909,6 +909,45 @@ exit_free:
 	return err;
 }
 
+static int do_delete(int argc, char **argv)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	void *key;
+	int err;
+	int fd;
+
+	if (argc < 2)
+		usage();
+
+	fd = map_parse_fd_and_info(&argc, &argv, &info, &len);
+	if (fd < 0)
+		return -1;
+
+	key = malloc(info.key_size);
+	if (!key) {
+		p_err("mem alloc failed");
+		err = -1;
+		goto exit_free;
+	}
+
+	err = parse_elem(argv, &info, key, NULL, info.key_size, 0, NULL, NULL);
+	if (err)
+		goto exit_free;
+
+	err = bpf_map_delete_elem(fd, key);
+	if (err)
+		p_err("delete failed: %s", strerror(errno));
+
+exit_free:
+	free(key);
+	close(fd);
+
+	if (!err && json_output)
+		jsonw_null(json_wtr);
+	return err;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
