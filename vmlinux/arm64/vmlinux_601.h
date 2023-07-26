@@ -532,3 +532,12 @@ struct sysv_sem {
 struct sysv_shm {
 	struct list_head shm_clist;
 };
+
+typedef struct {
+	long unsigned int sig[1];
+} sigset_t;
+
+struct sigpending {
+	struct list_head list;
+	sigset_t signal;
+};
