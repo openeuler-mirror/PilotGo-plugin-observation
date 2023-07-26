@@ -682,3 +682,33 @@ union perf_mem_data_src {
 #define PERF_MEM_LVL_IO		0x1000 /* I/O memory */
 #define PERF_MEM_LVL_UNC	0x2000 /* Uncached memory */
 #define PERF_MEM_LVL_SHIFT	5
+
+#define PERF_MEM_REMOTE_REMOTE	0x01  /* Remote */
+#define PERF_MEM_REMOTE_SHIFT	37
+
+#define PERF_MEM_LVLNUM_L1	0x01 /* L1 */
+#define PERF_MEM_LVLNUM_L2	0x02 /* L2 */
+#define PERF_MEM_LVLNUM_L3	0x03 /* L3 */
+#define PERF_MEM_LVLNUM_L4	0x04 /* L4 */
+/* 5-0x8 available */
+#define PERF_MEM_LVLNUM_CXL	0x09 /* CXL */
+#define PERF_MEM_LVLNUM_IO	0x0a /* I/O */
+#define PERF_MEM_LVLNUM_ANY_CACHE 0x0b /* Any cache */
+#define PERF_MEM_LVLNUM_LFB	0x0c /* LFB */
+#define PERF_MEM_LVLNUM_RAM	0x0d /* RAM */
+#define PERF_MEM_LVLNUM_PMEM	0x0e /* PMEM */
+#define PERF_MEM_LVLNUM_NA	0x0f /* N/A */
+
+#define PERF_MEM_LVLNUM_SHIFT	33
+
+/* snoop mode */
+#define PERF_MEM_SNOOP_NA	0x01 /* not available */
+#define PERF_MEM_SNOOP_NONE	0x02 /* no snoop */
+#define PERF_MEM_SNOOP_HIT	0x04 /* snoop hit */
+#define PERF_MEM_SNOOP_MISS	0x08 /* snoop miss */
+#define PERF_MEM_SNOOP_HITM	0x10 /* snoop hit modified */
+#define PERF_MEM_SNOOP_SHIFT	19
+
+#define PERF_MEM_SNOOPX_FWD	0x01 /* forward */
+#define PERF_MEM_SNOOPX_PEER	0x02 /* xfer from peer */
+#define PERF_MEM_SNOOPX_SHIFT  38
