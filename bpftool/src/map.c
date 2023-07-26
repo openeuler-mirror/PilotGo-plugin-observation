@@ -115,53 +115,6 @@ err_end_obj:
 	return ret;
 }
 
-static int do_help(int argc, char **argv)
-{
-	if (json_output) {
-		jsonw_null(json_wtr);
-		return 0;
-	}
-
-	fprintf(stderr,
-		"Usage: %1$s %2$s { show | list }   [MAP]\n"
-		"       %1$s %2$s create     FILE type TYPE key KEY_SIZE value VALUE_SIZE \\\n"
-		"                                  entries MAX_ENTRIES name NAME [flags FLAGS] \\\n"
-		"                                  [inner_map MAP] [dev NAME]\n"
-		"       %1$s %2$s dump       MAP\n"
-		"       %1$s %2$s update     MAP [key DATA] [value VALUE] [UPDATE_FLAGS]\n"
-		"       %1$s %2$s lookup     MAP [key DATA]\n"
-		"       %1$s %2$s getnext    MAP [key DATA]\n"
-		"       %1$s %2$s delete     MAP  key DATA\n"
-		"       %1$s %2$s pin        MAP  FILE\n"
-		"       %1$s %2$s event_pipe MAP [cpu N index M]\n"
-		"       %1$s %2$s peek       MAP\n"
-		"       %1$s %2$s push       MAP value VALUE\n"
-		"       %1$s %2$s pop        MAP\n"
-		"       %1$s %2$s enqueue    MAP value VALUE\n"
-		"       %1$s %2$s dequeue    MAP\n"
-		"       %1$s %2$s freeze     MAP\n"
-		"       %1$s %2$s help\n"
-		"\n"
-		"       " HELP_SPEC_MAP "\n"
-		"       DATA := { [hex] BYTES }\n"
-		"       " HELP_SPEC_PROGRAM "\n"
-		"       VALUE := { DATA | MAP | PROG }\n"
-		"       UPDATE_FLAGS := { any | exist | noexist }\n"
-		"       TYPE := { hash | array | prog_array | perf_event_array | percpu_hash |\n"
-		"                 percpu_array | stack_trace | cgroup_array | lru_hash |\n"
-		"                 lru_percpu_hash | lpm_trie | array_of_maps | hash_of_maps |\n"
-		"                 devmap | devmap_hash | sockmap | cpumap | xskmap | sockhash |\n"
-		"                 cgroup_storage | reuseport_sockarray | percpu_cgroup_storage |\n"
-		"                 queue | stack | sk_storage | struct_ops | ringbuf | inode_storage |\n"
-		"                 task_storage | bloom_filter | user_ringbuf | cgrp_storage }\n"
-		"       " HELP_SPEC_OPTIONS " |\n"
-		"                    {-f|--bpffs} | {-n|--nomount} }\n"
-		"",
-		bin_name, argv[-2]);
-
-	return 0;
-}
-
 static int parse_elem(char **argv, struct bpf_map_info *info,
 		      void *key, void *value, __u32 key_size, __u32 value_size,
 		      __u32 *flags, __u32 **value_fd)
@@ -946,6 +899,175 @@ exit_free:
 	if (!err && json_output)
 		jsonw_null(json_wtr);
 	return err;
+}
+
+static int do_pin(int argc, char **argv)
+{
+	int err;
+
+	err = do_pin_any(argc, argv, map_parse_fd);
+	if (!err && json_output)
+		jsonw_null(json_wtr);
+	return err;
+}
+
+static int do_create(int argc, char **argv)
+{
+	LIBBPF_OPTS(bpf_map_create_opts, attr);
+	enum bpf_map_type map_type = BPF_MAP_TYPE_UNSPEC;
+	__u32 key_size = 0, value_size = 0, max_entries = 0;
+	const char *map_name = NULL;
+	const char *pinfile;
+	int err = -1, fd;
+
+	if (!REQ_ARGS(7))
+		return -1;
+	pinfile = GET_ARG();
+
+	while (argc) {
+		if (!REQ_ARGS(2))
+			return -1;
+
+		if (is_prefix(*argv, "type")) {
+			NEXT_ARG();
+
+			if (map_type) {
+				p_err("map type already specified");
+				goto exit;
+			}
+
+			map_type = map_type_from_str(*argv);
+			if ((int)map_type < 0) {
+				p_err("unrecognized map type: %s", *argv);
+				goto exit;
+			}
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "name")) {
+			NEXT_ARG();
+			map_name = GET_ARG();
+		} else if (is_prefix(*argv, "key")) {
+			if (parse_u32_arg(&argc, &argv, &key_size,
+					  "key size"))
+				goto exit;
+		} else if (is_prefix(*argv, "value")) {
+			if (parse_u32_arg(&argc, &argv, &value_size,
+					  "value size"))
+				goto exit;
+		} else if (is_prefix(*argv, "entries")) {
+			if (parse_u32_arg(&argc, &argv, &max_entries,
+					  "max entries"))
+				goto exit;
+		} else if (is_prefix(*argv, "flags")) {
+			if (parse_u32_arg(&argc, &argv, &attr.map_flags,
+					  "flags"))
+				goto exit;
+		} else if (is_prefix(*argv, "dev")) {
+			NEXT_ARG();
+
+			if (attr.map_ifindex) {
+				p_err("offload device already specified");
+				goto exit;
+			}
+
+			attr.map_ifindex = if_nametoindex(*argv);
+			if (!attr.map_ifindex) {
+				p_err("unrecognized netdevice '%s': %s",
+				      *argv, strerror(errno));
+				goto exit;
+			}
+			NEXT_ARG();
+		} else if (is_prefix(*argv, "inner_map")) {
+			struct bpf_map_info info = {};
+			__u32 len = sizeof(info);
+			int inner_map_fd;
+
+			NEXT_ARG();
+			if (!REQ_ARGS(2))
+				usage();
+			inner_map_fd = map_parse_fd_and_info(&argc, &argv,
+							     &info, &len);
+			if (inner_map_fd < 0)
+				return -1;
+			attr.inner_map_fd = inner_map_fd;
+		} else {
+			p_err("unknown arg %s", *argv);
+			goto exit;
+		}
+	}
+
+	if (!map_name) {
+		p_err("map name not specified");
+		goto exit;
+	}
+
+	set_max_rlimit();
+
+	fd = bpf_map_create(map_type, map_name, key_size, value_size, max_entries, &attr);
+	if (fd < 0) {
+		p_err("map create failed: %s", strerror(errno));
+		goto exit;
+	}
+
+	err = do_pin_fd(fd, pinfile);
+	close(fd);
+	if (err)
+		goto exit;
+
+	if (json_output)
+		jsonw_null(json_wtr);
+
+exit:
+	if (attr.inner_map_fd > 0)
+		close(attr.inner_map_fd);
+
+	return err;
+}
+
+static int do_help(int argc, char **argv)
+{
+	if (json_output) {
+		jsonw_null(json_wtr);
+		return 0;
+	}
+
+	fprintf(stderr,
+		"Usage: %1$s %2$s { show | list }   [MAP]\n"
+		"       %1$s %2$s create     FILE type TYPE key KEY_SIZE value VALUE_SIZE \\\n"
+		"                                  entries MAX_ENTRIES name NAME [flags FLAGS] \\\n"
+		"                                  [inner_map MAP] [dev NAME]\n"
+		"       %1$s %2$s dump       MAP\n"
+		"       %1$s %2$s update     MAP [key DATA] [value VALUE] [UPDATE_FLAGS]\n"
+		"       %1$s %2$s lookup     MAP [key DATA]\n"
+		"       %1$s %2$s getnext    MAP [key DATA]\n"
+		"       %1$s %2$s delete     MAP  key DATA\n"
+		"       %1$s %2$s pin        MAP  FILE\n"
+		"       %1$s %2$s event_pipe MAP [cpu N index M]\n"
+		"       %1$s %2$s peek       MAP\n"
+		"       %1$s %2$s push       MAP value VALUE\n"
+		"       %1$s %2$s pop        MAP\n"
+		"       %1$s %2$s enqueue    MAP value VALUE\n"
+		"       %1$s %2$s dequeue    MAP\n"
+		"       %1$s %2$s freeze     MAP\n"
+		"       %1$s %2$s help\n"
+		"\n"
+		"       " HELP_SPEC_MAP "\n"
+		"       DATA := { [hex] BYTES }\n"
+		"       " HELP_SPEC_PROGRAM "\n"
+		"       VALUE := { DATA | MAP | PROG }\n"
+		"       UPDATE_FLAGS := { any | exist | noexist }\n"
+		"       TYPE := { hash | array | prog_array | perf_event_array | percpu_hash |\n"
+		"                 percpu_array | stack_trace | cgroup_array | lru_hash |\n"
+		"                 lru_percpu_hash | lpm_trie | array_of_maps | hash_of_maps |\n"
+		"                 devmap | devmap_hash | sockmap | cpumap | xskmap | sockhash |\n"
+		"                 cgroup_storage | reuseport_sockarray | percpu_cgroup_storage |\n"
+		"                 queue | stack | sk_storage | struct_ops | ringbuf | inode_storage |\n"
+		"                 task_storage | bloom_filter | user_ringbuf | cgrp_storage }\n"
+		"       " HELP_SPEC_OPTIONS " |\n"
+		"                    {-f|--bpffs} | {-n|--nomount} }\n"
+		"",
+		bin_name, argv[-2]);
+
+	return 0;
 }
 
 static const struct cmd cmds[] = {
