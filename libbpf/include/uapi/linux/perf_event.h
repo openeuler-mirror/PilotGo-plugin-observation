@@ -741,3 +741,42 @@ union perf_mem_data_src {
 #define PERF_MEM_HOPS_3		0x04 /* remote board */
 /* 5-7 available */
 #define PERF_MEM_HOPS_SHIFT	43
+
+#define PERF_MEM_S(a, s) \
+	(((__u64)PERF_MEM_##a##_##s) << PERF_MEM_##a##_SHIFT)
+
+struct perf_branch_entry {
+	__u64	from;
+	__u64	to;
+	__u64	mispred:1,  /* target mispredicted */
+		predicted:1,/* target predicted */
+		in_tx:1,    /* in transaction */
+		abort:1,    /* transaction abort */
+		cycles:16,  /* cycle count to last branch */
+		type:4,     /* branch type */
+		spec:2,     /* branch speculation info */
+		new_type:4, /* additional branch type */
+		priv:3,     /* privilege level */
+		reserved:31;
+};
+
+union perf_sample_weight {
+	__u64		full;
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	struct {
+		__u32	var1_dw;
+		__u16	var2_w;
+		__u16	var3_w;
+	};
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	struct {
+		__u16	var3_w;
+		__u16	var2_w;
+		__u32	var1_dw;
+	};
+#else
+#error "Unknown endianness"
+#endif
+};
+
+#endif /* _UAPI_LINUX_PERF_EVENT_H */
