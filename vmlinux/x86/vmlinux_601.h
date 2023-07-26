@@ -2553,3 +2553,92 @@ struct return_instance
 	bool chained;
 	struct return_instance *next;
 };
+
+struct vdso_image
+{
+	void *data;
+	long unsigned int size;
+	long unsigned int alt;
+	long unsigned int alt_len;
+	long unsigned int extable_base;
+	long unsigned int extable_len;
+	const void *extable;
+	long int sym_vvar_start;
+	long int sym_vvar_page;
+	long int sym_pvclock_page;
+	long int sym_hvclock_page;
+	long int sym_timens_page;
+	long int sym_VDSO32_NOTE_MASK;
+	long int sym___kernel_sigreturn;
+	long int sym___kernel_rt_sigreturn;
+	long int sym___kernel_vsyscall;
+	long int sym_int80_landing_pad;
+	long int sym_vdso32_sigreturn_landing_pad;
+	long int sym_vdso32_rt_sigreturn_landing_pad;
+};
+
+struct xarray
+{
+	spinlock_t xa_lock;
+	gfp_t xa_flags;
+	void *xa_head;
+};
+
+typedef u32 errseq_t;
+
+struct address_space_operations;
+
+struct address_space
+{
+	struct inode *host;
+	struct xarray i_pages;
+	struct rw_semaphore invalidate_lock;
+	gfp_t gfp_mask;
+	atomic_t i_mmap_writable;
+	struct rb_root_cached i_mmap;
+	struct rw_semaphore i_mmap_rwsem;
+	long unsigned int nrpages;
+	long unsigned int writeback_index;
+	const struct address_space_operations *a_ops;
+	long unsigned int flags;
+	errseq_t wb_err;
+	spinlock_t private_lock;
+	struct list_head private_list;
+	void *private_data;
+};
+
+struct folio
+{
+	union
+	{
+		struct
+		{
+			long unsigned int flags;
+			union
+			{
+				struct list_head lru;
+				struct
+				{
+					void *__filler;
+					unsigned int mlock_count;
+				};
+			};
+			struct address_space *mapping;
+			long unsigned int index;
+			void *private;
+			atomic_t _mapcount;
+			atomic_t _refcount;
+			long unsigned int memcg_data;
+		};
+		struct page page;
+	};
+	long unsigned int _flags_1;
+	long unsigned int __head;
+	unsigned char _folio_dtor;
+	unsigned char _folio_order;
+	atomic_t _total_mapcount;
+	atomic_t _pincount;
+	unsigned int _folio_nr_pages;
+};
+
+struct vfsmount;
