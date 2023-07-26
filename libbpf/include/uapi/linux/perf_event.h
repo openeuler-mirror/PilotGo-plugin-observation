@@ -486,3 +486,29 @@ struct perf_event_mmap_page {
 	__u64	aux_offset;
 	__u64	aux_size;
 };
+
+#define PERF_RECORD_MISC_CPUMODE_MASK		(7 << 0)
+#define PERF_RECORD_MISC_CPUMODE_UNKNOWN	(0 << 0)
+#define PERF_RECORD_MISC_KERNEL			(1 << 0)
+#define PERF_RECORD_MISC_USER			(2 << 0)
+#define PERF_RECORD_MISC_HYPERVISOR		(3 << 0)
+#define PERF_RECORD_MISC_GUEST_KERNEL		(4 << 0)
+#define PERF_RECORD_MISC_GUEST_USER		(5 << 0)
+
+/*
+ * Indicates that /proc/PID/maps parsing are truncated by time out.
+ */
+#define PERF_RECORD_MISC_PROC_MAP_PARSE_TIMEOUT	(1 << 12)
+
+#define PERF_RECORD_MISC_MMAP_DATA		(1 << 13)
+#define PERF_RECORD_MISC_COMM_EXEC		(1 << 13)
+#define PERF_RECORD_MISC_FORK_EXEC		(1 << 13)
+#define PERF_RECORD_MISC_SWITCH_OUT		(1 << 13)
+
+#define PERF_RECORD_MISC_EXACT_IP		(1 << 14)
+#define PERF_RECORD_MISC_SWITCH_OUT_PREEMPT	(1 << 14)
+#define PERF_RECORD_MISC_MMAP_BUILD_ID		(1 << 14)
+/*
+ * Reserve the last bit to indicate some extended misc field
+ */
+#define PERF_RECORD_MISC_EXT_RESERVED		(1 << 15)
