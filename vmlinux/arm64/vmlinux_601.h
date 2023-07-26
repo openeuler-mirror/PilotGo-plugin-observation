@@ -553,3 +553,17 @@ struct seccomp {
 	atomic_t filter_count;
 	struct seccomp_filter *filter;
 };
+
+struct syscall_user_dispatch {};
+
+struct spinlock {
+	union {
+		struct raw_spinlock rlock;
+		struct {
+			u8 __padding[24];
+			struct lockdep_map dep_map;
+		};
+	};
+};
+
+typedef struct spinlock spinlock_t;
