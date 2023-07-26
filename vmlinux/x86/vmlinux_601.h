@@ -3402,3 +3402,106 @@ struct mem_dqblk
 	time64_t dqb_btime;
 	time64_t dqb_itime;
 };
+
+struct dquot
+{
+	struct hlist_node dq_hash;
+	struct list_head dq_inuse;
+	struct list_head dq_free;
+	struct list_head dq_dirty;
+	struct mutex dq_lock;
+	spinlock_t dq_dqb_lock;
+	atomic_t dq_count;
+	struct super_block *dq_sb;
+	struct kqid dq_id;
+	loff_t dq_off;
+	long unsigned int dq_flags;
+	struct mem_dqblk dq_dqb;
+};
+
+struct quota_format_type
+{
+	int qf_fmt_id;
+	const struct quota_format_ops *qf_ops;
+	struct module *qf_owner;
+	struct quota_format_type *qf_next;
+};
+
+struct quota_format_ops
+{
+	int (*check_quota_file)(struct super_block *, int);
+	int (*read_file_info)(struct super_block *, int);
+	int (*write_file_info)(struct super_block *, int);
+	int (*free_file_info)(struct super_block *, int);
+	int (*read_dqblk)(struct dquot *);
+	int (*commit_dqblk)(struct dquot *);
+	int (*release_dqblk)(struct dquot *);
+	int (*get_next_id)(struct super_block *, struct kqid *);
+};
+
+struct dquot_operations
+{
+	int (*write_dquot)(struct dquot *);
+	struct dquot *(*alloc_dquot)(struct super_block *, int);
+	void (*destroy_dquot)(struct dquot *);
+	int (*acquire_dquot)(struct dquot *);
+	int (*release_dquot)(struct dquot *);
+	int (*mark_dirty)(struct dquot *);
+	int (*write_info)(struct super_block *, int);
+	qsize_t *(*get_reserved_space)(struct inode *);
+	int (*get_projid)(struct inode *, kprojid_t *);
+	int (*get_inode_usage)(struct inode *, qsize_t *);
+	int (*get_next_id)(struct super_block *, struct kqid *);
+};
+
+struct qc_dqblk
+{
+	int d_fieldmask;
+	u64 d_spc_hardlimit;
+	u64 d_spc_softlimit;
+	u64 d_ino_hardlimit;
+	u64 d_ino_softlimit;
+	u64 d_space;
+	u64 d_ino_count;
+	s64 d_ino_timer;
+	s64 d_spc_timer;
+	int d_ino_warns;
+	int d_spc_warns;
+	u64 d_rt_spc_hardlimit;
+	u64 d_rt_spc_softlimit;
+	u64 d_rt_space;
+	s64 d_rt_spc_timer;
+	int d_rt_spc_warns;
+};
+
+struct qc_type_state
+{
+	unsigned int flags;
+	unsigned int spc_timelimit;
+	unsigned int ino_timelimit;
+	unsigned int rt_spc_timelimit;
+	unsigned int spc_warnlimit;
+	unsigned int ino_warnlimit;
+	unsigned int rt_spc_warnlimit;
+	long long unsigned int ino;
+	blkcnt_t blocks;
+	blkcnt_t nextents;
+};
+
+struct qc_state
+{
+	unsigned int s_incoredqs;
+	struct qc_type_state s_state[3];
+};
+
+struct qc_info
+{
+	int i_fieldmask;
+	unsigned int i_flags;
+	unsigned int i_spc_timelimit;
+	unsigned int i_ino_timelimit;
+	unsigned int i_rt_spc_timelimit;
+	unsigned int i_spc_warnlimit;
+	unsigned int i_ino_warnlimit;
+	unsigned int i_rt_spc_warnlimit;
+};
