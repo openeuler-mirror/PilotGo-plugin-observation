@@ -567,3 +567,22 @@ struct spinlock {
 };
 
 typedef struct spinlock spinlock_t;
+
+struct wake_q_node {
+	struct wake_q_node *next;
+};
+
+struct held_lock {
+	u64 prev_chain_key;
+	long unsigned int acquire_ip;
+	struct lockdep_map *instance;
+	struct lockdep_map *nest_lock;
+	unsigned int class_idx: 13;
+	unsigned int irq_context: 2;
+	unsigned int trylock: 1;
+	unsigned int read: 2;
+	unsigned int check: 1;
+	unsigned int hardirqs_off: 1;
+	unsigned int references: 12;
+	unsigned int pin_count;
+};
