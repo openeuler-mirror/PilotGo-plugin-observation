@@ -498,3 +498,37 @@ enum {
 
 	__TCA_FLOWER_KEY_ENC_OPT_GENEVE_MAX,
 };
+
+#define TCA_FLOWER_KEY_ENC_OPT_GENEVE_MAX \
+		(__TCA_FLOWER_KEY_ENC_OPT_GENEVE_MAX - 1)
+
+enum {
+	TCA_FLOWER_KEY_FLAGS_IS_FRAGMENT = (1 << 0),
+	TCA_FLOWER_KEY_FLAGS_FRAG_IS_FIRST = (1 << 1),
+};
+
+/* Match-all classifier */
+
+enum {
+	TCA_MATCHALL_UNSPEC,
+	TCA_MATCHALL_CLASSID,
+	TCA_MATCHALL_ACT,
+	TCA_MATCHALL_FLAGS,
+	__TCA_MATCHALL_MAX,
+};
+
+#define TCA_MATCHALL_MAX (__TCA_MATCHALL_MAX - 1)
+
+/* Extended Matches */
+
+struct tcf_ematch_tree_hdr {
+	__u16		nmatches;
+	__u16		progid;
+};
+
+enum {
+	TCA_EMATCH_TREE_UNSPEC,
+	TCA_EMATCH_TREE_HDR,
+	TCA_EMATCH_TREE_LIST,
+	__TCA_EMATCH_TREE_MAX
+};
