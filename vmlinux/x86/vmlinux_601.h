@@ -1804,3 +1804,46 @@ struct hrtimer_clock_base
 	long : 64;
 	long : 64;
 };
+
+struct hrtimer_cpu_base
+{
+	raw_spinlock_t lock;
+	unsigned int cpu;
+	unsigned int active_bases;
+	unsigned int clock_was_set_seq;
+	unsigned int hres_active : 1;
+	unsigned int in_hrtirq : 1;
+	unsigned int hang_detected : 1;
+	unsigned int softirq_activated : 1;
+	unsigned int nr_events;
+	short unsigned int nr_retries;
+	short unsigned int nr_hangs;
+	unsigned int max_hang_time;
+	ktime_t expires_next;
+	struct hrtimer *next_timer;
+	ktime_t softirq_expires_next;
+	struct hrtimer *softirq_next_timer;
+	struct hrtimer_clock_base clock_base[8];
+};
+
+struct rlimit
+{
+	__kernel_ulong_t rlim_cur;
+	__kernel_ulong_t rlim_max;
+};
+
+typedef void __signalfn_t(int);
+
+typedef __signalfn_t *__sighandler_t;
+
+typedef void __restorefn_t();
+
+typedef __restorefn_t *__sigrestore_t;
+
+union sigval
+{
+	int sival_int;
+	void *sival_ptr;
+};
+
+typedef union sigval sigval_t;
