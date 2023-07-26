@@ -647,3 +647,76 @@ static void emit_bpf_kallsyms_lookup_name(struct bpf_gen *gen, struct ksym_relo_
 	emit(gen, BPF_MOV64_REG(BPF_REG_7, BPF_REG_0));
 	debug_ret(gen, "kallsyms_lookup_name(%s,%d)", relo->name, relo->kind);
 }
+
+static void emit_relo_kfunc_btf(struct bpf_gen *gen, struct ksym_relo_desc *relo, int insn)
+{
+	struct ksym_desc *kdesc;
+	int btf_fd_idx;
+
+	kdesc = get_ksym_desc(gen, relo);
+	if (!kdesc)
+		return;
+	/* try to copy from existing bpf_insn */
+	if (kdesc->ref > 1)
+	{
+		move_blob2blob(gen, insn + offsetof(struct bpf_insn, imm), 4,
+					   kdesc->insn + offsetof(struct bpf_insn, imm));
+		move_blob2blob(gen, insn + offsetof(struct bpf_insn, off), 2,
+					   kdesc->insn + offsetof(struct bpf_insn, off));
+		goto log;
+	}
+	/* remember insn offset, so we can copy BTF ID and FD later */
+	kdesc->insn = insn;
+	emit_bpf_find_by_name_kind(gen, relo);
+	if (!relo->is_weak)
+		emit_check_err(gen);
+	/* get index in fd_array to store BTF FD at */
+	btf_fd_idx = add_kfunc_btf_fd(gen);
+	if (btf_fd_idx > INT16_MAX)
+	{
+		pr_warn("BTF fd off %d for kfunc %s exceeds INT16_MAX, cannot process relocation\n",
+				btf_fd_idx, relo->name);
+		gen->error = -E2BIG;
+		return;
+	}
+	kdesc->off = btf_fd_idx;
+	/* jump to success case */
+	emit(gen, BPF_JMP_IMM(BPF_JSGE, BPF_REG_7, 0, 3));
+	/* set value for imm, off as 0 */
+	emit(gen, BPF_ST_MEM(BPF_W, BPF_REG_8, offsetof(struct bpf_insn, imm), 0));
+	emit(gen, BPF_ST_MEM(BPF_H, BPF_REG_8, offsetof(struct bpf_insn, off), 0));
+	/* skip success case for ret < 0 */
+	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, 10));
+	/* store btf_id into insn[insn_idx].imm */
+	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_8, BPF_REG_7, offsetof(struct bpf_insn, imm)));
+	/* obtain fd in BPF_REG_9 */
+	emit(gen, BPF_MOV64_REG(BPF_REG_9, BPF_REG_7));
+	emit(gen, BPF_ALU64_IMM(BPF_RSH, BPF_REG_9, 32));
+	/* jump to fd_array store if fd denotes module BTF */
+	emit(gen, BPF_JMP_IMM(BPF_JNE, BPF_REG_9, 0, 2));
+	/* set the default value for off */
+	emit(gen, BPF_ST_MEM(BPF_H, BPF_REG_8, offsetof(struct bpf_insn, off), 0));
+	/* skip BTF fd store for vmlinux BTF */
+	emit(gen, BPF_JMP_IMM(BPF_JA, 0, 0, 4));
+	/* load fd_array slot pointer */
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_0, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, blob_fd_array_off(gen, btf_fd_idx)));
+	/* store BTF fd in slot */
+	emit(gen, BPF_STX_MEM(BPF_W, BPF_REG_0, BPF_REG_9, 0));
+	/* store index into insn[insn_idx].off */
+	emit(gen, BPF_ST_MEM(BPF_H, BPF_REG_8, offsetof(struct bpf_insn, off), btf_fd_idx));
+log:
+	if (!gen->log_level)
+		return;
+	emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_8,
+						  offsetof(struct bpf_insn, imm)));
+	emit(gen, BPF_LDX_MEM(BPF_H, BPF_REG_9, BPF_REG_8,
+						  offsetof(struct bpf_insn, off)));
+	debug_regs(gen, BPF_REG_7, BPF_REG_9, " func (%s:count=%d): imm: %%d, off: %%d",
+			   relo->name, kdesc->ref);
+	emit2(gen, BPF_LD_IMM64_RAW_FULL(BPF_REG_0, BPF_PSEUDO_MAP_IDX_VALUE,
+									 0, 0, 0, blob_fd_array_off(gen, kdesc->off)));
+	emit(gen, BPF_LDX_MEM(BPF_W, BPF_REG_9, BPF_REG_0, 0));
+	debug_regs(gen, BPF_REG_9, -1, " func (%s:count=%d): btf_fd",
+			   relo->name, kdesc->ref);
+}
