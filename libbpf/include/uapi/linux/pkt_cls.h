@@ -557,3 +557,33 @@ enum {
 	TCF_LAYER_TRANSPORT,
 	__TCF_LAYER_MAX
 };
+
+#define TCF_LAYER_MAX (__TCF_LAYER_MAX - 1)
+
+/* Ematch type assignments
+ *   1..32767		Reserved for ematches inside kernel tree
+ *   32768..65535	Free to use, not reliable
+ */
+#define	TCF_EM_CONTAINER	0
+#define	TCF_EM_CMP		1
+#define	TCF_EM_NBYTE		2
+#define	TCF_EM_U32		3
+#define	TCF_EM_META		4
+#define	TCF_EM_TEXT		5
+#define	TCF_EM_VLAN		6
+#define	TCF_EM_CANID		7
+#define	TCF_EM_IPSET		8
+#define	TCF_EM_IPT		9
+#define	TCF_EM_MAX		9
+
+enum {
+	TCF_EM_PROG_TC
+};
+
+enum {
+	TCF_EM_OPND_EQ,
+	TCF_EM_OPND_GT,
+	TCF_EM_OPND_LT
+};
+
+#endif
