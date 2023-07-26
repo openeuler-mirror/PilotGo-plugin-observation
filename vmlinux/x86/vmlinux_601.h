@@ -2,7 +2,7 @@
 #define __VMLINUX_H__
 
 #ifndef BPF_NO_PRESERVE_ACCESS_INDEX
-#pragma clang attribute push (__attribute__((preserve_access_index)), apply_to = record)
+#pragma clang attribute push(__attribute__((preserve_access_index)), apply_to = record)
 #endif
 
 typedef signed char __s8;
@@ -37,7 +37,8 @@ typedef __s64 s64;
 
 typedef __u64 u64;
 
-enum {
+enum
+{
 	false = 0,
 	true = 1,
 };
@@ -104,47 +105,57 @@ typedef unsigned int fmode_t;
 
 typedef u64 phys_addr_t;
 
-typedef struct {
+typedef struct
+{
 	int counter;
 } atomic_t;
 
-typedef struct {
+typedef struct
+{
 	s64 counter;
 } atomic64_t;
 
-struct list_head {
+struct list_head
+{
 	struct list_head *next;
 	struct list_head *prev;
 };
 
 struct hlist_node;
 
-struct hlist_head {
+struct hlist_head
+{
 	struct hlist_node *first;
 };
 
-struct hlist_node {
+struct hlist_node
+{
 	struct hlist_node *next;
 	struct hlist_node **pprev;
 };
 
-struct callback_head {
+struct callback_head
+{
 	struct callback_head *next;
 	void (*func)(struct callback_head *);
 };
 
-struct kernel_symbol {
+struct kernel_symbol
+{
 	int value_offset;
 	int name_offset;
 	int namespace_offset;
 };
 
-struct lockdep_subclass_key {
+struct lockdep_subclass_key
+{
 	char __one_byte;
 };
 
-struct lock_class_key {
-	union {
+struct lock_class_key
+{
+	union
+	{
 		struct hlist_node hash_entry;
 		struct lockdep_subclass_key subkeys[8];
 	};
@@ -160,12 +171,13 @@ struct super_block;
 
 struct module;
 
-struct file_system_type {
+struct file_system_type
+{
 	const char *name;
 	int fs_flags;
 	int (*init_fs_context)(struct fs_context *);
 	const struct fs_parameter_spec *parameters;
-	struct dentry * (*mount)(struct file_system_type *, int, const char *, void *);
+	struct dentry *(*mount)(struct file_system_type *, int, const char *, void *);
 	void (*kill_sb)(struct super_block *);
 	struct module *owner;
 	struct file_system_type *next;
@@ -180,14 +192,18 @@ struct file_system_type {
 	struct lock_class_key i_mutex_dir_key;
 };
 
-struct qspinlock {
-	union {
+struct qspinlock
+{
+	union
+	{
 		atomic_t val;
-		struct {
+		struct
+		{
 			u8 locked;
 			u8 pending;
 		};
-		struct {
+		struct
+		{
 			u16 locked_pending;
 			u16 tail;
 		};
@@ -196,10 +212,13 @@ struct qspinlock {
 
 typedef struct qspinlock arch_spinlock_t;
 
-struct qrwlock {
-	union {
+struct qrwlock
+{
+	union
+	{
 		atomic_t cnts;
-		struct {
+		struct
+		{
 			u8 wlocked;
 			u8 __lstate[3];
 		};
@@ -211,7 +230,8 @@ typedef struct qrwlock arch_rwlock_t;
 
 struct lock_trace;
 
-struct lock_class {
+struct lock_class
+{
 	struct hlist_node hash_entry;
 	struct list_head lock_entry;
 	struct list_head locks_after;
@@ -228,14 +248,16 @@ struct lock_class {
 	u8 lock_type;
 };
 
-struct lock_trace {
+struct lock_trace
+{
 	struct hlist_node hash_entry;
 	u32 hash;
 	u32 nr_entries;
 	long unsigned int entries[0];
 };
 
-struct lockdep_map {
+struct lockdep_map
+{
 	struct lock_class_key *key;
 	struct lock_class *class_cache[2];
 	const char *name;
@@ -244,7 +266,8 @@ struct lockdep_map {
 	u8 lock_type;
 };
 
-struct raw_spinlock {
+struct raw_spinlock
+{
 	arch_spinlock_t raw_lock;
 	unsigned int magic;
 	unsigned int owner_cpu;
@@ -254,7 +277,8 @@ struct raw_spinlock {
 
 typedef struct raw_spinlock raw_spinlock_t;
 
-struct ratelimit_state {
+struct ratelimit_state
+{
 	raw_spinlock_t lock;
 	int interval;
 	int burst;
@@ -292,7 +316,8 @@ struct seq_file;
 
 struct io_uring_cmd;
 
-struct file_operations {
+struct file_operations
+{
 	struct module *owner;
 	loff_t (*llseek)(struct file *, loff_t, int);
 	ssize_t (*read)(struct file *, char *, size_t, loff_t *);
@@ -329,46 +354,55 @@ struct file_operations {
 	int (*uring_cmd_iopoll)(struct io_uring_cmd *, struct io_comp_batch *, unsigned int);
 };
 
-struct static_call_site {
+struct static_call_site
+{
 	s32 addr;
 	s32 key;
 };
 
-struct static_call_mod {
+struct static_call_mod
+{
 	struct static_call_mod *next;
 	struct module *mod;
 	struct static_call_site *sites;
 };
 
-struct static_call_key {
+struct static_call_key
+{
 	void *func;
-	union {
+	union
+	{
 		long unsigned int type;
 		struct static_call_mod *mods;
 		struct static_call_site *sites;
 	};
 };
 
-struct thread_info {
+struct thread_info
+{
 	long unsigned int flags;
 	long unsigned int syscall_work;
 	u32 status;
 	u32 cpu;
 };
 
-struct refcount_struct {
+struct refcount_struct
+{
 	atomic_t refs;
 };
 
 typedef struct refcount_struct refcount_t;
 
-struct llist_node {
+struct llist_node
+{
 	struct llist_node *next;
 };
 
-struct __call_single_node {
+struct __call_single_node
+{
 	struct llist_node llist;
-	union {
+	union
+	{
 		unsigned int u_flags;
 		atomic_t a_flags;
 	};
@@ -376,23 +410,27 @@ struct __call_single_node {
 	u16 dst;
 };
 
-struct load_weight {
+struct load_weight
+{
 	long unsigned int weight;
 	u32 inv_weight;
 };
 
-struct rb_node {
+struct rb_node
+{
 	long unsigned int __rb_parent_color;
 	struct rb_node *rb_right;
 	struct rb_node *rb_left;
 };
 
-struct util_est {
+struct util_est
+{
 	unsigned int enqueued;
 	unsigned int ewma;
 };
 
-struct sched_avg {
+struct sched_avg
+{
 	u64 last_update_time;
 	u64 load_sum;
 	u64 runnable_sum;
@@ -406,7 +444,8 @@ struct sched_avg {
 
 struct cfs_rq;
 
-struct sched_entity {
+struct sched_entity
+{
 	struct load_weight load;
 	struct rb_node run_node;
 	struct list_head group_node;
@@ -421,16 +460,17 @@ struct sched_entity {
 	struct cfs_rq *cfs_rq;
 	struct cfs_rq *my_q;
 	long unsigned int runnable_weight;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
 	struct sched_avg avg;
 };
 
-struct sched_rt_entity {
+struct sched_rt_entity
+{
 	struct list_head run_list;
 	long unsigned int timeout;
 	long unsigned int watchdog_stamp;
@@ -442,19 +482,22 @@ struct sched_rt_entity {
 
 typedef s64 ktime_t;
 
-struct timerqueue_node {
+struct timerqueue_node
+{
 	struct rb_node node;
 	ktime_t expires;
 };
 
-enum hrtimer_restart {
+enum hrtimer_restart
+{
 	HRTIMER_NORESTART = 0,
 	HRTIMER_RESTART = 1,
 };
 
 struct hrtimer_clock_base;
 
-struct hrtimer {
+struct hrtimer
+{
 	struct timerqueue_node node;
 	ktime_t _softexpires;
 	enum hrtimer_restart (*function)(struct hrtimer *);
@@ -465,7 +508,8 @@ struct hrtimer {
 	u8 is_hard;
 };
 
-struct sched_dl_entity {
+struct sched_dl_entity
+{
 	struct rb_node rb_node;
 	u64 dl_runtime;
 	u64 dl_deadline;
@@ -475,16 +519,17 @@ struct sched_dl_entity {
 	s64 runtime;
 	u64 deadline;
 	unsigned int flags;
-	unsigned int dl_throttled: 1;
-	unsigned int dl_yielded: 1;
-	unsigned int dl_non_contending: 1;
-	unsigned int dl_overrun: 1;
+	unsigned int dl_throttled : 1;
+	unsigned int dl_yielded : 1;
+	unsigned int dl_non_contending : 1;
+	unsigned int dl_overrun : 1;
 	struct hrtimer dl_timer;
 	struct hrtimer inactive_timer;
 	struct sched_dl_entity *pi_se;
 };
 
-struct sched_statistics {
+struct sched_statistics
+{
 	u64 wait_start;
 	u64 wait_max;
 	u64 wait_count;
@@ -513,20 +558,23 @@ struct sched_statistics {
 	u64 nr_wakeups_affine_attempts;
 	u64 nr_wakeups_passive;
 	u64 nr_wakeups_idle;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
 };
 
-struct cpumask {
+struct cpumask
+{
 	long unsigned int bits[2];
 };
 
 typedef struct cpumask cpumask_t;
 
-union rcu_special {
-	struct {
+union rcu_special
+{
+	struct
+	{
 		u8 blocked;
 		u8 need_qs;
 		u8 exp_hint;
@@ -535,25 +583,29 @@ union rcu_special {
 	u32 s;
 };
 
-struct sched_info {
+struct sched_info
+{
 	long unsigned int pcount;
 	long long unsigned int run_delay;
 	long long unsigned int last_arrival;
 	long long unsigned int last_queued;
 };
 
-struct plist_node {
+struct plist_node
+{
 	int prio;
 	struct list_head prio_list;
 	struct list_head node_list;
 };
 
-struct task_rss_stat {
+struct task_rss_stat
+{
 	int events;
 	int count[4];
 };
 
-enum timespec_type {
+enum timespec_type
+{
 	TT_NONE = 0,
 	TT_NATIVE = 1,
 	TT_COMPAT = 2,
@@ -565,11 +617,14 @@ struct old_timespec32;
 
 struct pollfd;
 
-struct restart_block {
+struct restart_block
+{
 	long unsigned int arch_data;
 	long int (*fn)(struct restart_block *);
-	union {
-		struct {
+	union
+	{
+		struct
+		{
 			u32 *uaddr;
 			u32 val;
 			u32 flags;
@@ -577,16 +632,19 @@ struct restart_block {
 			u64 time;
 			u32 *uaddr2;
 		} futex;
-		struct {
+		struct
+		{
 			clockid_t clockid;
 			enum timespec_type type;
-			union {
+			union
+			{
 				struct __kernel_timespec *rmtp;
 				struct old_timespec32 *compat_rmtp;
 			};
 			u64 expires;
 		} nanosleep;
-		struct {
+		struct
+		{
 			struct pollfd *ufds;
 			int nfds;
 			int has_timeout;
@@ -596,83 +654,100 @@ struct restart_block {
 	};
 };
 
-struct prev_cputime {
+struct prev_cputime
+{
 	u64 utime;
 	u64 stime;
 	raw_spinlock_t lock;
 };
 
-struct rb_root {
+struct rb_root
+{
 	struct rb_node *rb_node;
 };
 
-struct rb_root_cached {
+struct rb_root_cached
+{
 	struct rb_root rb_root;
 	struct rb_node *rb_leftmost;
 };
 
-struct timerqueue_head {
+struct timerqueue_head
+{
 	struct rb_root_cached rb_root;
 };
 
-struct posix_cputimer_base {
+struct posix_cputimer_base
+{
 	u64 nextevt;
 	struct timerqueue_head tqhead;
 };
 
-struct posix_cputimers {
+struct posix_cputimers
+{
 	struct posix_cputimer_base bases[3];
 	unsigned int timers_active;
 	unsigned int expiry_active;
 };
 
-struct posix_cputimers_work {
+struct posix_cputimers_work
+{
 	struct callback_head work;
 	unsigned int scheduled;
 };
 
 struct sem_undo_list;
 
-struct sysv_sem {
+struct sysv_sem
+{
 	struct sem_undo_list *undo_list;
 };
 
-struct sysv_shm {
+struct sysv_shm
+{
 	struct list_head shm_clist;
 };
 
-typedef struct {
+typedef struct
+{
 	long unsigned int sig[1];
 } sigset_t;
 
-struct sigpending {
+struct sigpending
+{
 	struct list_head list;
 	sigset_t signal;
 };
 
-typedef struct {
+typedef struct
+{
 	uid_t val;
 } kuid_t;
 
 struct seccomp_filter;
 
-struct seccomp {
+struct seccomp
+{
 	int mode;
 	atomic_t filter_count;
 	struct seccomp_filter *filter;
 };
 
-struct syscall_user_dispatch {
+struct syscall_user_dispatch
+{
 	char *selector;
 	long unsigned int offset;
 	long unsigned int len;
 	bool on_dispatch;
 };
 
-struct spinlock {
-	union {
+struct spinlock
+{
+	union
+	{
 		struct raw_spinlock rlock;
-		struct {
+		struct
+		{
 			u8 __padding[24];
 			struct lockdep_map dep_map;
 		};
@@ -681,11 +756,13 @@ struct spinlock {
 
 typedef struct spinlock spinlock_t;
 
-struct wake_q_node {
+struct wake_q_node
+{
 	struct wake_q_node *next;
 };
 
-struct irqtrace_events {
+struct irqtrace_events
+{
 	unsigned int irq_events;
 	long unsigned int hardirq_enable_ip;
 	long unsigned int hardirq_disable_ip;
@@ -697,22 +774,24 @@ struct irqtrace_events {
 	unsigned int softirq_enable_event;
 };
 
-struct held_lock {
+struct held_lock
+{
 	u64 prev_chain_key;
 	long unsigned int acquire_ip;
 	struct lockdep_map *instance;
 	struct lockdep_map *nest_lock;
-	unsigned int class_idx: 13;
-	unsigned int irq_context: 2;
-	unsigned int trylock: 1;
-	unsigned int read: 2;
-	unsigned int check: 1;
-	unsigned int hardirqs_off: 1;
-	unsigned int references: 12;
+	unsigned int class_idx : 13;
+	unsigned int irq_context : 2;
+	unsigned int trylock : 1;
+	unsigned int read : 2;
+	unsigned int check : 1;
+	unsigned int hardirqs_off : 1;
+	unsigned int references : 12;
 	unsigned int pin_count;
 };
 
-struct task_io_accounting {
+struct task_io_accounting
+{
 	u64 rchar;
 	u64 wchar;
 	u64 syscr;
@@ -722,18 +801,21 @@ struct task_io_accounting {
 	u64 cancelled_write_bytes;
 };
 
-typedef struct {
+typedef struct
+{
 	long unsigned int bits[1];
 } nodemask_t;
 
-struct seqcount {
+struct seqcount
+{
 	unsigned int sequence;
 	struct lockdep_map dep_map;
 };
 
 typedef struct seqcount seqcount_t;
 
-struct seqcount_spinlock {
+struct seqcount_spinlock
+{
 	seqcount_t seqcount;
 	spinlock_t *lock;
 };
@@ -742,11 +824,13 @@ typedef struct seqcount_spinlock seqcount_spinlock_t;
 
 typedef atomic64_t atomic_long_t;
 
-struct optimistic_spin_queue {
+struct optimistic_spin_queue
+{
 	atomic_t tail;
 };
 
-struct mutex {
+struct mutex
+{
 	atomic_long_t owner;
 	raw_spinlock_t wait_lock;
 	struct optimistic_spin_queue osq;
@@ -755,25 +839,31 @@ struct mutex {
 	struct lockdep_map dep_map;
 };
 
-struct arch_tlbflush_unmap_batch {
+struct arch_tlbflush_unmap_batch
+{
 	struct cpumask cpumask;
 };
 
-struct tlbflush_unmap_batch {
+struct tlbflush_unmap_batch
+{
 	struct arch_tlbflush_unmap_batch arch;
 	bool flush_required;
 	bool writable;
 };
 
-struct page_frag {
+struct page_frag
+{
 	struct page *page;
 	__u32 offset;
 	__u32 size;
 };
 
-struct kmap_ctrl {};
+struct kmap_ctrl
+{
+};
 
-struct timer_list {
+struct timer_list
+{
 	struct hlist_node entry;
 	long unsigned int expires;
 	void (*function)(struct timer_list *);
@@ -781,33 +871,37 @@ struct timer_list {
 	struct lockdep_map lockdep_map;
 };
 
-struct llist_head {
+struct llist_head
+{
 	struct llist_node *first;
 };
 
-struct desc_struct {
+struct desc_struct
+{
 	u16 limit0;
 	u16 base0;
-	u16 base1: 8;
-	u16 type: 4;
-	u16 s: 1;
-	u16 dpl: 2;
-	u16 p: 1;
-	u16 limit1: 4;
-	u16 avl: 1;
-	u16 l: 1;
-	u16 d: 1;
-	u16 g: 1;
-	u16 base2: 8;
+	u16 base1 : 8;
+	u16 type : 4;
+	u16 s : 1;
+	u16 dpl : 2;
+	u16 p : 1;
+	u16 limit1 : 4;
+	u16 avl : 1;
+	u16 l : 1;
+	u16 d : 1;
+	u16 g : 1;
+	u16 base2 : 8;
 };
 
-struct fpu_state_perm {
+struct fpu_state_perm
+{
 	u64 __state_perm;
 	unsigned int __state_size;
 	unsigned int __user_state_size;
 };
 
-struct fregs_state {
+struct fregs_state
+{
 	u32 cwd;
 	u32 swd;
 	u32 twd;
@@ -819,17 +913,21 @@ struct fregs_state {
 	u32 status;
 };
 
-struct fxregs_state {
+struct fxregs_state
+{
 	u16 cwd;
 	u16 swd;
 	u16 twd;
 	u16 fop;
-	union {
-		struct {
+	union
+	{
+		struct
+		{
 			u64 rip;
 			u64 rdp;
 		};
-		struct {
+		struct
+		{
 			u32 fip;
 			u32 fcs;
 			u32 foo;
@@ -841,7 +939,8 @@ struct fxregs_state {
 	u32 st_space[32];
 	u32 xmm_space[64];
 	u32 padding[12];
-	union {
+	union
+	{
 		u32 padding1[12];
 		u32 sw_reserved[12];
 	};
@@ -849,7 +948,8 @@ struct fxregs_state {
 
 struct math_emu_info;
 
-struct swregs_state {
+struct swregs_state
+{
 	u32 cwd;
 	u32 swd;
 	u32 twd;
@@ -868,19 +968,22 @@ struct swregs_state {
 	u32 entry_eip;
 };
 
-struct xstate_header {
+struct xstate_header
+{
 	u64 xfeatures;
 	u64 xcomp_bv;
 	u64 reserved[6];
 };
 
-struct xregs_state {
+struct xregs_state
+{
 	struct fxregs_state i387;
 	struct xstate_header header;
 	u8 extended_state_area[0];
 };
 
-union fpregs_state {
+union fpregs_state
+{
 	struct fregs_state fsave;
 	struct fxregs_state fxsave;
 	struct swregs_state soft;
@@ -888,23 +991,25 @@ union fpregs_state {
 	u8 __padding[4096];
 };
 
-struct fpstate {
+struct fpstate
+{
 	unsigned int size;
 	unsigned int user_size;
 	u64 xfeatures;
 	u64 user_xfeatures;
 	u64 xfd;
-	unsigned int is_valloc: 1;
-	unsigned int is_guest: 1;
-	unsigned int is_confidential: 1;
-	unsigned int in_use: 1;
-	long: 64;
-	long: 64;
-	long: 64;
+	unsigned int is_valloc : 1;
+	unsigned int is_guest : 1;
+	unsigned int is_confidential : 1;
+	unsigned int in_use : 1;
+	long : 64;
+	long : 64;
+	long : 64;
 	union fpregs_state regs;
 };
 
-struct fpu {
+struct fpu
+{
 	unsigned int last_cpu;
 	long unsigned int avx512_timestamp;
 	struct fpstate *fpstate;
@@ -918,7 +1023,8 @@ struct perf_event;
 
 struct io_bitmap;
 
-struct thread_struct {
+struct thread_struct
+{
 	struct desc_struct tls_array[3];
 	long unsigned int sp;
 	short unsigned int es;
@@ -935,14 +1041,14 @@ struct thread_struct {
 	long unsigned int error_code;
 	struct io_bitmap *io_bitmap;
 	long unsigned int iopl_emul;
-	unsigned int iopl_warn: 1;
-	unsigned int sig_on_uaccess_err: 1;
+	unsigned int iopl_warn : 1;
+	unsigned int sig_on_uaccess_err : 1;
 	u32 pkru;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
 	struct fpu fpu;
 };
 
@@ -1028,7 +1134,8 @@ struct bpf_local_storage;
 
 struct bpf_run_ctx;
 
-struct task_struct {
+struct task_struct
+{
 	struct thread_info thread_info;
 	unsigned int __state;
 	void *stack;
@@ -1052,10 +1159,10 @@ struct task_struct {
 	struct sched_dl_entity dl;
 	const struct sched_class *sched_class;
 	struct task_group *sched_task_group;
-	long: 64;
-	long: 64;
-	long: 64;
-	long: 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
 	struct sched_statistics stats;
 	unsigned int btrace_seq;
 	unsigned int policy;
@@ -1094,22 +1201,22 @@ struct task_struct {
 	int pdeath_signal;
 	long unsigned int jobctl;
 	unsigned int personality;
-	unsigned int sched_reset_on_fork: 1;
-	unsigned int sched_contributes_to_load: 1;
-	unsigned int sched_migrated: 1;
-	long: 29;
-	unsigned int sched_remote_wakeup: 1;
-	unsigned int in_execve: 1;
-	unsigned int in_iowait: 1;
-	unsigned int restore_sigmask: 1;
-	unsigned int in_user_fault: 1;
-	unsigned int brk_randomized: 1;
-	unsigned int no_cgroup_migration: 1;
-	unsigned int frozen: 1;
-	unsigned int use_memdelay: 1;
-	unsigned int in_eventfd: 1;
-	unsigned int reported_split_lock: 1;
-	unsigned int in_thrashing: 1;
+	unsigned int sched_reset_on_fork : 1;
+	unsigned int sched_contributes_to_load : 1;
+	unsigned int sched_migrated : 1;
+	long : 29;
+	unsigned int sched_remote_wakeup : 1;
+	unsigned int in_execve : 1;
+	unsigned int in_iowait : 1;
+	unsigned int restore_sigmask : 1;
+	unsigned int in_user_fault : 1;
+	unsigned int brk_randomized : 1;
+	unsigned int no_cgroup_migration : 1;
+	unsigned int frozen : 1;
+	unsigned int use_memdelay : 1;
+	unsigned int in_eventfd : 1;
+	unsigned int reported_split_lock : 1;
+	unsigned int in_thrashing : 1;
 	long unsigned int atomic_flags;
 	struct restart_block restart_block;
 	pid_t pid;
@@ -1240,7 +1347,8 @@ struct task_struct {
 	u32 rseq_sig;
 	long unsigned int rseq_event_mask;
 	struct tlbflush_unmap_batch tlb_ubc;
-	union {
+	union
+	{
 		refcount_t rcu_users;
 		struct callback_head rcu;
 	};
@@ -1281,20 +1389,21 @@ struct task_struct {
 	void *mce_vaddr;
 	__u64 mce_kflags;
 	u64 mce_addr;
-	__u64 mce_ripv: 1;
-	__u64 mce_whole_page: 1;
-	__u64 __mce_reserved: 62;
+	__u64 mce_ripv : 1;
+	__u64 mce_whole_page : 1;
+	__u64 __mce_reserved : 62;
 	struct callback_head mce_kill_me;
 	int mce_count;
 	struct llist_head kretprobe_instances;
 	struct llist_head rethooks;
 	struct callback_head l1d_flush_kill;
-	long: 64;
-	long: 64;
+	long : 64;
+	long : 64;
 	struct thread_struct thread;
 };
 
-struct jump_entry {
+struct jump_entry
+{
 	s32 code;
 	s32 target;
 	long int key;
@@ -1302,25 +1411,29 @@ struct jump_entry {
 
 struct static_key_mod;
 
-struct static_key {
+struct static_key
+{
 	atomic_t enabled;
-	union {
+	union
+	{
 		long unsigned int type;
 		struct jump_entry *entries;
 		struct static_key_mod *next;
 	};
 };
 
-struct orc_entry {
+struct orc_entry
+{
 	s16 sp_offset;
 	s16 bp_offset;
-	unsigned int sp_reg: 4;
-	unsigned int bp_reg: 4;
-	unsigned int type: 2;
-	unsigned int end: 1;
+	unsigned int sp_reg : 4;
+	unsigned int bp_reg : 4;
+	unsigned int type : 2;
+	unsigned int end : 1;
 } __attribute__((packed));
 
-struct bug_entry {
+struct bug_entry
+{
 	int bug_addr_disp;
 	int file_disp;
 	short unsigned int line;
@@ -1329,24 +1442,28 @@ struct bug_entry {
 
 typedef __s64 time64_t;
 
-struct __kernel_timespec {
+struct __kernel_timespec
+{
 	__kernel_time64_t tv_sec;
 	long long int tv_nsec;
 };
 
-struct timespec64 {
+struct timespec64
+{
 	time64_t tv_sec;
 	long int tv_nsec;
 };
 
 typedef s32 old_time32_t;
 
-struct old_timespec32 {
+struct old_timespec32
+{
 	old_time32_t tv_sec;
 	s32 tv_nsec;
 };
 
-struct pt_regs {
+struct pt_regs
+{
 	long unsigned int r15;
 	long unsigned int r14;
 	long unsigned int r13;
@@ -1370,7 +1487,8 @@ struct pt_regs {
 	long unsigned int ss;
 };
 
-struct math_emu_info {
+struct math_emu_info
+{
 	long int ___orig_eip;
 	struct pt_regs *regs;
 };
@@ -1379,13 +1497,15 @@ typedef long unsigned int pgdval_t;
 
 typedef long unsigned int pgprotval_t;
 
-struct pgprot {
+struct pgprot
+{
 	pgprotval_t pgprot;
 };
 
 typedef struct pgprot pgprot_t;
 
-typedef struct {
+typedef struct
+{
 	pgdval_t pgd;
 } pgd_t;
 
@@ -1397,13 +1517,18 @@ struct page_pool;
 
 struct dev_pagemap;
 
-struct page {
+struct page
+{
 	long unsigned int flags;
-	union {
-		struct {
-			union {
+	union
+	{
+		struct
+		{
+			union
+			{
 				struct list_head lru;
-				struct {
+				struct
+				{
 					void *__filler;
 					unsigned int mlock_count;
 				};
@@ -1414,17 +1539,20 @@ struct page {
 			long unsigned int index;
 			long unsigned int private;
 		};
-		struct {
+		struct
+		{
 			long unsigned int pp_magic;
 			struct page_pool *pp;
 			long unsigned int _pp_mapping_pad;
 			long unsigned int dma_addr;
-			union {
+			union
+			{
 				long unsigned int dma_addr_upper;
 				atomic_long_t pp_frag_count;
 			};
 		};
-		struct {
+		struct
+		{
 			long unsigned int compound_head;
 			unsigned char compound_dtor;
 			unsigned char compound_order;
@@ -1432,28 +1560,33 @@ struct page {
 			atomic_t compound_pincount;
 			unsigned int compound_nr;
 		};
-		struct {
+		struct
+		{
 			long unsigned int _compound_pad_1;
 			long unsigned int _compound_pad_2;
 			struct list_head deferred_list;
 		};
-		struct {
+		struct
+		{
 			long unsigned int _pt_pad_1;
 			pgtable_t pmd_huge_pte;
 			long unsigned int _pt_pad_2;
-			union {
+			union
+			{
 				struct mm_struct *pt_mm;
 				atomic_t pt_frag_refcount;
 			};
 			spinlock_t *ptl;
 		};
-		struct {
+		struct
+		{
 			struct dev_pagemap *pgmap;
 			void *zone_device_data;
 		};
 		struct callback_head callback_head;
 	};
-	union {
+	union
+	{
 		atomic_t _mapcount;
 		unsigned int page_type;
 	};
@@ -1461,13 +1594,15 @@ struct page {
 	long unsigned int memcg_data;
 };
 
-struct tracepoint_func {
+struct tracepoint_func
+{
 	void *func;
 	void *data;
 	int prio;
 };
 
-struct tracepoint {
+struct tracepoint
+{
 	const char *name;
 	struct static_key key;
 	struct static_call_key *static_call_key;
@@ -1480,15 +1615,17 @@ struct tracepoint {
 
 typedef const int tracepoint_ptr_t;
 
-struct bpf_raw_event_map {
+struct bpf_raw_event_map
+{
 	struct tracepoint *tp;
 	void *bpf_func;
 	u32 num_args;
 	u32 writable_size;
-	long: 64;
+	long : 64;
 };
 
-enum xfeature {
+enum xfeature
+{
 	XFEATURE_FP = 0,
 	XFEATURE_SSE = 1,
 	XFEATURE_YMM = 2,
@@ -1511,7 +1648,8 @@ enum xfeature {
 	XFEATURE_MAX = 19,
 };
 
-struct fpu_state_config {
+struct fpu_state_config
+{
 	unsigned int max_size;
 	unsigned int default_size;
 	u64 max_features;
@@ -1519,7 +1657,8 @@ struct fpu_state_config {
 	u64 legacy_features;
 };
 
-struct cpuinfo_x86 {
+struct cpuinfo_x86
+{
 	__u8 x86;
 	__u8 x86_vendor;
 	__u8 x86_model;
@@ -1532,7 +1671,8 @@ struct cpuinfo_x86 {
 	__u8 cu_id;
 	__u32 extended_cpuid_level;
 	int cpuid_level;
-	union {
+	union
+	{
 		__u32 x86_capability[21];
 		long unsigned int x86_capability_alignment;
 	};
@@ -1560,10 +1700,11 @@ struct cpuinfo_x86 {
 	bool smt_active;
 	u32 microcode;
 	u8 x86_cache_bits;
-	unsigned int initialized: 1;
+	unsigned int initialized : 1;
 };
 
-typedef struct {
+typedef struct
+{
 	arch_rwlock_t raw_lock;
 	unsigned int magic;
 	unsigned int owner_cpu;
@@ -1571,7 +1712,55 @@ typedef struct {
 	struct lockdep_map dep_map;
 } rwlock_t;
 
-struct wait_queue_head {
+struct wait_queue_head
+{
 	spinlock_t lock;
 	struct list_head head;
+};
+typedef struct wait_queue_head wait_queue_head_t;
+
+enum pid_type
+{
+	PIDTYPE_PID = 0,
+	PIDTYPE_TGID = 1,
+	PIDTYPE_PGID = 2,
+	PIDTYPE_SID = 3,
+	PIDTYPE_MAX = 4,
+};
+
+struct pid_namespace;
+
+struct upid
+{
+	int nr;
+	struct pid_namespace *ns;
+};
+
+struct pid
+{
+	refcount_t count;
+	unsigned int level;
+	spinlock_t lock;
+	struct hlist_head tasks[4];
+	struct hlist_head inodes;
+	wait_queue_head_t wait_pidfd;
+	struct callback_head rcu;
+	struct upid numbers[1];
+};
+
+typedef struct
+{
+	gid_t val;
+} kgid_t;
+
+struct work_struct;
+
+typedef void (*work_func_t)(struct work_struct *);
+
+struct work_struct
+{
+	atomic_long_t data;
+	struct list_head entry;
+	work_func_t func;
+	struct lockdep_map lockdep_map;
 };
