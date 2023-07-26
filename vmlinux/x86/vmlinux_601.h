@@ -2210,3 +2210,73 @@ struct mm_struct
 	};
 	long unsigned int cpu_bitmap[0];
 };
+
+struct swait_queue_head
+{
+	raw_spinlock_t lock;
+	struct list_head task_list;
+};
+
+struct completion
+{
+	unsigned int done;
+	struct swait_queue_head wait;
+};
+
+struct kernel_cap_struct
+{
+	__u32 cap[2];
+};
+
+typedef struct kernel_cap_struct kernel_cap_t;
+
+struct user_struct;
+
+struct ucounts;
+
+struct group_info;
+
+struct cred
+{
+	atomic_t usage;
+	atomic_t subscribers;
+	void *put_addr;
+	unsigned int magic;
+	kuid_t uid;
+	kgid_t gid;
+	kuid_t suid;
+	kgid_t sgid;
+	kuid_t euid;
+	kgid_t egid;
+	kuid_t fsuid;
+	kgid_t fsgid;
+	unsigned int securebits;
+	kernel_cap_t cap_inheritable;
+	kernel_cap_t cap_permitted;
+	kernel_cap_t cap_effective;
+	kernel_cap_t cap_bset;
+	kernel_cap_t cap_ambient;
+	unsigned char jit_keyring;
+	struct key *session_keyring;
+	struct key *process_keyring;
+	struct key *thread_keyring;
+	struct key *request_key_auth;
+	void *security;
+	struct user_struct *user;
+	struct user_namespace *user_ns;
+	struct ucounts *ucounts;
+	struct group_info *group_info;
+	union
+	{
+		int non_rcu;
+		struct callback_head rcu;
+	};
+};
+
+typedef int32_t key_serial_t;
+
+typedef uint32_t key_perm_t;
+
+struct key_type;
+
+struct key_tag;
