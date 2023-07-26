@@ -2280,3 +2280,87 @@ typedef uint32_t key_perm_t;
 struct key_type;
 
 struct key_tag;
+
+struct keyring_index_key
+{
+	long unsigned int hash;
+	union
+	{
+		struct
+		{
+			u16 desc_len;
+			char desc[6];
+		};
+		long unsigned int x;
+	};
+	struct key_type *type;
+	struct key_tag *domain_tag;
+	const char *description;
+};
+
+union key_payload
+{
+	void *rcu_data0;
+	void *data[4];
+};
+
+struct assoc_array_ptr;
+
+struct assoc_array
+{
+	struct assoc_array_ptr *root;
+	long unsigned int nr_leaves_on_tree;
+};
+
+struct key_user;
+
+struct key_restriction;
+
+struct key
+{
+	refcount_t usage;
+	key_serial_t serial;
+	union
+	{
+		struct list_head graveyard_link;
+		struct rb_node serial_node;
+	};
+	struct rw_semaphore sem;
+	struct key_user *user;
+	void *security;
+	union
+	{
+		time64_t expiry;
+		time64_t revoked_at;
+	};
+	time64_t last_used_at;
+	kuid_t uid;
+	kgid_t gid;
+	key_perm_t perm;
+	short unsigned int quotalen;
+	short unsigned int datalen;
+	short int state;
+	long unsigned int flags;
+	union
+	{
+		struct keyring_index_key index_key;
+		struct
+		{
+			long unsigned int hash;
+			long unsigned int len_desc;
+			struct key_type *type;
+			struct key_tag *domain_tag;
+			char *description;
+		};
+	};
+	union
+	{
+		union key_payload payload;
+		struct
+		{
+			struct list_head name_link;
+			struct assoc_array keys;
+		};
+	};
+	struct key_restriction *restrict_link;
+};
