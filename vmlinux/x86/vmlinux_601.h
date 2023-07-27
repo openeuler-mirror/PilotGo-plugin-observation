@@ -3253,3 +3253,77 @@ struct key_match_data;
 struct kernel_pkey_params;
 
 struct kernel_pkey_query;
+
+struct key_type
+{
+	const char *name;
+	size_t def_datalen;
+	unsigned int flags;
+	int (*vet_description)(const char *);
+	int (*preparse)(struct key_preparsed_payload *);
+	void (*free_preparse)(struct key_preparsed_payload *);
+	int (*instantiate)(struct key *, struct key_preparsed_payload *);
+	int (*update)(struct key *, struct key_preparsed_payload *);
+	int (*match_preparse)(struct key_match_data *);
+	void (*match_free)(struct key_match_data *);
+	void (*revoke)(struct key *);
+	void (*destroy)(struct key *);
+	void (*describe)(const struct key *, struct seq_file *);
+	long int (*read)(const struct key *, char *, size_t);
+	request_key_actor_t request_key;
+	struct key_restriction *(*lookup_restriction)(const char *);
+	int (*asym_query)(const struct kernel_pkey_params *, struct kernel_pkey_query *);
+	int (*asym_eds_op)(struct kernel_pkey_params *, const void *, void *);
+	int (*asym_verify_signature)(struct kernel_pkey_params *, const void *, const void *);
+	struct list_head link;
+	struct lock_class_key lock_class;
+};
+
+typedef int (*key_restrict_link_func_t)(struct key *, const struct key_type *, const union key_payload *, struct key *);
+
+struct key_restriction
+{
+	key_restrict_link_func_t check;
+	struct key *key;
+	struct key_type *keytype;
+};
+
+struct percpu_counter
+{
+	raw_spinlock_t lock;
+	s64 count;
+	struct list_head list;
+	s32 *counters;
+};
+
+struct user_struct
+{
+	refcount_t __count;
+	struct percpu_counter epoll_watches;
+	long unsigned int unix_inflight;
+	atomic_long_t pipe_bufs;
+	struct hlist_node uidhash_node;
+	kuid_t uid;
+	atomic_long_t locked_vm;
+	struct ratelimit_state ratelimit;
+};
+
+struct group_info
+{
+	atomic_t usage;
+	int ngroups;
+	kgid_t gid[0];
+};
+
+struct core_thread
+{
+	struct task_struct *task;
+	struct core_thread *next;
+};
+
+struct core_state
+{
+	atomic_t nr_threads;
+	struct core_thread dumper;
+	struct completion startup;
+};
