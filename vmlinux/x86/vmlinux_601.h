@@ -4428,3 +4428,84 @@ enum node_stat_item
 	PGPROMOTE_CANDIDATE = 42,
 	NR_VM_NODE_STAT_ITEMS = 43,
 };
+
+enum lru_list
+{
+	LRU_INACTIVE_ANON = 0,
+	LRU_ACTIVE_ANON = 1,
+	LRU_INACTIVE_FILE = 2,
+	LRU_ACTIVE_FILE = 3,
+	LRU_UNEVICTABLE = 4,
+	NR_LRU_LISTS = 5,
+};
+
+enum vmscan_throttle_state
+{
+	VMSCAN_THROTTLE_WRITEBACK = 0,
+	VMSCAN_THROTTLE_ISOLATED = 1,
+	VMSCAN_THROTTLE_NOPROGRESS = 2,
+	VMSCAN_THROTTLE_CONGESTED = 3,
+	NR_VMSCAN_THROTTLE = 4,
+};
+
+enum zone_watermarks
+{
+	WMARK_MIN = 0,
+	WMARK_LOW = 1,
+	WMARK_HIGH = 2,
+	WMARK_PROMO = 3,
+	NR_WMARK = 4,
+};
+
+enum
+{
+	ZONELIST_FALLBACK = 0,
+	ZONELIST_NOFALLBACK = 1,
+	MAX_ZONELISTS = 2,
+};
+
+enum
+{
+	HI_SOFTIRQ = 0,
+	TIMER_SOFTIRQ = 1,
+	NET_TX_SOFTIRQ = 2,
+	NET_RX_SOFTIRQ = 3,
+	BLOCK_SOFTIRQ = 4,
+	IRQ_POLL_SOFTIRQ = 5,
+	TASKLET_SOFTIRQ = 6,
+	SCHED_SOFTIRQ = 7,
+	HRTIMER_SOFTIRQ = 8,
+	RCU_SOFTIRQ = 9,
+	NR_SOFTIRQS = 10,
+};
+
+typedef void (*swap_func_t)(void *, void *, int);
+
+typedef int (*cmp_func_t)(const void *, const void *);
+
+typedef struct cpumask cpumask_var_t[1];
+
+struct irq_affinity
+{
+	unsigned int pre_vectors;
+	unsigned int post_vectors;
+	unsigned int nr_sets;
+	unsigned int set_size[4];
+	void (*calc_sets)(struct irq_affinity *, unsigned int);
+	void *priv;
+};
+
+struct irq_affinity_desc
+{
+	struct cpumask mask;
+	unsigned int is_managed : 1;
+};
+
+enum kmalloc_cache_type
+{
+	KMALLOC_NORMAL = 0,
+	KMALLOC_CGROUP = 1,
+	KMALLOC_RECLAIM = 2,
+	KMALLOC_DMA = 3,
+	NR_KMALLOC_TYPES = 4,
+};
