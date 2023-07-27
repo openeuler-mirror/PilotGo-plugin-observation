@@ -10,6 +10,44 @@
 #include "json_writer.h"
 #include "main.h"
 
+static struct hashmap *link_table;
+
+static int link_parse_fd(int *argc, char ***argv)
+{
+	int fd;
+
+	if (is_prefix(**argv, "id")) {
+		unsigned int id;
+		char *endptr;
+
+		NEXT_ARGP();
+
+		id = strtoul(**argv, &endptr, 0);
+		if (*endptr) {
+			p_err("can't parse %s as ID", **argv);
+			return -1;
+		}
+		NEXT_ARGP();
+
+		fd = bpf_link_get_fd_by_id(id);
+		if (fd < 0)
+			p_err("failed to get link with ID %d: %s", id, strerror(errno));
+		return fd;
+	} else if (is_prefix(**argv, "pinned")) {
+		char *path;
+
+		NEXT_ARGP();
+
+		path = **argv;
+		NEXT_ARGP();
+
+		return open_obj_pinned_any(path, BPF_OBJ_LINK);
+	}
+
+	p_err("expected 'id' or 'pinned', got: '%s'?", **argv);
+	return -1;
+}
+
 static int do_help(int argc, char **argv)
 {
 	if (json_output) {
@@ -130,6 +168,16 @@ static int do_show(int argc, char **argv)
 		delete_pinned_obj_table(link_table);
 
 	return errno == ENOENT ? 0 : -1;
+}
+
+static int do_pin(int argc, char **argv)
+{
+	int err;
+
+	err = do_pin_any(argc, argv, link_parse_fd);
+	if (!err && json_output)
+		jsonw_null(json_wtr);
+	return err;
 }
 
 static const struct cmd cmds[] = {
