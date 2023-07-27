@@ -367,3 +367,40 @@ enum {
 	TCA_HTB_OFFLOAD,
 	__TCA_HTB_MAX,
 };
+
+#define TCA_HTB_MAX (__TCA_HTB_MAX - 1)
+
+struct tc_htb_xstats {
+	__u32 lends;
+	__u32 borrows;
+	__u32 giants;	/* unused since 'Make HTB scheduler work with TSO.' */
+	__s32 tokens;
+	__s32 ctokens;
+};
+
+/* HFSC section */
+
+struct tc_hfsc_qopt {
+	__u16	defcls;		/* default class */
+};
+
+struct tc_service_curve {
+	__u32	m1;		/* slope of the first segment in bps */
+	__u32	d;		/* x-projection of the first segment in us */
+	__u32	m2;		/* slope of the second segment in bps */
+};
+
+struct tc_hfsc_stats {
+	__u64	work;		/* total work done */
+	__u64	rtwork;		/* work done by real-time criteria */
+	__u32	period;		/* current period */
+	__u32	level;		/* class level in hierarchy */
+};
+
+enum {
+	TCA_HFSC_UNSPEC,
+	TCA_HFSC_RSC,
+	TCA_HFSC_FSC,
+	TCA_HFSC_USC,
+	__TCA_HFSC_MAX,
+};
