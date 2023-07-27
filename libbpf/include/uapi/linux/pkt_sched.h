@@ -207,3 +207,40 @@ enum {
 	TCA_RED_MAX_P,
 	__TCA_RED_MAX,
 };
+
+#define TCA_RED_MAX (__TCA_RED_MAX - 1)
+
+struct tc_red_qopt {
+	__u32		limit;		/* HARD maximal queue length (bytes)	*/
+	__u32		qth_min;	/* Min average length threshold (bytes) */
+	__u32		qth_max;	/* Max average length threshold (bytes) */
+	unsigned char   Wlog;		/* log(W)		*/
+	unsigned char   Plog;		/* log(P_max/(qth_max-qth_min))	*/
+	unsigned char   Scell_log;	/* cell size for idle damping */
+	unsigned char	flags;
+#define TC_RED_ECN		1
+#define TC_RED_HARDDROP		2
+#define TC_RED_ADAPTATIVE	4
+};
+
+struct tc_red_xstats {
+	__u32           early;          /* Early drops */
+	__u32           pdrop;          /* Drops due to queue limits */
+	__u32           other;          /* Drops due to drop() calls */
+	__u32           marked;         /* Marked packets */
+};
+
+/* GRED section */
+
+#define MAX_DPs 16
+
+enum {
+       TCA_GRED_UNSPEC,
+       TCA_GRED_PARMS,
+       TCA_GRED_STAB,
+       TCA_GRED_DPS,
+       TCA_GRED_MAX_P,
+       TCA_GRED_LIMIT,
+       TCA_GRED_VQ_LIST,	/* nested TCA_GRED_VQ_ENTRY */
+       __TCA_GRED_MAX,
+};
