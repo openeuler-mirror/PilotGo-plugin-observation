@@ -6311,3 +6311,78 @@ struct poll_table_struct
 	poll_queue_proc _qproc;
 	__poll_t _key;
 };
+
+struct seq_file
+{
+	char *buf;
+	size_t size;
+	size_t from;
+	size_t count;
+	size_t pad_until;
+	loff_t index;
+	loff_t read_pos;
+	struct mutex lock;
+	const struct seq_operations *op;
+	int poll_event;
+	const struct file *file;
+	void *private;
+};
+
+struct trace_event_functions;
+
+struct trace_event
+{
+	struct hlist_node node;
+	struct list_head list;
+	int type;
+	struct trace_event_functions *funcs;
+};
+
+struct trace_event_class;
+
+struct trace_event_call
+{
+	struct list_head list;
+	struct trace_event_class *class;
+	union
+	{
+		char *name;
+		struct tracepoint *tp;
+	};
+	struct trace_event event;
+	char *print_fmt;
+	struct event_filter *filter;
+	union
+	{
+		void *module;
+		atomic_t refcnt;
+	};
+	void *data;
+	int flags;
+	int perf_refcount;
+	struct hlist_head *perf_events;
+	struct bpf_prog_array *prog_array;
+	int (*perf_perm)(struct trace_event_call *, struct perf_event *);
+};
+
+struct cgroup_namespace
+{
+	struct ns_common ns;
+	struct user_namespace *user_ns;
+	struct ucounts *ucounts;
+	struct css_set *root_cset;
+};
+
+struct nsset;
+
+struct proc_ns_operations
+{
+	const char *name;
+	const char *real_ns_name;
+	int type;
+	struct ns_common *(*get)(struct task_struct *);
+	void (*put)(struct ns_common *);
+	int (*install)(struct nsset *, struct ns_common *);
+	struct user_namespace *(*owner)(struct ns_common *);
+	struct ns_common *(*get_parent)(struct ns_common *);
+};
