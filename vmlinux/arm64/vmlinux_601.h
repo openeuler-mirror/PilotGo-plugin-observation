@@ -669,3 +669,30 @@ enum fp_type {
 	FP_STATE_FPSIMD = 1,
 	FP_STATE_SVE = 2,
 };
+
+struct perf_event;
+
+struct debug_info {
+	int suspended_step;
+	int bps_disabled;
+	int wps_disabled;
+	struct perf_event *hbp_break[16];
+	struct perf_event *hbp_watch[16];
+};
+
+struct ptrauth_key {
+	long unsigned int lo;
+	long unsigned int hi;
+};
+
+struct ptrauth_keys_user {
+	struct ptrauth_key apia;
+	struct ptrauth_key apib;
+	struct ptrauth_key apda;
+	struct ptrauth_key apdb;
+	struct ptrauth_key apga;
+};
+
+struct ptrauth_keys_kernel {
+	struct ptrauth_key apia;
+};
