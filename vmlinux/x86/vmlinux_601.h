@@ -5860,3 +5860,92 @@ struct idr
 	unsigned int idr_base;
 	unsigned int idr_next;
 };
+
+struct proc_ns_operations;
+
+struct ns_common
+{
+	atomic_long_t stashed;
+	const struct proc_ns_operations *ops;
+	unsigned int inum;
+	refcount_t count;
+};
+
+struct kmem_cache;
+
+struct fs_pin;
+
+struct pid_namespace
+{
+	struct idr idr;
+	struct callback_head rcu;
+	unsigned int pid_allocated;
+	struct task_struct *child_reaper;
+	struct kmem_cache *pid_cachep;
+	unsigned int level;
+	struct pid_namespace *parent;
+	struct fs_pin *bacct;
+	struct user_namespace *user_ns;
+	struct ucounts *ucounts;
+	int reboot;
+	struct ns_common ns;
+};
+
+struct uid_gid_extent
+{
+	u32 first;
+	u32 lower_first;
+	u32 count;
+};
+
+struct uid_gid_map
+{
+	u32 nr_extents;
+	union
+	{
+		struct uid_gid_extent extent[5];
+		struct
+		{
+			struct uid_gid_extent *forward;
+			struct uid_gid_extent *reverse;
+		};
+	};
+};
+
+struct ctl_table;
+
+struct ctl_table_root;
+
+struct ctl_table_set;
+
+struct ctl_dir;
+
+struct ctl_node;
+
+struct ctl_table_header
+{
+	union
+	{
+		struct
+		{
+			struct ctl_table *ctl_table;
+			int used;
+			int count;
+			int nreg;
+		};
+		struct callback_head rcu;
+	};
+	struct completion *unregistering;
+	struct ctl_table *ctl_table_arg;
+	struct ctl_table_root *root;
+	struct ctl_table_set *set;
+	struct ctl_dir *parent;
+	struct ctl_node *node;
+	struct hlist_head inodes;
+};
+
+struct ctl_dir
+{
+	struct ctl_table_header header;
+	struct rb_root root;
+};
