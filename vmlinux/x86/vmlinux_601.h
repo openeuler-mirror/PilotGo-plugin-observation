@@ -4891,3 +4891,81 @@ enum rpm_request
 	RPM_REQ_AUTOSUSPEND = 3,
 	RPM_REQ_RESUME = 4,
 };
+
+enum rpm_status
+{
+	RPM_INVALID = -1,
+	RPM_ACTIVE = 0,
+	RPM_RESUMING = 1,
+	RPM_SUSPENDED = 2,
+	RPM_SUSPENDING = 3,
+};
+
+struct wakeup_source;
+
+struct wake_irq;
+
+struct pm_subsys_data;
+
+struct dev_pm_qos;
+
+struct dev_pm_info
+{
+	pm_message_t power_state;
+	unsigned int can_wakeup : 1;
+	unsigned int async_suspend : 1;
+	bool in_dpm_list : 1;
+	bool is_prepared : 1;
+	bool is_suspended : 1;
+	bool is_noirq_suspended : 1;
+	bool is_late_suspended : 1;
+	bool no_pm : 1;
+	bool early_init : 1;
+	bool direct_complete : 1;
+	u32 driver_flags;
+	spinlock_t lock;
+	struct list_head entry;
+	struct completion completion;
+	struct wakeup_source *wakeup;
+	bool wakeup_path : 1;
+	bool syscore : 1;
+	bool no_pm_callbacks : 1;
+	unsigned int must_resume : 1;
+	unsigned int may_skip_resume : 1;
+	struct hrtimer suspend_timer;
+	u64 timer_expires;
+	struct work_struct work;
+	wait_queue_head_t wait_queue;
+	struct wake_irq *wakeirq;
+	atomic_t usage_count;
+	atomic_t child_count;
+	unsigned int disable_depth : 3;
+	unsigned int idle_notification : 1;
+	unsigned int request_pending : 1;
+	unsigned int deferred_resume : 1;
+	unsigned int needs_force_resume : 1;
+	unsigned int runtime_auto : 1;
+	bool ignore_children : 1;
+	unsigned int no_callbacks : 1;
+	unsigned int irq_safe : 1;
+	unsigned int use_autosuspend : 1;
+	unsigned int timer_autosuspends : 1;
+	unsigned int memalloc_noio : 1;
+	unsigned int links_count;
+	enum rpm_request request;
+	enum rpm_status runtime_status;
+	enum rpm_status last_status;
+	int runtime_error;
+	int autosuspend_delay;
+	u64 last_busy;
+	u64 active_time;
+	u64 suspended_time;
+	u64 accounting_timestamp;
+	struct pm_subsys_data *subsys_data;
+	void (*set_latency_tolerance)(struct device *, s32);
+	struct dev_pm_qos *qos;
+};
+
+struct irq_domain;
+
+struct msi_device_data;
