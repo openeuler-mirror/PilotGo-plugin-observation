@@ -128,3 +128,41 @@ struct tc_plug_qopt {
 	int             action;
 	__u32           limit;
 };
+
+/* TBF section */
+
+struct tc_tbf_qopt {
+	struct tc_ratespec rate;
+	struct tc_ratespec peakrate;
+	__u32		limit;
+	__u32		buffer;
+	__u32		mtu;
+};
+
+enum {
+	TCA_TBF_UNSPEC,
+	TCA_TBF_PARMS,
+	TCA_TBF_RTAB,
+	TCA_TBF_PTAB,
+	TCA_TBF_RATE64,
+	TCA_TBF_PRATE64,
+	TCA_TBF_BURST,
+	TCA_TBF_PBURST,
+	TCA_TBF_PAD,
+	__TCA_TBF_MAX,
+};
+
+#define TCA_TBF_MAX (__TCA_TBF_MAX - 1)
+
+
+/* TEQL section */
+/* TEQL does not require any parameters */
+/* SFQ section */
+
+struct tc_sfq_qopt {
+	unsigned	quantum;	/* Bytes per round allocated to flow */
+	int		perturb_period;	/* Period of hash perturbation */
+	__u32		limit;		/* Maximal packets in queue */
+	unsigned	divisor;	/* Hash divisor  */
+	unsigned	flows;		/* Maximal number of flows  */
+};
