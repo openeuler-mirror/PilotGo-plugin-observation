@@ -180,6 +180,35 @@ static int do_pin(int argc, char **argv)
 	return err;
 }
 
+static int do_detach(int argc, char **argv)
+{
+	int err, fd;
+
+	if (argc != 2) {
+		p_err("link specifier is invalid or missing\n");
+		return 1;
+	}
+
+	fd = link_parse_fd(&argc, &argv);
+	if (fd < 0)
+		return 1;
+
+	err = bpf_link_detach(fd);
+	if (err)
+		err = -errno;
+	close(fd);
+	if (err) {
+		p_err("failed link detach: %s", strerror(-err));
+		return 1;
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+
+	return 0;
+}
+
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
