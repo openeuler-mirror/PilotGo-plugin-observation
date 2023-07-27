@@ -48,24 +48,267 @@ static int link_parse_fd(int *argc, char ***argv)
 	return -1;
 }
 
-static int do_help(int argc, char **argv)
+static void
+show_link_header_json(struct bpf_link_info *info, json_writer_t *wtr)
 {
-	if (json_output) {
-		jsonw_null(json_wtr);
-		return 0;
+	const char *link_type_str;
+
+	jsonw_uint_field(wtr, "id", info->id);
+	link_type_str = libbpf_bpf_link_type_str(info->type);
+	if (link_type_str)
+		jsonw_string_field(wtr, "type", link_type_str);
+	else
+		jsonw_uint_field(wtr, "type", info->type);
+
+	jsonw_uint_field(json_wtr, "prog_id", info->prog_id);
+}
+
+static void show_link_attach_type_json(__u32 attach_type, json_writer_t *wtr)
+{
+	const char *attach_type_str;
+
+	attach_type_str = libbpf_bpf_attach_type_str(attach_type);
+	if (attach_type_str)
+		jsonw_string_field(wtr, "attach_type", attach_type_str);
+	else
+		jsonw_uint_field(wtr, "attach_type", attach_type);
+}
+
+static bool is_iter_map_target(const char *target_name)
+{
+	return strcmp(target_name, "bpf_map_elem") == 0 ||
+	       strcmp(target_name, "bpf_sk_storage_map") == 0;
+}
+
+static bool is_iter_cgroup_target(const char *target_name)
+{
+	return strcmp(target_name, "cgroup") == 0;
+}
+
+static const char *cgroup_order_string(__u32 order)
+{
+	switch (order) {
+	case BPF_CGROUP_ITER_ORDER_UNSPEC:
+		return "order_unspec";
+	case BPF_CGROUP_ITER_SELF_ONLY:
+		return "self_only";
+	case BPF_CGROUP_ITER_DESCENDANTS_PRE:
+		return "descendants_pre";
+	case BPF_CGROUP_ITER_DESCENDANTS_POST:
+		return "descendants_post";
+	case BPF_CGROUP_ITER_ANCESTORS_UP:
+		return "ancestors_up";
+	default:
+		return "unknown";
+	}
+}
+
+static bool is_iter_task_target(const char *target_name)
+{
+	return strcmp(target_name, "task") == 0 ||
+		strcmp(target_name, "task_file") == 0 ||
+		strcmp(target_name, "task_vma") == 0;
+}
+
+static void show_iter_json(struct bpf_link_info *info, json_writer_t *wtr)
+{
+	const char *target_name = u64_to_ptr(info->iter.target_name);
+
+	jsonw_string_field(wtr, "target_name", target_name);
+
+	if (is_iter_map_target(target_name))
+		jsonw_uint_field(wtr, "map_id", info->iter.map.map_id);
+	else if (is_iter_task_target(target_name)) {
+		if (info->iter.task.tid)
+			jsonw_uint_field(wtr, "tid", info->iter.task.tid);
+		else if (info->iter.task.pid)
+			jsonw_uint_field(wtr, "pid", info->iter.task.pid);
 	}
 
-	fprintf(stderr,
-		"Usage: %1$s %2$s { show | list }   [LINK]\n"
-		"       %1$s %2$s pin        LINK  FILE\n"
-		"       %1$s %2$s detach     LINK\n"
-		"       %1$s %2$s help\n"
-		"\n"
-		"       " HELP_SPEC_LINK "\n"
-		"       " HELP_SPEC_OPTIONS " |\n"
-		"                    {-f|--bpffs} | {-n|--nomount} }\n"
-		"",
-		bin_name, argv[-2]);
+	if (is_iter_cgroup_target(target_name)) {
+		jsonw_lluint_field(wtr, "cgroup_id", info->iter.cgroup.cgroup_id);
+		jsonw_string_field(wtr, "order",
+				   cgroup_order_string(info->iter.cgroup.order));
+	}
+}
+
+static int get_prog_info(int prog_id, struct bpf_prog_info *info)
+{
+	__u32 len = sizeof(*info);
+	int err, prog_fd;
+
+	prog_fd = bpf_prog_get_fd_by_id(prog_id);
+	if (prog_fd < 0)
+		return prog_fd;
+
+	memset(info, 0, sizeof(*info));
+	err = bpf_prog_get_info_by_fd(prog_fd, info, &len);
+	if (err)
+		p_err("can't get prog info: %s", strerror(errno));
+	close(prog_fd);
+	return err;
+}
+
+static int show_link_close_json(int fd, struct bpf_link_info *info)
+{
+	struct bpf_prog_info prog_info;
+	const char *prog_type_str;
+	int err;
+
+	jsonw_start_object(json_wtr);
+
+	show_link_header_json(info, json_wtr);
+
+	switch (info->type) {
+	case BPF_LINK_TYPE_RAW_TRACEPOINT:
+		jsonw_string_field(json_wtr, "tp_name",
+				   u64_to_ptr(info->raw_tracepoint.tp_name));
+		break;
+	case BPF_LINK_TYPE_TRACING:
+		err = get_prog_info(info->prog_id, &prog_info);
+		if (err)
+			return err;
+
+		prog_type_str = libbpf_bpf_prog_type_str(prog_info.type);
+		if (prog_type_str)
+			jsonw_string_field(json_wtr, "prog_type", prog_type_str);
+		else
+			jsonw_uint_field(json_wtr, "prog_type", prog_info.type);
+
+		show_link_attach_type_json(info->tracing.attach_type,
+					   json_wtr);
+		break;
+	case BPF_LINK_TYPE_CGROUP:
+		jsonw_lluint_field(json_wtr, "cgroup_id",
+				   info->cgroup.cgroup_id);
+		show_link_attach_type_json(info->cgroup.attach_type, json_wtr);
+		break;
+	case BPF_LINK_TYPE_ITER:
+		show_iter_json(info, json_wtr);
+		break;
+	case BPF_LINK_TYPE_NETNS:
+		jsonw_uint_field(json_wtr, "netns_ino",
+				 info->netns.netns_ino);
+		show_link_attach_type_json(info->netns.attach_type, json_wtr);
+		break;
+	default:
+		break;
+	}
+
+	if (!hashmap__empty(link_table)) {
+		struct hashmap_entry *entry;
+
+		jsonw_name(json_wtr, "pinned");
+		jsonw_start_array(json_wtr);
+		hashmap__for_each_key_entry(link_table, entry, info->id)
+			jsonw_string(json_wtr, entry->pvalue);
+		jsonw_end_array(json_wtr);
+	}
+
+	emit_obj_refs_json(refs_table, info->id, json_wtr);
+
+	jsonw_end_object(json_wtr);
+
+	return 0;
+}
+
+static void show_link_header_plain(struct bpf_link_info *info)
+{
+	const char *link_type_str;
+
+	printf("%u: ", info->id);
+	link_type_str = libbpf_bpf_link_type_str(info->type);
+	if (link_type_str)
+		printf("%s  ", link_type_str);
+	else
+		printf("type %u  ", info->type);
+
+	printf("prog %u  ", info->prog_id);
+}
+
+static void show_link_attach_type_plain(__u32 attach_type)
+{
+	const char *attach_type_str;
+
+	attach_type_str = libbpf_bpf_attach_type_str(attach_type);
+	if (attach_type_str)
+		printf("attach_type %s  ", attach_type_str);
+	else
+		printf("attach_type %u  ", attach_type);
+}
+
+static void show_iter_plain(struct bpf_link_info *info)
+{
+	const char *target_name = u64_to_ptr(info->iter.target_name);
+
+	printf("target_name %s  ", target_name);
+
+	if (is_iter_map_target(target_name))
+		printf("map_id %u  ", info->iter.map.map_id);
+	else if (is_iter_task_target(target_name)) {
+		if (info->iter.task.tid)
+			printf("tid %u ", info->iter.task.tid);
+		else if (info->iter.task.pid)
+			printf("pid %u ", info->iter.task.pid);
+	}
+
+	if (is_iter_cgroup_target(target_name)) {
+		printf("cgroup_id %llu  ", info->iter.cgroup.cgroup_id);
+		printf("order %s  ",
+		       cgroup_order_string(info->iter.cgroup.order));
+	}
+}
+
+static int show_link_close_plain(int fd, struct bpf_link_info *info)
+{
+	struct bpf_prog_info prog_info;
+	const char *prog_type_str;
+	int err;
+
+	show_link_header_plain(info);
+
+	switch (info->type) {
+	case BPF_LINK_TYPE_RAW_TRACEPOINT:
+		printf("\n\ttp '%s'  ",
+		       (const char *)u64_to_ptr(info->raw_tracepoint.tp_name));
+		break;
+	case BPF_LINK_TYPE_TRACING:
+		err = get_prog_info(info->prog_id, &prog_info);
+		if (err)
+			return err;
+
+		prog_type_str = libbpf_bpf_prog_type_str(prog_info.type);
+		if (prog_type_str)
+			printf("\n\tprog_type %s  ", prog_type_str);
+		else
+			printf("\n\tprog_type %u  ", prog_info.type);
+
+		show_link_attach_type_plain(info->tracing.attach_type);
+		break;
+	case BPF_LINK_TYPE_CGROUP:
+		printf("\n\tcgroup_id %zu  ", (size_t)info->cgroup.cgroup_id);
+		show_link_attach_type_plain(info->cgroup.attach_type);
+		break;
+	case BPF_LINK_TYPE_ITER:
+		show_iter_plain(info);
+		break;
+	case BPF_LINK_TYPE_NETNS:
+		printf("\n\tnetns_ino %u  ", info->netns.netns_ino);
+		show_link_attach_type_plain(info->netns.attach_type);
+		break;
+	default:
+		break;
+	}
+
+	if (!hashmap__empty(link_table)) {
+		struct hashmap_entry *entry;
+
+		hashmap__for_each_key_entry(link_table, entry, info->id)
+			printf("\n\tpinned %s", (char *)entry->pvalue);
+	}
+	emit_obj_refs_plain(refs_table, info->id, "\n\tpids ");
+
+	printf("\n");
 
 	return 0;
 }
@@ -208,6 +451,27 @@ static int do_detach(int argc, char **argv)
 	return 0;
 }
 
+static int do_help(int argc, char **argv)
+{
+	if (json_output) {
+		jsonw_null(json_wtr);
+		return 0;
+	}
+
+	fprintf(stderr,
+		"Usage: %1$s %2$s { show | list }   [LINK]\n"
+		"       %1$s %2$s pin        LINK  FILE\n"
+		"       %1$s %2$s detach     LINK\n"
+		"       %1$s %2$s help\n"
+		"\n"
+		"       " HELP_SPEC_LINK "\n"
+		"       " HELP_SPEC_OPTIONS " |\n"
+		"                    {-f|--bpffs} | {-n|--nomount} }\n"
+		"",
+		bin_name, argv[-2]);
+
+	return 0;
+}
 
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
