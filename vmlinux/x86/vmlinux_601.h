@@ -6163,3 +6163,64 @@ struct cgroup_root;
 struct cgroup_rstat_cpu;
 
 struct psi_group;
+
+struct cgroup
+{
+	struct cgroup_subsys_state self;
+	long unsigned int flags;
+	int level;
+	int max_depth;
+	int nr_descendants;
+	int nr_dying_descendants;
+	int max_descendants;
+	int nr_populated_csets;
+	int nr_populated_domain_children;
+	int nr_populated_threaded_children;
+	int nr_threaded_children;
+	struct kernfs_node *kn;
+	struct cgroup_file procs_file;
+	struct cgroup_file events_file;
+	struct cgroup_file psi_files[0];
+	u16 subtree_control;
+	u16 subtree_ss_mask;
+	u16 old_subtree_control;
+	u16 old_subtree_ss_mask;
+	struct cgroup_subsys_state *subsys[10];
+	struct cgroup_root *root;
+	struct list_head cset_links;
+	struct list_head e_csets[10];
+	struct cgroup *dom_cgrp;
+	struct cgroup *old_dom_cgrp;
+	struct cgroup_rstat_cpu *rstat_cpu;
+	struct list_head rstat_css_list;
+	struct cgroup_base_stat last_bstat;
+	struct cgroup_base_stat bstat;
+	struct prev_cputime prev_cputime;
+	struct list_head pidlists;
+	struct mutex pidlist_mutex;
+	wait_queue_head_t offline_waitq;
+	struct work_struct release_agent_work;
+	struct psi_group *psi;
+	struct cgroup_bpf bpf;
+	atomic_t congestion_count;
+	struct cgroup_freezer_state freezer;
+	struct bpf_local_storage *bpf_cgrp_storage;
+	struct cgroup *ancestors[0];
+};
+
+typedef int proc_handler(struct ctl_table *, int, void *, size_t *, loff_t *);
+
+struct ctl_table_poll;
+
+struct ctl_table
+{
+	const char *procname;
+	void *data;
+	int maxlen;
+	umode_t mode;
+	struct ctl_table *child;
+	proc_handler *proc_handler;
+	struct ctl_table_poll *poll;
+	void *extra1;
+	void *extra2;
+};
