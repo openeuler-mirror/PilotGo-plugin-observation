@@ -1023,6 +1023,49 @@ exit:
 	return err;
 }
 
+static int do_pop_dequeue(int argc, char **argv)
+{
+	struct bpf_map_info info = {};
+	__u32 len = sizeof(info);
+	void *key, *value;
+	int err;
+	int fd;
+
+	if (argc < 2)
+		usage();
+
+	fd = map_parse_fd_and_info(&argc, &argv, &info, &len);
+	if (fd < 0)
+		return -1;
+
+	err = alloc_key_value(&info, &key, &value);
+	if (err)
+		goto exit_free;
+
+	err = bpf_map_lookup_and_delete_elem(fd, key, value);
+	if (err) {
+		if (errno == ENOENT) {
+			if (json_output)
+				jsonw_null(json_wtr);
+			else
+				printf("Error: empty map\n");
+		} else {
+			p_err("pop failed: %s", strerror(errno));
+		}
+
+		goto exit_free;
+	}
+
+	print_key_value(&info, key, value);
+
+exit_free:
+	free(key);
+	free(value);
+	close(fd);
+
+	return err;
+}
+
 static int do_help(int argc, char **argv)
 {
 	if (json_output) {
