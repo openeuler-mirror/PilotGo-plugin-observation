@@ -696,3 +696,29 @@ struct ptrauth_keys_user {
 struct ptrauth_keys_kernel {
 	struct ptrauth_key apia;
 };
+
+struct thread_struct {
+	struct cpu_context cpu_context;
+	long: 64;
+	struct {
+		long unsigned int tp_value;
+		long unsigned int tp2_value;
+		struct user_fpsimd_state fpsimd_state;
+	} uw;
+	enum fp_type fp_type;
+	unsigned int fpsimd_cpu;
+	void *sve_state;
+	void *za_state;
+	unsigned int vl[2];
+	unsigned int vl_onexec[2];
+	long unsigned int fault_address;
+	long unsigned int fault_code;
+	struct debug_info debug;
+	struct ptrauth_keys_user keys_user;
+	struct ptrauth_keys_kernel keys_kernel;
+	u64 mte_ctrl;
+	u64 sctlr_user;
+	u64 svcr;
+	u64 tpidr2_el0;
+	long: 64;
+};
