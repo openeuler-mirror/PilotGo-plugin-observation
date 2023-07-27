@@ -5240,3 +5240,83 @@ struct device_driver
 	void (*coredump)(struct device *);
 	struct driver_private *p;
 };
+
+enum iommu_cap
+{
+	IOMMU_CAP_CACHE_COHERENCY = 0,
+	IOMMU_CAP_INTR_REMAP = 1,
+	IOMMU_CAP_NOEXEC = 2,
+	IOMMU_CAP_PRE_BOOT_PROTECTION = 3,
+};
+
+enum iommu_dev_features
+{
+	IOMMU_DEV_FEAT_SVA = 0,
+	IOMMU_DEV_FEAT_IOPF = 1,
+};
+
+struct iommu_domain;
+
+struct iommu_device;
+
+struct of_phandle_args;
+
+struct iommu_sva;
+
+struct iommu_fault_event;
+
+struct iommu_page_response;
+
+struct iommu_domain_ops;
+
+struct iommu_ops
+{
+	bool (*capable)(struct device *, enum iommu_cap);
+	struct iommu_domain *(*domain_alloc)(unsigned int);
+	struct iommu_device *(*probe_device)(struct device *);
+	void (*release_device)(struct device *);
+	void (*probe_finalize)(struct device *);
+	struct iommu_group *(*device_group)(struct device *);
+	void (*get_resv_regions)(struct device *, struct list_head *);
+	int (*of_xlate)(struct device *, struct of_phandle_args *);
+	bool (*is_attach_deferred)(struct device *);
+	int (*dev_enable_feat)(struct device *, enum iommu_dev_features);
+	int (*dev_disable_feat)(struct device *, enum iommu_dev_features);
+	struct iommu_sva *(*sva_bind)(struct device *, struct mm_struct *, void *);
+	void (*sva_unbind)(struct iommu_sva *);
+	u32 (*sva_get_pasid)(struct iommu_sva *);
+	int (*page_response)(struct device *, struct iommu_fault_event *, struct iommu_page_response *);
+	int (*def_domain_type)(struct device *);
+	const struct iommu_domain_ops *default_domain_ops;
+	long unsigned int pgsize_bitmap;
+	struct module *owner;
+};
+
+struct device_type
+{
+	const char *name;
+	const struct attribute_group **groups;
+	int (*uevent)(struct device *, struct kobj_uevent_env *);
+	char *(*devnode)(struct device *, umode_t *, kuid_t *, kgid_t *);
+	void (*release)(struct device *);
+	const struct dev_pm_ops *pm;
+};
+
+struct class
+{
+	const char *name;
+	struct module *owner;
+	const struct attribute_group **class_groups;
+	const struct attribute_group **dev_groups;
+	struct kobject *dev_kobj;
+	int (*dev_uevent)(struct device *, struct kobj_uevent_env *);
+	char *(*devnode)(struct device *, umode_t *);
+	void (*class_release)(struct class *);
+	void (*dev_release)(struct device *);
+	int (*shutdown_pre)(struct device *);
+	const struct kobj_ns_type_operations *ns_type;
+	const void *(*namespace)(struct device *);
+	void (*get_ownership)(struct device *, kuid_t *, kgid_t *);
+	const struct dev_pm_ops *pm;
+	struct subsys_private *p;
+};
