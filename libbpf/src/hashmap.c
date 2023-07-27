@@ -91,3 +91,59 @@ static bool hashmap_needs_to_grow(struct hashmap *map)
     /* grow if empty or more than 75% filled */
     return (map->cap == 0) || ((map->sz + 1) * 4 / 3 > map->cap);
 }
+
+static int hashmap_grow(struct hashmap *map)
+{
+    struct hashmap_entry **new_buckets;
+    struct hashmap_entry *cur, *tmp;
+    size_t new_cap_bits, new_cap;
+    size_t h, bkt;
+
+    new_cap_bits = map->cap_bits + 1;
+    if (new_cap_bits < HASHMAP_MIN_CAP_BITS)
+        new_cap_bits = HASHMAP_MIN_CAP_BITS;
+
+    new_cap = 1UL << new_cap_bits;
+    new_buckets = calloc(new_cap, sizeof(new_buckets[0]));
+    if (!new_buckets)
+        return -ENOMEM;
+
+    hashmap__for_each_entry_safe(map, cur, tmp, bkt)
+    {
+        h = hash_bits(map->hash_fn(cur->key, map->ctx), new_cap_bits);
+        hashmap_add_entry(&new_buckets[h], cur);
+    }
+
+    map->cap = new_cap;
+    map->cap_bits = new_cap_bits;
+    free(map->buckets);
+    map->buckets = new_buckets;
+
+    return 0;
+}
+
+static bool hashmap_find_entry(const struct hashmap *map,
+                               const long key, size_t hash,
+                               struct hashmap_entry ***pprev,
+                               struct hashmap_entry **entry)
+{
+    struct hashmap_entry *cur, **prev_ptr;
+
+    if (!map->buckets)
+        return false;
+
+    for (prev_ptr = &map->buckets[hash], cur = *prev_ptr;
+         cur;
+         prev_ptr = &cur->next, cur = cur->next)
+    {
+        if (map->equal_fn(cur->key, key, map->ctx))
+        {
+            if (pprev)
+                *pprev = prev_ptr;
+            *entry = cur;
+            return true;
+        }
+    }
+
+    return false;
+}
