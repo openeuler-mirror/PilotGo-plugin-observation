@@ -52,3 +52,42 @@ struct hashmap *hashmap__new(hashmap_hash_fn hash_fn,
     hashmap__init(map, hash_fn, equal_fn, ctx);
     return map;
 }
+
+void hashmap__clear(struct hashmap *map)
+{
+    struct hashmap_entry *cur, *tmp;
+    size_t bkt;
+
+    hashmap__for_each_entry_safe(map, cur, tmp, bkt)
+    {
+        free(cur);
+    }
+    free(map->buckets);
+    map->buckets = NULL;
+    map->cap = map->cap_bits = map->sz = 0;
+}
+
+void hashmap__free(struct hashmap *map)
+{
+    if (IS_ERR_OR_NULL(map))
+        return;
+
+    hashmap__clear(map);
+    free(map);
+}
+
+size_t hashmap__size(const struct hashmap *map)
+{
+    return map->sz;
+}
+
+size_t hashmap__capacity(const struct hashmap *map)
+{
+    return map->cap;
+}
+
+static bool hashmap_needs_to_grow(struct hashmap *map)
+{
+    /* grow if empty or more than 75% filled */
+    return (map->cap == 0) || ((map->sz + 1) * 4 / 3 > map->cap);
+}
