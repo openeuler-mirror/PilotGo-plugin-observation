@@ -627,3 +627,13 @@ struct mutex {
 	void *magic;
 	struct lockdep_map dep_map;
 };
+
+struct tlbflush_unmap_batch {};
+
+struct page;
+
+struct page_frag {
+	struct page *page;
+	__u32 offset;
+	__u32 size;
+};
