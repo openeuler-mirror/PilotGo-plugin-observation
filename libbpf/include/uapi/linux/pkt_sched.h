@@ -93,3 +93,38 @@ enum {
 struct tc_fifo_qopt {
 	__u32	limit;	/* Queue length: bytes for bfifo, packets for pfifo */
 };
+
+#define SKBPRIO_MAX_PRIORITY 64
+
+struct tc_skbprio_qopt {
+	__u32	limit;		/* Queue length in packets. */
+};
+
+/* PRIO section */
+
+#define TCQ_PRIO_BANDS	16
+#define TCQ_MIN_PRIO_BANDS 2
+
+struct tc_prio_qopt {
+	int	bands;			/* Number of bands */
+	__u8	priomap[TC_PRIO_MAX+1];	/* Map: logical priority -> PRIO band */
+};
+
+/* MULTIQ section */
+
+struct tc_multiq_qopt {
+	__u16	bands;			/* Number of bands */
+	__u16	max_bands;		/* Maximum number of queues */
+};
+
+/* PLUG section */
+
+#define TCQ_PLUG_BUFFER                0
+#define TCQ_PLUG_RELEASE_ONE           1
+#define TCQ_PLUG_RELEASE_INDEFINITE    2
+#define TCQ_PLUG_LIMIT                 3
+
+struct tc_plug_qopt {
+	int             action;
+	__u32           limit;
+};
