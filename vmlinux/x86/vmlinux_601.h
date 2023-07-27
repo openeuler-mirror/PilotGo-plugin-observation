@@ -5718,3 +5718,59 @@ struct perf_addr_filters_head
 	raw_spinlock_t lock;
 	unsigned int nr_file_filters;
 };
+
+struct perf_sample_data;
+
+typedef void (*perf_overflow_handler_t)(struct perf_event *, struct perf_sample_data *, struct pt_regs *);
+
+struct ftrace_ops;
+
+struct ftrace_regs;
+
+typedef void (*ftrace_func_t)(long unsigned int, long unsigned int, struct ftrace_ops *, struct ftrace_regs *);
+
+struct ftrace_hash;
+
+struct ftrace_ops_hash
+{
+	struct ftrace_hash *notrace_hash;
+	struct ftrace_hash *filter_hash;
+	struct mutex regex_lock;
+};
+
+enum ftrace_ops_cmd
+{
+	FTRACE_OPS_CMD_ENABLE_SHARE_IPMODIFY_SELF = 0,
+	FTRACE_OPS_CMD_ENABLE_SHARE_IPMODIFY_PEER = 1,
+	FTRACE_OPS_CMD_DISABLE_SHARE_IPMODIFY_PEER = 2,
+};
+
+typedef int (*ftrace_ops_func_t)(struct ftrace_ops *, enum ftrace_ops_cmd);
+
+struct ftrace_ops
+{
+	ftrace_func_t func;
+	struct ftrace_ops *next;
+	long unsigned int flags;
+	void *private;
+	ftrace_func_t saved_func;
+	struct ftrace_ops_hash local_hash;
+	struct ftrace_ops_hash *func_hash;
+	struct ftrace_ops_hash old_hash;
+	long unsigned int trampoline;
+	long unsigned int trampoline_size;
+	struct list_head list;
+	ftrace_ops_func_t ops_func;
+};
+
+struct pmu;
+
+struct perf_buffer;
+
+struct perf_addr_filter_range;
+
+struct bpf_prog;
+
+struct event_filter;
+
+struct perf_cgroup;
