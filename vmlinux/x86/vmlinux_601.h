@@ -6562,3 +6562,91 @@ struct psi_group
 struct cgroup_taskset;
 
 struct cftype;
+
+struct cgroup_subsys
+{
+	struct cgroup_subsys_state *(*css_alloc)(struct cgroup_subsys_state *);
+	int (*css_online)(struct cgroup_subsys_state *);
+	void (*css_offline)(struct cgroup_subsys_state *);
+	void (*css_released)(struct cgroup_subsys_state *);
+	void (*css_free)(struct cgroup_subsys_state *);
+	void (*css_reset)(struct cgroup_subsys_state *);
+	void (*css_rstat_flush)(struct cgroup_subsys_state *, int);
+	int (*css_extra_stat_show)(struct seq_file *, struct cgroup_subsys_state *);
+	int (*can_attach)(struct cgroup_taskset *);
+	void (*cancel_attach)(struct cgroup_taskset *);
+	void (*attach)(struct cgroup_taskset *);
+	void (*post_attach)();
+	int (*can_fork)(struct task_struct *, struct css_set *);
+	void (*cancel_fork)(struct task_struct *, struct css_set *);
+	void (*fork)(struct task_struct *);
+	void (*exit)(struct task_struct *);
+	void (*release)(struct task_struct *);
+	void (*bind)(struct cgroup_subsys_state *);
+	bool early_init : 1;
+	bool implicit_on_dfl : 1;
+	bool threaded : 1;
+	int id;
+	const char *name;
+	const char *legacy_name;
+	struct cgroup_root *root;
+	struct idr css_idr;
+	struct list_head cfts;
+	struct cftype *dfl_cftypes;
+	struct cftype *legacy_cftypes;
+	unsigned int depends_on;
+};
+
+struct cgroup_rstat_cpu
+{
+	struct u64_stats_sync bsync;
+	struct cgroup_base_stat bstat;
+	struct cgroup_base_stat last_bstat;
+	struct cgroup *updated_children;
+	struct cgroup *updated_next;
+};
+
+struct cgroup_root
+{
+	struct kernfs_root *kf_root;
+	unsigned int subsys_mask;
+	int hierarchy_id;
+	struct cgroup cgrp;
+	struct cgroup *cgrp_ancestor_storage;
+	atomic_t nr_cgrps;
+	struct list_head root_list;
+	unsigned int flags;
+	char release_agent_path[4096];
+	char name[64];
+};
+
+struct cftype
+{
+	char name[64];
+	long unsigned int private;
+	size_t max_write_len;
+	unsigned int flags;
+	unsigned int file_offset;
+	struct cgroup_subsys *ss;
+	struct list_head node;
+	struct kernfs_ops *kf_ops;
+	int (*open)(struct kernfs_open_file *);
+	void (*release)(struct kernfs_open_file *);
+	u64 (*read_u64)(struct cgroup_subsys_state *, struct cftype *);
+	s64 (*read_s64)(struct cgroup_subsys_state *, struct cftype *);
+	int (*seq_show)(struct seq_file *, void *);
+	void *(*seq_start)(struct seq_file *, loff_t *);
+	void *(*seq_next)(struct seq_file *, void *, loff_t *);
+	void (*seq_stop)(struct seq_file *, void *);
+	int (*write_u64)(struct cgroup_subsys_state *, struct cftype *, u64);
+	int (*write_s64)(struct cgroup_subsys_state *, struct cftype *, s64);
+	ssize_t (*write)(struct kernfs_open_file *, char *, size_t, loff_t);
+	__poll_t (*poll)(struct kernfs_open_file *, struct poll_table_struct *);
+	struct lock_class_key lockdep_key;
+};
+
+struct perf_callchain_entry
+{
+	__u64 nr;
+	__u64 ip[0];
+};
