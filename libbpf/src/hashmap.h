@@ -95,3 +95,71 @@ enum hashmap_insert_strategy
     HASHMAP_UPDATE,
     HASHMAP_APPEND,
 };
+
+#define hashmap_cast_ptr(p) ({                                                 \
+    _Static_assert((__builtin_constant_p((p)) ? (p) == NULL : 0) ||            \
+                       sizeof(*(p)) == sizeof(long),                           \
+                   #p " pointee should be a long-sized integer or a pointer"); \
+    (long *)(p);                                                               \
+})
+
+int hashmap_insert(struct hashmap *map, long key, long value,
+                   enum hashmap_insert_strategy strategy,
+                   long *old_key, long *old_value);
+
+#define hashmap__insert(map, key, value, strategy, old_key, old_value) \
+    hashmap_insert((map), (long)(key), (long)(value), (strategy),      \
+                   hashmap_cast_ptr(old_key),                          \
+                   hashmap_cast_ptr(old_value))
+
+#define hashmap__add(map, key, value) \
+    hashmap__insert((map), (key), (value), HASHMAP_ADD, NULL, NULL)
+
+#define hashmap__set(map, key, value, old_key, old_value) \
+    hashmap__insert((map), (key), (value), HASHMAP_SET, (old_key), (old_value))
+
+#define hashmap__update(map, key, value, old_key, old_value) \
+    hashmap__insert((map), (key), (value), HASHMAP_UPDATE, (old_key), (old_value))
+
+#define hashmap__append(map, key, value) \
+    hashmap__insert((map), (key), (value), HASHMAP_APPEND, NULL, NULL)
+
+bool hashmap_delete(struct hashmap *map, long key, long *old_key, long *old_value);
+
+#define hashmap__delete(map, key, old_key, old_value) \
+    hashmap_delete((map), (long)(key),                \
+                   hashmap_cast_ptr(old_key),         \
+                   hashmap_cast_ptr(old_value))
+
+bool hashmap_find(const struct hashmap *map, long key, long *value);
+
+#define hashmap__find(map, key, value) \
+    hashmap_find((map), (long)(key), hashmap_cast_ptr(value))
+
+#define hashmap__for_each_entry(map, cur, bkt) \
+    for (bkt = 0; bkt < map->cap; bkt++)       \
+        for (cur = map->buckets[bkt]; cur; cur = cur->next)
+
+#define hashmap__for_each_entry_safe(map, cur, tmp, bkt) \
+    for (bkt = 0; bkt < map->cap; bkt++)                 \
+        for (cur = map->buckets[bkt];                    \
+             cur && ({tmp = cur->next; true; });                               \
+             cur = tmp)
+
+#define hashmap__for_each_key_entry(map, cur, _key)                                         \
+    for (cur = map->buckets                                                                 \
+                   ? map->buckets[hash_bits(map->hash_fn((_key), map->ctx), map->cap_bits)] \
+                   : NULL;                                                                  \
+         cur;                                                                               \
+         cur = cur->next)                                                                   \
+        if (map->equal_fn(cur->key, (_key), map->ctx))
+
+#define hashmap__for_each_key_entry_safe(map, cur, tmp, _key)                               \
+    for (cur = map->buckets                                                                 \
+                   ? map->buckets[hash_bits(map->hash_fn((_key), map->ctx), map->cap_bits)] \
+                   : NULL;                                                                  \
+         cur && ({ tmp = cur->next; true; });                                                                      \
+         cur = tmp)                                                                         \
+        if (map->equal_fn(cur->key, (_key), map->ctx))
+
+#endif /* __LIBBPF_HASHMAP_H */
