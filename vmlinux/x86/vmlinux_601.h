@@ -4509,3 +4509,71 @@ enum kmalloc_cache_type
 	KMALLOC_DMA = 3,
 	NR_KMALLOC_TYPES = 4,
 };
+
+struct node_vectors
+{
+	unsigned int id;
+	union
+	{
+		unsigned int nvectors;
+		unsigned int ncpus;
+	};
+};
+
+typedef long unsigned int uintptr_t;
+
+typedef u64 dma_addr_t;
+
+struct range
+{
+	u64 start;
+	u64 end;
+};
+
+typedef long unsigned int pteval_t;
+
+typedef long unsigned int pmdval_t;
+
+typedef long unsigned int pudval_t;
+
+typedef struct
+{
+	pteval_t pte;
+} pte_t;
+
+typedef struct
+{
+	pudval_t pud;
+} pud_t;
+
+typedef struct
+{
+	pmdval_t pmd;
+} pmd_t;
+
+struct vmem_altmap
+{
+	long unsigned int base_pfn;
+	const long unsigned int end_pfn;
+	const long unsigned int reserve;
+	long unsigned int free;
+	long unsigned int align;
+	long unsigned int alloc;
+};
+
+struct percpu_ref_data;
+
+struct percpu_ref
+{
+	long unsigned int percpu_count_ptr;
+	struct percpu_ref_data *data;
+};
+
+enum memory_type
+{
+	MEMORY_DEVICE_PRIVATE = 1,
+	MEMORY_DEVICE_COHERENT = 2,
+	MEMORY_DEVICE_FS_DAX = 3,
+	MEMORY_DEVICE_GENERIC = 4,
+	MEMORY_DEVICE_PCI_P2PDMA = 5,
+};
