@@ -3505,3 +3505,80 @@ struct qc_info
 	unsigned int i_ino_warnlimit;
 	unsigned int i_rt_spc_warnlimit;
 };
+
+struct quotactl_ops
+{
+	int (*quota_on)(struct super_block *, int, int, const struct path *);
+	int (*quota_off)(struct super_block *, int);
+	int (*quota_enable)(struct super_block *, unsigned int);
+	int (*quota_disable)(struct super_block *, unsigned int);
+	int (*quota_sync)(struct super_block *, int);
+	int (*set_info)(struct super_block *, int, struct qc_info *);
+	int (*get_dqblk)(struct super_block *, struct kqid, struct qc_dqblk *);
+	int (*get_nextdqblk)(struct super_block *, struct kqid *, struct qc_dqblk *);
+	int (*set_dqblk)(struct super_block *, struct kqid, struct qc_dqblk *);
+	int (*get_state)(struct super_block *, struct qc_state *);
+	int (*rm_xquota)(struct super_block *, unsigned int);
+};
+
+enum module_state
+{
+	MODULE_STATE_LIVE = 0,
+	MODULE_STATE_COMING = 1,
+	MODULE_STATE_GOING = 2,
+	MODULE_STATE_UNFORMED = 3,
+};
+
+struct kset;
+
+struct kobj_type;
+
+struct kernfs_node;
+
+struct kobject
+{
+	const char *name;
+	struct list_head entry;
+	struct kobject *parent;
+	struct kset *kset;
+	const struct kobj_type *ktype;
+	struct kernfs_node *sd;
+	struct kref kref;
+	unsigned int state_initialized : 1;
+	unsigned int state_in_sysfs : 1;
+	unsigned int state_add_uevent_sent : 1;
+	unsigned int state_remove_uevent_sent : 1;
+	unsigned int uevent_suppress : 1;
+};
+
+struct module_param_attrs;
+
+struct module_kobject
+{
+	struct kobject kobj;
+	struct module *mod;
+	struct kobject *drivers_dir;
+	struct module_param_attrs *mp;
+	struct completion *kobj_completion;
+};
+
+struct latch_tree_node
+{
+	struct rb_node node[2];
+};
+
+struct mod_tree_node
+{
+	struct module *mod;
+	struct latch_tree_node node;
+};
+
+struct module_layout
+{
+	void *base;
+	unsigned int size;
+	unsigned int text_size;
+	unsigned int ro_size;
+	unsigned int ro_after_init_size;
+	struct mod_tree_node mtn;
+};
