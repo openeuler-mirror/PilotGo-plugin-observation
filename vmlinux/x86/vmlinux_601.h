@@ -4030,3 +4030,76 @@ struct kernfs_ops
 	__poll_t (*poll)(struct kernfs_open_file *, struct poll_table_struct *);
 	int (*mmap)(struct kernfs_open_file *, struct vm_area_struct *);
 };
+
+struct kernfs_open_file
+{
+	struct kernfs_node *kn;
+	struct file *file;
+	struct seq_file *seq_file;
+	void *priv;
+	struct mutex mutex;
+	struct mutex prealloc_mutex;
+	int event;
+	struct list_head list;
+	char *prealloc_buf;
+	size_t atomic_write_len;
+	bool mmapped : 1;
+	bool released : 1;
+	const struct vm_operations_struct *vm_ops;
+};
+
+enum kobj_ns_type
+{
+	KOBJ_NS_TYPE_NONE = 0,
+	KOBJ_NS_TYPE_NET = 1,
+	KOBJ_NS_TYPES = 2,
+};
+
+struct sock;
+
+struct kobj_ns_type_operations
+{
+	enum kobj_ns_type type;
+	bool (*current_may_mount)();
+	void *(*grab_current_ns)();
+	const void *(*netlink_ns)(struct sock *);
+	const void *(*initial_ns)();
+	void (*drop_ns)(void *);
+};
+
+struct attribute
+{
+	const char *name;
+	umode_t mode;
+	bool ignore_lockdep : 1;
+	struct lock_class_key *key;
+	struct lock_class_key skey;
+};
+
+struct bin_attribute;
+
+struct attribute_group
+{
+	const char *name;
+	umode_t (*is_visible)(struct kobject *, struct attribute *, int);
+	umode_t (*is_bin_visible)(struct kobject *, struct bin_attribute *, int);
+	struct attribute **attrs;
+	struct bin_attribute **bin_attrs;
+};
+
+struct bin_attribute
+{
+	struct attribute attr;
+	size_t size;
+	void *private;
+	struct address_space *(*f_mapping)();
+	ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+	ssize_t (*write)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+	int (*mmap)(struct file *, struct kobject *, struct bin_attribute *, struct vm_area_struct *);
+};
+
+struct sysfs_ops
+{
+	ssize_t (*show)(struct kobject *, struct attribute *, char *);
+	ssize_t (*store)(struct kobject *, struct attribute *, const char *, size_t);
+};
