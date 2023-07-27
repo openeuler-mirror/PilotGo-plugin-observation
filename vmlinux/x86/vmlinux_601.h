@@ -3906,3 +3906,57 @@ struct xattr_handler
 	int (*get)(const struct xattr_handler *, struct dentry *, struct inode *, const char *, void *, size_t);
 	int (*set)(const struct xattr_handler *, struct user_namespace *, struct dentry *, struct inode *, const char *, const void *, size_t, int);
 };
+
+typedef bool (*filldir_t)(struct dir_context *, const char *, int, loff_t, u64, unsigned int);
+
+struct dir_context
+{
+	filldir_t actor;
+	loff_t pos;
+};
+
+struct p_log;
+
+struct fs_parameter;
+
+struct fs_parse_result;
+
+typedef int fs_param_type(struct p_log *, const struct fs_parameter_spec *, struct fs_parameter *, struct fs_parse_result *);
+
+struct fs_parameter_spec
+{
+	const char *name;
+	fs_param_type *type;
+	u8 opt;
+	short unsigned int flags;
+	const void *data;
+};
+
+struct membuf
+{
+	void *p;
+	size_t left;
+};
+
+struct user_regset;
+
+typedef int user_regset_active_fn(struct task_struct *, const struct user_regset *);
+
+typedef int user_regset_get2_fn(struct task_struct *, const struct user_regset *, struct membuf);
+
+typedef int user_regset_set_fn(struct task_struct *, const struct user_regset *, unsigned int, unsigned int, const void *, const void *);
+
+typedef int user_regset_writeback_fn(struct task_struct *, const struct user_regset *, int);
+
+struct user_regset
+{
+	user_regset_get2_fn *regset_get;
+	user_regset_set_fn *set;
+	user_regset_active_fn *active;
+	user_regset_writeback_fn *writeback;
+	unsigned int n;
+	unsigned int size;
+	unsigned int align;
+	unsigned int bias;
+	unsigned int core_note_type;
+};
