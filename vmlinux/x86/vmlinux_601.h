@@ -3195,3 +3195,61 @@ struct vfsmount
 	int mnt_flags;
 	struct user_namespace *mnt_userns;
 };
+
+struct shrink_control
+{
+	gfp_t gfp_mask;
+	int nid;
+	long unsigned int nr_to_scan;
+	long unsigned int nr_scanned;
+	struct mem_cgroup *memcg;
+};
+
+struct list_lru_one
+{
+	struct list_head list;
+	long int nr_items;
+};
+
+struct list_lru_node
+{
+	spinlock_t lock;
+	struct list_lru_one lru;
+	long int nr_items;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+};
+
+enum migrate_mode
+{
+	MIGRATE_ASYNC = 0,
+	MIGRATE_SYNC_LIGHT = 1,
+	MIGRATE_SYNC = 2,
+	MIGRATE_SYNC_NO_COPY = 3,
+};
+
+struct exception_table_entry
+{
+	int insn;
+	int fixup;
+	int data;
+};
+
+struct key_tag
+{
+	struct callback_head rcu;
+	refcount_t usage;
+	bool removed;
+};
+
+typedef int (*request_key_actor_t)(struct key *, void *);
+
+struct key_preparsed_payload;
+
+struct key_match_data;
+
+struct kernel_pkey_params;
+
+struct kernel_pkey_query;
