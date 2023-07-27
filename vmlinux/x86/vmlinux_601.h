@@ -2824,3 +2824,57 @@ struct iov_iter
 		loff_t xarray_start;
 	};
 };
+
+struct wait_page_queue;
+
+struct kiocb
+{
+	struct file *ki_filp;
+	loff_t ki_pos;
+	void (*ki_complete)(struct kiocb *, long int);
+	void *private;
+	int ki_flags;
+	u16 ki_ioprio;
+	struct wait_page_queue *ki_waitq;
+};
+
+struct hlist_bl_node;
+
+struct hlist_bl_head
+{
+	struct hlist_bl_node *first;
+};
+
+struct hlist_bl_node
+{
+	struct hlist_bl_node *next;
+	struct hlist_bl_node **pprev;
+};
+
+struct lockref
+{
+	union
+	{
+		struct
+		{
+			spinlock_t lock;
+			int count;
+		};
+	};
+};
+
+struct qstr
+{
+	union
+	{
+		struct
+		{
+			u32 hash;
+			u32 len;
+		};
+		u64 hash_len;
+	};
+	const unsigned char *name;
+};
+
+struct dentry_operations;
