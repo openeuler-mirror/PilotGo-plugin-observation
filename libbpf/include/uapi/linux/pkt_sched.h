@@ -404,3 +404,39 @@ enum {
 	TCA_HFSC_USC,
 	__TCA_HFSC_MAX,
 };
+
+#define TCA_HFSC_MAX (__TCA_HFSC_MAX - 1)
+
+/* CBQ section */
+
+#define TC_CBQ_MAXPRIO		8
+#define TC_CBQ_MAXLEVEL		8
+#define TC_CBQ_DEF_EWMA		5
+
+struct tc_cbq_lssopt {
+	unsigned char	change;
+	unsigned char	flags;
+#define TCF_CBQ_LSS_BOUNDED	1
+#define TCF_CBQ_LSS_ISOLATED	2
+	unsigned char  	ewma_log;
+	unsigned char  	level;
+#define TCF_CBQ_LSS_FLAGS	1
+#define TCF_CBQ_LSS_EWMA	2
+#define TCF_CBQ_LSS_MAXIDLE	4
+#define TCF_CBQ_LSS_MINIDLE	8
+#define TCF_CBQ_LSS_OFFTIME	0x10
+#define TCF_CBQ_LSS_AVPKT	0x20
+	__u32		maxidle;
+	__u32		minidle;
+	__u32		offtime;
+	__u32		avpkt;
+};
+
+struct tc_cbq_wrropt {
+	unsigned char	flags;
+	unsigned char	priority;
+	unsigned char	cpriority;
+	unsigned char	__reserved;
+	__u32		allot;
+	__u32		weight;
+};
