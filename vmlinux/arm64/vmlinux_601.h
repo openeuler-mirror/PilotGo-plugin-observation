@@ -637,3 +637,13 @@ struct page_frag {
 	__u32 offset;
 	__u32 size;
 };
+
+struct kmap_ctrl {};
+
+struct timer_list {
+	struct hlist_node entry;
+	long unsigned int expires;
+	void (*function)(struct timer_list *);
+	u32 flags;
+	struct lockdep_map lockdep_map;
+};
