@@ -204,3 +204,39 @@ int hashmap_insert(struct hashmap *map, long key, long value,
 
     return 0;
 }
+
+bool hashmap_find(const struct hashmap *map, long key, long *value)
+{
+    struct hashmap_entry *entry;
+    size_t h;
+
+    h = hash_bits(map->hash_fn(key, map->ctx), map->cap_bits);
+    if (!hashmap_find_entry(map, key, h, NULL, &entry))
+        return false;
+
+    if (value)
+        *value = entry->value;
+    return true;
+}
+
+bool hashmap_delete(struct hashmap *map, long key,
+                    long *old_key, long *old_value)
+{
+    struct hashmap_entry **pprev, *entry;
+    size_t h;
+
+    h = hash_bits(map->hash_fn(key, map->ctx), map->cap_bits);
+    if (!hashmap_find_entry(map, key, h, &pprev, &entry))
+        return false;
+
+    if (old_key)
+        *old_key = entry->key;
+    if (old_value)
+        *old_value = entry->value;
+
+    hashmap_del_entry(pprev, entry);
+    free(entry);
+    map->sz--;
+
+    return true;
+}
