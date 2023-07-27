@@ -33,3 +33,35 @@ struct tc_estimator {
 	signed char	interval;
 	unsigned char	ewma_log;
 };
+
+#define TC_H_MAJ_MASK (0xFFFF0000U)
+#define TC_H_MIN_MASK (0x0000FFFFU)
+#define TC_H_MAJ(h) ((h)&TC_H_MAJ_MASK)
+#define TC_H_MIN(h) ((h)&TC_H_MIN_MASK)
+#define TC_H_MAKE(maj,min) (((maj)&TC_H_MAJ_MASK)|((min)&TC_H_MIN_MASK))
+
+#define TC_H_UNSPEC	(0U)
+#define TC_H_ROOT	(0xFFFFFFFFU)
+#define TC_H_INGRESS    (0xFFFFFFF1U)
+#define TC_H_CLSACT	TC_H_INGRESS
+
+#define TC_H_MIN_PRIORITY	0xFFE0U
+#define TC_H_MIN_INGRESS	0xFFF2U
+#define TC_H_MIN_EGRESS		0xFFF3U
+
+/* Need to corrospond to iproute2 tc/tc_core.h "enum link_layer" */
+enum tc_link_layer {
+	TC_LINKLAYER_UNAWARE, /* Indicate unaware old iproute2 util */
+	TC_LINKLAYER_ETHERNET,
+	TC_LINKLAYER_ATM,
+};
+#define TC_LINKLAYER_MASK 0x0F /* limit use to lower 4 bits */
+
+struct tc_ratespec {
+	unsigned char	cell_log;
+	__u8		linklayer; /* lower 4 bits */
+	unsigned short	overhead;
+	short		cell_align;
+	unsigned short	mpu;
+	__u32		rate;
+};
