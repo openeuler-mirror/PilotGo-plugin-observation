@@ -647,3 +647,25 @@ struct timer_list {
 	u32 flags;
 	struct lockdep_map lockdep_map;
 };
+
+struct cpu_context {
+	long unsigned int x19;
+	long unsigned int x20;
+	long unsigned int x21;
+	long unsigned int x22;
+	long unsigned int x23;
+	long unsigned int x24;
+	long unsigned int x25;
+	long unsigned int x26;
+	long unsigned int x27;
+	long unsigned int x28;
+	long unsigned int fp;
+	long unsigned int sp;
+	long unsigned int pc;
+};
+
+enum fp_type {
+	FP_STATE_CURRENT = 0,
+	FP_STATE_FPSIMD = 1,
+	FP_STATE_SVE = 2,
+};
