@@ -2878,3 +2878,118 @@ struct qstr
 };
 
 struct dentry_operations;
+
+struct dentry
+{
+	unsigned int d_flags;
+	seqcount_spinlock_t d_seq;
+	struct hlist_bl_node d_hash;
+	struct dentry *d_parent;
+	struct qstr d_name;
+	struct inode *d_inode;
+	unsigned char d_iname[32];
+	struct lockref d_lockref;
+	const struct dentry_operations *d_op;
+	struct super_block *d_sb;
+	long unsigned int d_time;
+	void *d_fsdata;
+	union
+	{
+		struct list_head d_lru;
+		wait_queue_head_t *d_wait;
+	};
+	struct list_head d_child;
+	struct list_head d_subdirs;
+	union
+	{
+		struct hlist_node d_alias;
+		struct hlist_bl_node d_in_lookup_hash;
+		struct callback_head d_rcu;
+	} d_u;
+};
+
+struct posix_acl;
+
+struct inode_operations;
+
+struct bdi_writeback;
+
+struct file_lock_context;
+
+struct cdev;
+
+struct fsnotify_mark_connector;
+
+struct inode
+{
+	umode_t i_mode;
+	short unsigned int i_opflags;
+	kuid_t i_uid;
+	kgid_t i_gid;
+	unsigned int i_flags;
+	struct posix_acl *i_acl;
+	struct posix_acl *i_default_acl;
+	const struct inode_operations *i_op;
+	struct super_block *i_sb;
+	struct address_space *i_mapping;
+	void *i_security;
+	long unsigned int i_ino;
+	union
+	{
+		const unsigned int i_nlink;
+		unsigned int __i_nlink;
+	};
+	dev_t i_rdev;
+	loff_t i_size;
+	struct timespec64 i_atime;
+	struct timespec64 i_mtime;
+	struct timespec64 i_ctime;
+	spinlock_t i_lock;
+	short unsigned int i_bytes;
+	u8 i_blkbits;
+	u8 i_write_hint;
+	blkcnt_t i_blocks;
+	long unsigned int i_state;
+	struct rw_semaphore i_rwsem;
+	long unsigned int dirtied_when;
+	long unsigned int dirtied_time_when;
+	struct hlist_node i_hash;
+	struct list_head i_io_list;
+	struct bdi_writeback *i_wb;
+	int i_wb_frn_winner;
+	u16 i_wb_frn_avg_time;
+	u16 i_wb_frn_history;
+	struct list_head i_lru;
+	struct list_head i_sb_list;
+	struct list_head i_wb_list;
+	union
+	{
+		struct hlist_head i_dentry;
+		struct callback_head i_rcu;
+	};
+	atomic64_t i_version;
+	atomic64_t i_sequence;
+	atomic_t i_count;
+	atomic_t i_dio_count;
+	atomic_t i_writecount;
+	atomic_t i_readcount;
+	union
+	{
+		const struct file_operations *i_fop;
+		void (*free_inode)(struct inode *);
+	};
+	struct file_lock_context *i_flctx;
+	struct address_space i_data;
+	struct list_head i_devices;
+	union
+	{
+		struct pipe_inode_info *i_pipe;
+		struct cdev *i_cdev;
+		char *i_link;
+		unsigned int i_dir_seq;
+	};
+	__u32 i_generation;
+	__u32 i_fsnotify_mask;
+	struct fsnotify_mark_connector *i_fsnotify_marks;
+	void *i_private;
+};
