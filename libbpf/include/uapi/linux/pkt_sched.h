@@ -166,3 +166,44 @@ struct tc_sfq_qopt {
 	unsigned	divisor;	/* Hash divisor  */
 	unsigned	flows;		/* Maximal number of flows  */
 };
+
+struct tc_sfqred_stats {
+	__u32           prob_drop;      /* Early drops, below max threshold */
+	__u32           forced_drop;	/* Early drops, after max threshold */
+	__u32           prob_mark;      /* Marked packets, below max threshold */
+	__u32           forced_mark;    /* Marked packets, after max threshold */
+	__u32           prob_mark_head; /* Marked packets, below max threshold */
+	__u32           forced_mark_head;/* Marked packets, after max threshold */
+};
+
+struct tc_sfq_qopt_v1 {
+	struct tc_sfq_qopt v0;
+	unsigned int	depth;		/* max number of packets per flow */
+	unsigned int	headdrop;
+/* SFQRED parameters */
+	__u32		limit;		/* HARD maximal flow queue length (bytes) */
+	__u32		qth_min;	/* Min average length threshold (bytes) */
+	__u32		qth_max;	/* Max average length threshold (bytes) */
+	unsigned char   Wlog;		/* log(W)		*/
+	unsigned char   Plog;		/* log(P_max/(qth_max-qth_min))	*/
+	unsigned char   Scell_log;	/* cell size for idle damping */
+	unsigned char	flags;
+	__u32		max_P;		/* probability, high resolution */
+/* SFQRED stats */
+	struct tc_sfqred_stats stats;
+};
+
+
+struct tc_sfq_xstats {
+	__s32		allot;
+};
+
+/* RED section */
+
+enum {
+	TCA_RED_UNSPEC,
+	TCA_RED_PARMS,
+	TCA_RED_STAB,
+	TCA_RED_MAX_P,
+	__TCA_RED_MAX,
+};
