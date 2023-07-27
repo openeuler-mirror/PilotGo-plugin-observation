@@ -4808,3 +4808,86 @@ enum vm_event_item
 	DIRECT_MAP_LEVEL3_SPLIT = 106,
 	NR_VM_EVENT_ITEMS = 107,
 };
+
+struct fwnode_operations;
+
+struct device;
+
+struct fwnode_handle
+{
+	struct fwnode_handle *secondary;
+	const struct fwnode_operations *ops;
+	struct device *dev;
+	struct list_head suppliers;
+	struct list_head consumers;
+	u8 flags;
+};
+
+enum dev_dma_attr
+{
+	DEV_DMA_NOT_SUPPORTED = 0,
+	DEV_DMA_NON_COHERENT = 1,
+	DEV_DMA_COHERENT = 2,
+};
+
+struct fwnode_reference_args;
+
+struct fwnode_endpoint;
+
+struct fwnode_operations
+{
+	struct fwnode_handle *(*get)(struct fwnode_handle *);
+	void (*put)(struct fwnode_handle *);
+	bool (*device_is_available)(const struct fwnode_handle *);
+	const void *(*device_get_match_data)(const struct fwnode_handle *, const struct device *);
+	bool (*device_dma_supported)(const struct fwnode_handle *);
+	enum dev_dma_attr (*device_get_dma_attr)(const struct fwnode_handle *);
+	bool (*property_present)(const struct fwnode_handle *, const char *);
+	int (*property_read_int_array)(const struct fwnode_handle *, const char *, unsigned int, void *, size_t);
+	int (*property_read_string_array)(const struct fwnode_handle *, const char *, const char **, size_t);
+	const char *(*get_name)(const struct fwnode_handle *);
+	const char *(*get_name_prefix)(const struct fwnode_handle *);
+	struct fwnode_handle *(*get_parent)(const struct fwnode_handle *);
+	struct fwnode_handle *(*get_next_child_node)(const struct fwnode_handle *, struct fwnode_handle *);
+	struct fwnode_handle *(*get_named_child_node)(const struct fwnode_handle *, const char *);
+	int (*get_reference_args)(const struct fwnode_handle *, const char *, const char *, unsigned int, unsigned int, struct fwnode_reference_args *);
+	struct fwnode_handle *(*graph_get_next_endpoint)(const struct fwnode_handle *, struct fwnode_handle *);
+	struct fwnode_handle *(*graph_get_remote_endpoint)(const struct fwnode_handle *);
+	struct fwnode_handle *(*graph_get_port_parent)(struct fwnode_handle *);
+	int (*graph_parse_endpoint)(const struct fwnode_handle *, struct fwnode_endpoint *);
+	void *(*iomap)(struct fwnode_handle *, int);
+	int (*irq_get)(const struct fwnode_handle *, unsigned int);
+	int (*add_links)(struct fwnode_handle *);
+};
+
+enum dl_dev_state
+{
+	DL_DEV_NO_DRIVER = 0,
+	DL_DEV_PROBING = 1,
+	DL_DEV_DRIVER_BOUND = 2,
+	DL_DEV_UNBINDING = 3,
+};
+
+struct dev_links_info
+{
+	struct list_head suppliers;
+	struct list_head consumers;
+	struct list_head defer_sync;
+	enum dl_dev_state status;
+};
+
+struct pm_message
+{
+	int event;
+};
+
+typedef struct pm_message pm_message_t;
+
+enum rpm_request
+{
+	RPM_REQ_NONE = 0,
+	RPM_REQ_IDLE = 1,
+	RPM_REQ_SUSPEND = 2,
+	RPM_REQ_AUTOSUSPEND = 3,
+	RPM_REQ_RESUME = 4,
+};
