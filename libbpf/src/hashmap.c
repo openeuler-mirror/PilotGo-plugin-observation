@@ -147,3 +147,60 @@ static bool hashmap_find_entry(const struct hashmap *map,
 
     return false;
 }
+
+int hashmap_insert(struct hashmap *map, long key, long value,
+                   enum hashmap_insert_strategy strategy,
+                   long *old_key, long *old_value)
+{
+    struct hashmap_entry *entry;
+    size_t h;
+    int err;
+
+    if (old_key)
+        *old_key = 0;
+    if (old_value)
+        *old_value = 0;
+
+    h = hash_bits(map->hash_fn(key, map->ctx), map->cap_bits);
+    if (strategy != HASHMAP_APPEND &&
+        hashmap_find_entry(map, key, h, NULL, &entry))
+    {
+        if (old_key)
+            *old_key = entry->key;
+        if (old_value)
+            *old_value = entry->value;
+
+        if (strategy == HASHMAP_SET || strategy == HASHMAP_UPDATE)
+        {
+            entry->key = key;
+            entry->value = value;
+            return 0;
+        }
+        else if (strategy == HASHMAP_ADD)
+        {
+            return -EEXIST;
+        }
+    }
+
+    if (strategy == HASHMAP_UPDATE)
+        return -ENOENT;
+
+    if (hashmap_needs_to_grow(map))
+    {
+        err = hashmap_grow(map);
+        if (err)
+            return err;
+        h = hash_bits(map->hash_fn(key, map->ctx), map->cap_bits);
+    }
+
+    entry = malloc(sizeof(struct hashmap_entry));
+    if (!entry)
+        return -ENOMEM;
+
+    entry->key = key;
+    entry->value = value;
+    hashmap_add_entry(&map->buckets[h], entry);
+    map->sz++;
+
+    return 0;
+}
