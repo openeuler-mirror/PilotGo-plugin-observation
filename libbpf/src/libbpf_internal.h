@@ -142,3 +142,54 @@ extern void libbpf_print(enum libbpf_print_level level,
 #ifndef __has_builtin
 #define __has_builtin(x) 0
 #endif
+
+struct bpf_link
+{
+    int (*detach)(struct bpf_link *link);
+    void (*dealloc)(struct bpf_link *link);
+    char *pin_path; /* NULL, if not pinned */
+    int fd;         /* hook FD, -1 if not applicable */
+    bool disconnected;
+};
+
+static inline void *libbpf_reallocarray(void *ptr, size_t nmemb, size_t size)
+{
+    size_t total;
+
+#if __has_builtin(__builtin_mul_overflow)
+    if (unlikely(__builtin_mul_overflow(nmemb, size, &total)))
+        return NULL;
+#else
+    if (size == 0 || nmemb > ULONG_MAX / size)
+        return NULL;
+    total = nmemb * size;
+#endif
+    return realloc(ptr, total);
+}
+
+static inline void libbpf_strlcpy(char *dst, const char *src, size_t sz)
+{
+    size_t i;
+
+    if (sz == 0)
+        return;
+
+    sz--;
+    for (i = 0; i < sz && src[i]; i++)
+        dst[i] = src[i];
+    dst[i] = '\0';
+}
+
+__u32 get_kernel_version(void);
+
+struct btf;
+struct btf_type;
+
+struct btf_type *btf_type_by_id(const struct btf *btf, __u32 type_id);
+const char *btf_kind_str(const struct btf_type *t);
+const struct btf_type *skip_mods_and_typedefs(const struct btf *btf, __u32 id, __u32 *res_id);
+
+static inline enum btf_func_linkage btf_func_linkage(const struct btf_type *t)
+{
+    return (enum btf_func_linkage)(int)btf_vlen(t);
+}
