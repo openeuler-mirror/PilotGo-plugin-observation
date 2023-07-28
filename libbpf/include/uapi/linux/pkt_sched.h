@@ -556,3 +556,31 @@ struct tc_netem_reorder {
 	__u32	probability;
 	__u32	correlation;
 };
+
+struct tc_netem_corrupt {
+	__u32	probability;
+	__u32	correlation;
+};
+
+struct tc_netem_rate {
+	__u32	rate;	/* byte/s */
+	__s32	packet_overhead;
+	__u32	cell_size;
+	__s32	cell_overhead;
+};
+
+struct tc_netem_slot {
+	__s64   min_delay; /* nsec */
+	__s64   max_delay;
+	__s32   max_packets;
+	__s32   max_bytes;
+	__s64	dist_delay; /* nsec */
+	__s64	dist_jitter; /* nsec */
+};
+
+enum {
+	NETEM_LOSS_UNSPEC,
+	NETEM_LOSS_GI,		/* General Intuitive - 4 state model */
+	NETEM_LOSS_GE,		/* Gilbert Elliot models */
+	__NETEM_LOSS_MAX
+};
