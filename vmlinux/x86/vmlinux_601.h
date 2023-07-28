@@ -3694,3 +3694,88 @@ struct module
 	long : 64;
 	long : 64;
 };
+
+struct writeback_control;
+
+struct readahead_control;
+
+struct swap_info_struct;
+
+struct address_space_operations
+{
+	int (*writepage)(struct page *, struct writeback_control *);
+	int (*read_folio)(struct file *, struct folio *);
+	int (*writepages)(struct address_space *, struct writeback_control *);
+	bool (*dirty_folio)(struct address_space *, struct folio *);
+	void (*readahead)(struct readahead_control *);
+	int (*write_begin)(struct file *, struct address_space *, loff_t, unsigned int, struct page **, void **);
+	int (*write_end)(struct file *, struct address_space *, loff_t, unsigned int, unsigned int, struct page *, void *);
+	sector_t (*bmap)(struct address_space *, sector_t);
+	void (*invalidate_folio)(struct folio *, size_t, size_t);
+	bool (*release_folio)(struct folio *, gfp_t);
+	void (*free_folio)(struct folio *);
+	ssize_t (*direct_IO)(struct kiocb *, struct iov_iter *);
+	int (*migrate_folio)(struct address_space *, struct folio *, struct folio *, enum migrate_mode);
+	int (*launder_folio)(struct folio *);
+	bool (*is_partially_uptodate)(struct folio *, size_t, size_t);
+	void (*is_dirty_writeback)(struct folio *, bool *, bool *);
+	int (*error_remove_page)(struct address_space *, struct page *);
+	int (*swap_activate)(struct swap_info_struct *, struct file *, sector_t *);
+	void (*swap_deactivate)(struct file *);
+	int (*swap_rw)(struct kiocb *, struct iov_iter *);
+};
+
+struct fiemap_extent_info;
+
+struct fileattr;
+
+struct inode_operations
+{
+	struct dentry *(*lookup)(struct inode *, struct dentry *, unsigned int);
+	const char *(*get_link)(struct dentry *, struct inode *, struct delayed_call *);
+	int (*permission)(struct user_namespace *, struct inode *, int);
+	struct posix_acl *(*get_acl)(struct inode *, int, bool);
+	int (*readlink)(struct dentry *, char *, int);
+	int (*create)(struct user_namespace *, struct inode *, struct dentry *, umode_t, bool);
+	int (*link)(struct dentry *, struct inode *, struct dentry *);
+	int (*unlink)(struct inode *, struct dentry *);
+	int (*symlink)(struct user_namespace *, struct inode *, struct dentry *, const char *);
+	int (*mkdir)(struct user_namespace *, struct inode *, struct dentry *, umode_t);
+	int (*rmdir)(struct inode *, struct dentry *);
+	int (*mknod)(struct user_namespace *, struct inode *, struct dentry *, umode_t, dev_t);
+	int (*rename)(struct user_namespace *, struct inode *, struct dentry *, struct inode *, struct dentry *, unsigned int);
+	int (*setattr)(struct user_namespace *, struct dentry *, struct iattr *);
+	int (*getattr)(struct user_namespace *, const struct path *, struct kstat *, u32, unsigned int);
+	ssize_t (*listxattr)(struct dentry *, char *, size_t);
+	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64, u64);
+	int (*update_time)(struct inode *, struct timespec64 *, int);
+	int (*atomic_open)(struct inode *, struct dentry *, struct file *, unsigned int, umode_t);
+	int (*tmpfile)(struct user_namespace *, struct inode *, struct file *, umode_t);
+	int (*set_acl)(struct user_namespace *, struct inode *, struct posix_acl *, int);
+	int (*fileattr_set)(struct user_namespace *, struct dentry *, struct fileattr *);
+	int (*fileattr_get)(struct dentry *, struct fileattr *);
+	long : 64;
+};
+
+struct file_lock_context
+{
+	spinlock_t flc_lock;
+	struct list_head flc_flock;
+	struct list_head flc_posix;
+	struct list_head flc_lease;
+};
+
+struct file_lock_operations
+{
+	void (*fl_copy_lock)(struct file_lock *, struct file_lock *);
+	void (*fl_release_private)(struct file_lock *);
+};
+
+struct nlm_lockowner;
+
+struct nfs_lock_info
+{
+	u32 state;
+	struct nlm_lockowner *owner;
+	struct list_head list;
+};
