@@ -584,3 +584,33 @@ enum {
 	NETEM_LOSS_GE,		/* Gilbert Elliot models */
 	__NETEM_LOSS_MAX
 };
+
+#define NETEM_LOSS_MAX (__NETEM_LOSS_MAX - 1)
+
+/* State transition probabilities for 4 state model */
+struct tc_netem_gimodel {
+	__u32	p13;
+	__u32	p31;
+	__u32	p32;
+	__u32	p14;
+	__u32	p23;
+};
+
+/* Gilbert-Elliot models */
+struct tc_netem_gemodel {
+	__u32 p;
+	__u32 r;
+	__u32 h;
+	__u32 k1;
+};
+
+#define NETEM_DIST_SCALE	8192
+#define NETEM_DIST_MAX		16384
+
+/* DRR */
+
+enum {
+	TCA_DRR_UNSPEC,
+	TCA_DRR_QUANTUM,
+	__TCA_DRR_MAX
+};
