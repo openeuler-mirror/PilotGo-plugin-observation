@@ -3582,3 +3582,115 @@ struct module_layout
 	unsigned int ro_after_init_size;
 	struct mod_tree_node mtn;
 };
+
+struct mod_arch_specific
+{
+	unsigned int num_orcs;
+	int *orc_unwind_ip;
+	struct orc_entry *orc_unwind;
+};
+
+struct elf64_sym;
+
+typedef struct elf64_sym Elf64_Sym;
+
+struct mod_kallsyms
+{
+	Elf64_Sym *symtab;
+	unsigned int num_symtab;
+	char *strtab;
+	char *typetab;
+};
+
+struct module_attribute;
+
+struct kernel_param;
+
+struct module_sect_attrs;
+
+struct module_notes_attrs;
+
+struct trace_event_call;
+
+struct trace_eval_map;
+
+struct error_injection_entry;
+
+struct module
+{
+	enum module_state state;
+	struct list_head list;
+	char name[56];
+	struct module_kobject mkobj;
+	struct module_attribute *modinfo_attrs;
+	const char *version;
+	const char *srcversion;
+	struct kobject *holders_dir;
+	const struct kernel_symbol *syms;
+	const s32 *crcs;
+	unsigned int num_syms;
+	struct mutex param_lock;
+	struct kernel_param *kp;
+	unsigned int num_kp;
+	unsigned int num_gpl_syms;
+	const struct kernel_symbol *gpl_syms;
+	const s32 *gpl_crcs;
+	bool using_gplonly_symbols;
+	bool sig_ok;
+	bool async_probe_requested;
+	unsigned int num_exentries;
+	struct exception_table_entry *extable;
+	int (*init)();
+	long : 64;
+	long : 64;
+	struct module_layout core_layout;
+	struct module_layout init_layout;
+	struct mod_arch_specific arch;
+	long unsigned int taints;
+	unsigned int num_bugs;
+	struct list_head bug_list;
+	struct bug_entry *bug_table;
+	struct mod_kallsyms *kallsyms;
+	struct mod_kallsyms core_kallsyms;
+	struct module_sect_attrs *sect_attrs;
+	struct module_notes_attrs *notes_attrs;
+	char *args;
+	void *percpu;
+	unsigned int percpu_size;
+	void *noinstr_text_start;
+	unsigned int noinstr_text_size;
+	unsigned int num_tracepoints;
+	tracepoint_ptr_t *tracepoints_ptrs;
+	unsigned int num_srcu_structs;
+	struct srcu_struct **srcu_struct_ptrs;
+	unsigned int num_bpf_raw_events;
+	struct bpf_raw_event_map *bpf_raw_events;
+	unsigned int btf_data_size;
+	void *btf_data;
+	struct jump_entry *jump_entries;
+	unsigned int num_jump_entries;
+	unsigned int num_trace_bprintk_fmt;
+	const char **trace_bprintk_fmt_start;
+	struct trace_event_call **trace_events;
+	unsigned int num_trace_events;
+	struct trace_eval_map **trace_evals;
+	unsigned int num_trace_evals;
+	unsigned int num_ftrace_callsites;
+	long unsigned int *ftrace_callsites;
+	void *kprobes_text_start;
+	unsigned int kprobes_text_size;
+	long unsigned int *kprobe_blacklist;
+	unsigned int num_kprobe_blacklist;
+	int num_static_call_sites;
+	struct static_call_site *static_call_sites;
+	struct list_head source_list;
+	struct list_head target_list;
+	void (*exit)();
+	atomic_t refcnt;
+	struct error_injection_entry *ei_funcs;
+	unsigned int num_ei_funcs;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+};
