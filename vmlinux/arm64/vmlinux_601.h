@@ -1118,3 +1118,14 @@ struct pid {
 	struct callback_head rcu;
 	struct upid numbers[1];
 };
+
+struct work_struct;
+
+typedef void (*work_func_t)(struct work_struct *);
+
+struct work_struct {
+	atomic_long_t data;
+	struct list_head entry;
+	work_func_t func;
+	struct lockdep_map lockdep_map;
+};
