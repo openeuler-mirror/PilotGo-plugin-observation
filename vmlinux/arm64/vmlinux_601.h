@@ -1090,3 +1090,31 @@ struct wait_queue_head {
 	spinlock_t lock;
 	struct list_head head;
 };
+
+typedef struct wait_queue_head wait_queue_head_t;
+
+enum pid_type {
+	PIDTYPE_PID = 0,
+	PIDTYPE_TGID = 1,
+	PIDTYPE_PGID = 2,
+	PIDTYPE_SID = 3,
+	PIDTYPE_MAX = 4,
+};
+
+struct pid_namespace;
+
+struct upid {
+	int nr;
+	struct pid_namespace *ns;
+};
+
+struct pid {
+	refcount_t count;
+	unsigned int level;
+	spinlock_t lock;
+	struct hlist_head tasks[4];
+	struct hlist_head inodes;
+	wait_queue_head_t wait_pidfd;
+	struct callback_head rcu;
+	struct upid numbers[1];
+};
