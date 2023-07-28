@@ -67,7 +67,7 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
-
+static int do_batch(int argc, char **argv);
 static int do_version(int argc, char **argv);
 
 static const struct cmd commands[] = {
@@ -77,6 +77,15 @@ static const struct cmd commands[] = {
 	{ "map",	do_map },
 	{ "link",	do_link },
 	{ "cgroup",	do_cgroup },
+	{ "perf",	do_perf },
+	{ "net",	do_net },
+	{ "feature",	do_feature },
+	{ "btf",	do_btf },
+	{ "gen",	do_gen },
+	{ "struct_ops",	do_struct_ops },
+	{ "iter",	do_iter },
+	{ "version",	do_version },
+	{ 0 }
 };
 
 #ifndef BPFTOOL_VERSION
@@ -84,6 +93,15 @@ static const struct cmd commands[] = {
 #define BPFTOOL_MINOR_VERSION LIBBPF_MINOR_VERSION
 #define BPFTOOL_PATCH_VERSION 0
 #endif
+
+static void
+print_feature(const char *feature, bool state, unsigned int *nb_features)
+{
+	if (state) {
+		printf("%s %s", *nb_features ? "," : "", feature);
+		*nb_features = *nb_features + 1;
+	}
+}
 
 static int do_version(int argc, char **argv)
 {
@@ -114,7 +132,6 @@ static int do_version(int argc, char **argv)
 
 	if (json_output) {
 		jsonw_start_object(json_wtr);
-
 		jsonw_name(json_wtr, "version");
 #ifdef BPFTOOL_VERSION
 		jsonw_printf(json_wtr, "\"%s\"", BPFTOOL_VERSION);
@@ -132,9 +149,9 @@ static int do_version(int argc, char **argv)
 		jsonw_bool_field(json_wtr, "llvm", has_llvm);
 		jsonw_bool_field(json_wtr, "skeletons", has_skeletons);
 		jsonw_bool_field(json_wtr, "bootstrap", bootstrap);
-		jsonw_end_object(json_wtr);	/* features */
+		jsonw_end_object(json_wtr);
 
-		jsonw_end_object(json_wtr);	/* root object */
+		jsonw_end_object(json_wtr);
 	} else {
 		unsigned int nb_features = 0;
 
@@ -153,6 +170,34 @@ static int do_version(int argc, char **argv)
 		printf("\n");
 	}
 	return 0;
+}
+
+int cmd_select(const struct cmd *cmds, int argc, char **argv,
+	       int (*help)(int argc, char **argv))
+{
+	unsigned int i;
+
+	last_argc = argc;
+	last_argv = argv;
+	last_do_help = help;
+
+	if (argc < 1 && cmds[0].func)
+		return cmds[0].func(argc, argv);
+
+	for (i = 0; cmds[i].cmd; i++) {
+		if (is_prefix(*argv, cmds[i].cmd)) {
+			if (!cmds[i].func) {
+				p_err("command '%s' is not supported in bootstrap mode",
+				      cmds[i].cmd);
+				return -1;
+			}
+			return cmds[i].func(argc - 1, argv + 1);
+		}
+	}
+
+	help(argc - 1, argv + 1);
+
+	return -1;
 }
 
 bool is_prefix(const char *pfx, const char *str)
@@ -193,32 +238,67 @@ int detect_common_prefix(const char *arg, ...)
 	return 0;
 }
 
-int cmd_select(const struct cmd *cmds, int argc, char **argv,
-	       int (*help)(int argc, char **argv))
+void fprint_hex(FILE *f, void *arg, unsigned int n, const char *sep)
 {
+	unsigned char *data = arg;
 	unsigned int i;
 
-	last_argc = argc;
-	last_argv = argv;
-	last_do_help = help;
+	for (i = 0; i < n; i++) {
+		const char *pfx = "";
 
-	if (argc < 1 && cmds[0].func)
-		return cmds[0].func(argc, argv);
+		if (!i)
+			/* nothing */;
+		else if (!(i % 16))
+			fprintf(f, "\n");
+		else if (!(i % 8))
+			fprintf(f, "  ");
+		else
+			pfx = sep;
 
-	for (i = 0; cmds[i].cmd; i++) {
-		if (is_prefix(*argv, cmds[i].cmd)) {
-			if (!cmds[i].func) {
-				p_err("command '%s' is not supported in bootstrap mode",
-				      cmds[i].cmd);
+		fprintf(f, "%s%02hhx", i ? pfx : "", data[i]);
+	}
+}
+
+static int make_args(char *line, char *n_argv[], int maxargs, int cmd_nb)
+{
+	static const char ws[] = " \t\r\n";
+	char *cp = line;
+	int n_argc = 0;
+
+	while (*cp) {
+		cp += strspn(cp, ws);
+
+		if (*cp == '\0')
+			break;
+
+		if (n_argc >= (maxargs - 1)) {
+			p_err("too many arguments to command %d", cmd_nb);
+			return -1;
+		}
+
+		if (*cp == '\'' || *cp == '"') {
+			char quote = *cp++;
+
+			n_argv[n_argc++] = cp;
+			cp = strchr(cp, quote);
+			if (!cp) {
+				p_err("unterminated quoted string in command %d",
+				      cmd_nb);
 				return -1;
 			}
-			return cmds[i].func(argc - 1, argv + 1);
+		} else {
+			n_argv[n_argc++] = cp;
+
+			cp += strcspn(cp, ws);
+			if (*cp == '\0')
+				break;
 		}
+
+		*cp++ = 0;
 	}
+	n_argv[n_argc] = NULL;
 
-	help(argc - 1, argv + 1);
-
-	return -1;
+	return n_argc;
 }
 
 static int do_batch(int argc, char **argv)
@@ -255,7 +335,81 @@ static int do_batch(int argc, char **argv)
 
 	if (json_output)
 		jsonw_start_array(json_wtr);
-	
+	while (fgets(buf, sizeof(buf), fp)) {
+		cp = strchr(buf, '#');
+		if (cp)
+			*cp = '\0';
+
+		if (strlen(buf) == sizeof(buf) - 1) {
+			errno = E2BIG;
+			break;
+		}
+
+		while ((cp = strstr(buf, "\\\n")) != NULL) {
+			if (!fgets(contline, sizeof(contline), fp) ||
+			    strlen(contline) == 0) {
+				p_err("missing continuation line on command %d",
+				      lines);
+				err = -1;
+				goto err_close;
+			}
+
+			cp = strchr(contline, '#');
+			if (cp)
+				*cp = '\0';
+
+			if (strlen(buf) + strlen(contline) + 1 > sizeof(buf)) {
+				p_err("command %d is too long", lines);
+				err = -1;
+				goto err_close;
+			}
+			buf[strlen(buf) - 2] = '\0';
+			strcat(buf, contline);
+		}
+
+		n_argc = make_args(buf, n_argv, BATCH_ARG_NB_MAX, lines);
+		if (!n_argc)
+			continue;
+		if (n_argc < 0) {
+			err = n_argc;
+			goto err_close;
+		}
+
+		if (json_output) {
+			jsonw_start_object(json_wtr);
+			jsonw_name(json_wtr, "command");
+			jsonw_start_array(json_wtr);
+			for (i = 0; i < n_argc; i++)
+				jsonw_string(json_wtr, n_argv[i]);
+			jsonw_end_array(json_wtr);
+			jsonw_name(json_wtr, "output");
+		}
+
+		err = cmd_select(commands, n_argc, n_argv, do_help);
+
+		if (json_output)
+			jsonw_end_object(json_wtr);
+
+		if (err)
+			goto err_close;
+
+		lines++;
+	}
+
+	if (errno && errno != ENOENT) {
+		p_err("reading batch file failed: %s", strerror(errno));
+		err = -1;
+	} else {
+		if (!json_output)
+			printf("processed %d commands\n", lines);
+	}
+err_close:
+	if (fp != stdin)
+		fclose(fp);
+
+	if (json_output)
+		jsonw_end_array(json_wtr);
+
 	return err;
 }
 
@@ -274,7 +428,7 @@ int main(int argc, char **argv)
 		{ "base-btf",	required_argument, NULL, 'B' },
 		{ 0 }
 	};
-		bool version_requested = false;
+	bool version_requested = false;
 	int opt, ret;
 
 	setlinebuf(stdout);
@@ -283,7 +437,7 @@ int main(int argc, char **argv)
 	errno = 0;
 #endif
 
-last_do_help = do_help;
+	last_do_help = do_help;
 	pretty_output = false;
 	json_output = false;
 	show_pinned = false;
@@ -344,14 +498,21 @@ last_do_help = do_help;
 				usage();
 		}
 	}
+
 	argc -= optind;
 	argv += optind;
 	if (argc < 0)
 		usage();
+
 	if (version_requested)
 		return do_version(argc, argv);
 
 	ret = cmd_select(commands, argc, argv, do_help);
-	
-	return 0
+
+	if (json_output)
+		jsonw_destroy(&json_wtr);
+
+	btf__free(base_btf);
+
+	return ret;
 }
