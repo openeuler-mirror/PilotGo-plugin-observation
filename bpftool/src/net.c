@@ -21,6 +21,43 @@
 #include "main.h"
 #include "netlink_dumper.h"
 
+static int net_parse_dev(int *argc, char ***argv)
+{
+	int ifindex;
+
+	if (is_prefix(**argv, "dev")) {
+		NEXT_ARGP();
+
+		ifindex = if_nametoindex(**argv);
+		if (!ifindex)
+			p_err("invalid devname %s", **argv);
+
+		NEXT_ARGP();
+	} else {
+		p_err("expected 'dev', got: '%s'?", **argv);
+		return -1;
+	}
+
+	return ifindex;
+}
+
+static int do_attach_detach_xdp(int progfd, enum net_attach_type attach_type,
+				int ifindex, bool overwrite)
+{
+	__u32 flags = 0;
+
+	if (!overwrite)
+		flags = XDP_FLAGS_UPDATE_IF_NOEXIST;
+	if (attach_type == NET_ATTACH_TYPE_XDP_GENERIC)
+		flags |= XDP_FLAGS_SKB_MODE;
+	if (attach_type == NET_ATTACH_TYPE_XDP_DRIVER)
+		flags |= XDP_FLAGS_DRV_MODE;
+	if (attach_type == NET_ATTACH_TYPE_XDP_OFFLOAD)
+		flags |= XDP_FLAGS_HW_MODE;
+
+	return bpf_xdp_attach(ifindex, progfd, flags, NULL);
+}
+
 static int do_show(int argc, char **argv)
 {
 	struct bpf_attach_info attach_info = {};
