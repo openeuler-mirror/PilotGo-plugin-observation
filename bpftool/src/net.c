@@ -127,6 +127,61 @@ static int do_show(int argc, char **argv)
 	return ret;
 }
 
+
+static int do_attach(int argc, char **argv)
+{
+	enum net_attach_type attach_type;
+	int progfd, ifindex, err = 0;
+	bool overwrite = false;
+
+	/* parse attach args */
+	if (!REQ_ARGS(5))
+		return -EINVAL;
+
+	attach_type = parse_attach_type(*argv);
+	if (attach_type == net_attach_type_size) {
+		p_err("invalid net attach/detach type: %s", *argv);
+		return -EINVAL;
+	}
+	NEXT_ARG();
+
+	progfd = prog_parse_fd(&argc, &argv);
+	if (progfd < 0)
+		return -EINVAL;
+
+	ifindex = net_parse_dev(&argc, &argv);
+	if (ifindex < 1) {
+		err = -EINVAL;
+		goto cleanup;
+	}
+
+	if (argc) {
+		if (is_prefix(*argv, "overwrite")) {
+			overwrite = true;
+		} else {
+			p_err("expected 'overwrite', got: '%s'?", *argv);
+			err = -EINVAL;
+			goto cleanup;
+		}
+	}
+
+	/* attach xdp prog */
+	if (is_prefix("xdp", attach_type_strings[attach_type]))
+		err = do_attach_detach_xdp(progfd, attach_type, ifindex,
+					   overwrite);
+	if (err) {
+		p_err("interface %s attach failed: %s",
+		      attach_type_strings[attach_type], strerror(-err));
+		goto cleanup;
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+cleanup:
+	close(progfd);
+	return err;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
