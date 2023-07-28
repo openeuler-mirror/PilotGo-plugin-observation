@@ -109,6 +109,26 @@ static int do_help(int argc, char **argv)
 	return 0;
 }
 
+static char *find_cgroup_root(void)
+{
+	struct mntent *mnt;
+	FILE *f;
+
+	f = fopen("/proc/mounts", "r");
+	if (f == NULL)
+		return NULL;
+
+	while ((mnt = getmntent(f))) {
+		if (strcmp(mnt->mnt_type, "cgroup2") == 0) {
+			fclose(f);
+			return strdup(mnt->mnt_dir);
+		}
+	}
+
+	fclose(f);
+	return NULL;
+}
+
 static int do_show_tree(int argc, char **argv)
 {
 	char *cgroup_root, *cgroup_alloced = NULL;
@@ -173,6 +193,66 @@ static int do_show_tree(int argc, char **argv)
 
 	free(cgroup_alloced);
 
+	return ret;
+}
+
+static int do_attach(int argc, char **argv)
+{
+	enum bpf_attach_type attach_type;
+	int cgroup_fd, prog_fd;
+	int attach_flags = 0;
+	int ret = -1;
+	int i;
+
+	if (argc < 4) {
+		p_err("too few parameters for cgroup attach");
+		goto exit;
+	}
+
+	cgroup_fd = open(argv[0], O_RDONLY);
+	if (cgroup_fd < 0) {
+		p_err("can't open cgroup %s", argv[0]);
+		goto exit;
+	}
+
+	attach_type = parse_attach_type(argv[1]);
+	if (attach_type == __MAX_BPF_ATTACH_TYPE) {
+		p_err("invalid attach type");
+		goto exit_cgroup;
+	}
+
+	argc -= 2;
+	argv = &argv[2];
+	prog_fd = prog_parse_fd(&argc, &argv);
+	if (prog_fd < 0)
+		goto exit_cgroup;
+
+	for (i = 0; i < argc; i++) {
+		if (is_prefix(argv[i], "multi")) {
+			attach_flags |= BPF_F_ALLOW_MULTI;
+		} else if (is_prefix(argv[i], "override")) {
+			attach_flags |= BPF_F_ALLOW_OVERRIDE;
+		} else {
+			p_err("unknown option: %s", argv[i]);
+			goto exit_cgroup;
+		}
+	}
+
+	if (bpf_prog_attach(prog_fd, cgroup_fd, attach_type, attach_flags)) {
+		p_err("failed to attach program");
+		goto exit_prog;
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+
+	ret = 0;
+
+exit_prog:
+	close(prog_fd);
+exit_cgroup:
+	close(cgroup_fd);
+exit:
 	return ret;
 }
 
