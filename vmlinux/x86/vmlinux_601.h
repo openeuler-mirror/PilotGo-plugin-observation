@@ -7855,3 +7855,126 @@ struct pglist_data
 	long : 64;
 	long : 64;
 };
+
+struct per_cpu_pages
+{
+	spinlock_t lock;
+	int count;
+	int high;
+	int batch;
+	short int free_factor;
+	short int expire;
+	struct list_head lists[13];
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+};
+
+struct per_cpu_zonestat
+{
+	s8 vm_stat_diff[10];
+	s8 stat_threshold;
+	long unsigned int vm_numa_event[6];
+};
+
+struct per_cpu_nodestat
+{
+	s8 stat_threshold;
+	s8 vm_node_stat_diff[43];
+};
+
+struct plist_head
+{
+	struct list_head node_list;
+};
+
+struct bio;
+
+struct bio_list
+{
+	struct bio *head;
+	struct bio *tail;
+};
+
+struct request;
+
+struct blk_plug
+{
+	struct request *mq_list;
+	struct request *cached_rq;
+	short unsigned int nr_ios;
+	short unsigned int rq_count;
+	bool multiple_queues;
+	bool has_elevator;
+	bool nowait;
+	struct list_head cb_list;
+};
+
+struct reclaim_state
+{
+	long unsigned int reclaimed_slab;
+};
+
+struct fprop_local_percpu
+{
+	struct percpu_counter events;
+	unsigned int period;
+	raw_spinlock_t lock;
+};
+
+enum wb_reason
+{
+	WB_REASON_BACKGROUND = 0,
+	WB_REASON_VMSCAN = 1,
+	WB_REASON_SYNC = 2,
+	WB_REASON_PERIODIC = 3,
+	WB_REASON_LAPTOP_TIMER = 4,
+	WB_REASON_FS_FREE_SPACE = 5,
+	WB_REASON_FORKER_THREAD = 6,
+	WB_REASON_FOREIGN_FLUSH = 7,
+	WB_REASON_MAX = 8,
+};
+
+struct bdi_writeback
+{
+	struct backing_dev_info *bdi;
+	long unsigned int state;
+	long unsigned int last_old_flush;
+	struct list_head b_dirty;
+	struct list_head b_io;
+	struct list_head b_more_io;
+	struct list_head b_dirty_time;
+	spinlock_t list_lock;
+	atomic_t writeback_inodes;
+	struct percpu_counter stat[4];
+	long unsigned int bw_time_stamp;
+	long unsigned int dirtied_stamp;
+	long unsigned int written_stamp;
+	long unsigned int write_bandwidth;
+	long unsigned int avg_write_bandwidth;
+	long unsigned int dirty_ratelimit;
+	long unsigned int balanced_dirty_ratelimit;
+	struct fprop_local_percpu completions;
+	int dirty_exceeded;
+	enum wb_reason start_all_reason;
+	spinlock_t work_lock;
+	struct list_head work_list;
+	struct delayed_work dwork;
+	struct delayed_work bw_dwork;
+	long unsigned int dirty_sleep;
+	struct list_head bdi_node;
+	struct percpu_ref refcnt;
+	struct fprop_local_percpu memcg_completions;
+	struct cgroup_subsys_state *memcg_css;
+	struct cgroup_subsys_state *blkcg_css;
+	struct list_head memcg_node;
+	struct list_head blkcg_node;
+	struct list_head b_attached;
+	struct list_head offline_node;
+	union
+	{
+		struct work_struct release_work;
+		struct callback_head rcu;
+	};
+};
