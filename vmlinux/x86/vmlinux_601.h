@@ -7015,3 +7015,147 @@ enum
 	TRACE_EVENT_FL_EPROBE_BIT = 8,
 	TRACE_EVENT_FL_CUSTOM_BIT = 9,
 };
+
+enum
+{
+	EVENT_FILE_FL_ENABLED_BIT = 0,
+	EVENT_FILE_FL_RECORDED_CMD_BIT = 1,
+	EVENT_FILE_FL_RECORDED_TGID_BIT = 2,
+	EVENT_FILE_FL_FILTERED_BIT = 3,
+	EVENT_FILE_FL_NO_SET_FILTER_BIT = 4,
+	EVENT_FILE_FL_SOFT_MODE_BIT = 5,
+	EVENT_FILE_FL_SOFT_DISABLED_BIT = 6,
+	EVENT_FILE_FL_TRIGGER_MODE_BIT = 7,
+	EVENT_FILE_FL_TRIGGER_COND_BIT = 8,
+	EVENT_FILE_FL_PID_FILTER_BIT = 9,
+	EVENT_FILE_FL_WAS_ENABLED_BIT = 10,
+};
+
+enum dynevent_type
+{
+	DYNEVENT_TYPE_SYNTH = 1,
+	DYNEVENT_TYPE_KPROBE = 2,
+	DYNEVENT_TYPE_NONE = 3,
+};
+
+struct dynevent_cmd;
+
+typedef int (*dynevent_create_fn_t)(struct dynevent_cmd *);
+
+struct dynevent_cmd
+{
+	struct seq_buf seq;
+	const char *event_name;
+	unsigned int n_fields;
+	enum dynevent_type type;
+	dynevent_create_fn_t run_command;
+	void *private_data;
+};
+
+struct event_subsystem;
+
+struct trace_subsystem_dir
+{
+	struct list_head list;
+	struct event_subsystem *subsystem;
+	struct trace_array *tr;
+	struct dentry *entry;
+	int ref_count;
+	int nr_events;
+};
+
+struct property
+{
+	char *name;
+	int length;
+	void *value;
+	struct property *next;
+};
+
+union lower_chunk
+{
+	union lower_chunk *next;
+	long unsigned int data[256];
+};
+
+union upper_chunk
+{
+	union upper_chunk *next;
+	union lower_chunk *data[256];
+};
+
+struct trace_pid_list
+{
+	raw_spinlock_t lock;
+	struct irq_work refill_irqwork;
+	union upper_chunk *upper[256];
+	union upper_chunk *upper_list;
+	union lower_chunk *lower_list;
+	int free_upper_chunks;
+	int free_lower_chunks;
+};
+
+struct trace_array_cpu
+{
+	atomic_t disabled;
+	void *buffer_page;
+	long unsigned int entries;
+	long unsigned int saved_latency;
+	long unsigned int critical_start;
+	long unsigned int critical_end;
+	long unsigned int critical_sequence;
+	long unsigned int nice;
+	long unsigned int policy;
+	long unsigned int rt_priority;
+	long unsigned int skipped_entries;
+	u64 preempt_timestamp;
+	pid_t pid;
+	kuid_t uid;
+	char comm[16];
+	int ftrace_ignore_pid;
+	bool ignore_pid;
+};
+
+struct trace_option_dentry;
+
+struct trace_options
+{
+	struct tracer *tracer;
+	struct trace_option_dentry *topts;
+};
+
+struct tracer_opt;
+
+struct trace_option_dentry
+{
+	struct tracer_opt *opt;
+	struct tracer_flags *flags;
+	struct trace_array *tr;
+	struct dentry *entry;
+};
+
+struct trace_func_repeats
+{
+	long unsigned int ip;
+	long unsigned int parent_ip;
+	long unsigned int count;
+	u64 ts_last_call;
+};
+
+enum
+{
+	TRACE_ARRAY_FL_GLOBAL = 1,
+};
+
+struct tracer_opt
+{
+	const char *name;
+	u32 bit;
+};
+
+struct tracer_flags
+{
+	u32 val;
+	struct tracer_opt *opts;
+	struct tracer *trace;
+};
