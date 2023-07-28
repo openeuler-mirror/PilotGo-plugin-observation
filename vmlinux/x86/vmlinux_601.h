@@ -7978,3 +7978,75 @@ struct bdi_writeback
 		struct callback_head rcu;
 	};
 };
+
+struct backing_dev_info
+{
+	u64 id;
+	struct rb_node rb_node;
+	struct list_head bdi_list;
+	long unsigned int ra_pages;
+	long unsigned int io_pages;
+	struct kref refcnt;
+	unsigned int capabilities;
+	unsigned int min_ratio;
+	unsigned int max_ratio;
+	unsigned int max_prop_frac;
+	atomic_long_t tot_write_bandwidth;
+	struct bdi_writeback wb;
+	struct list_head wb_list;
+	struct xarray cgwb_tree;
+	struct mutex cgwb_release_mutex;
+	struct rw_semaphore wb_switch_rwsem;
+	wait_queue_head_t wb_waitq;
+	struct device *dev;
+	char dev_name[64];
+	struct device *owner;
+	struct timer_list laptop_mode_wb_timer;
+	struct dentry *debug_dir;
+};
+
+enum blk_bounce
+{
+	BLK_BOUNCE_NONE = 0,
+	BLK_BOUNCE_HIGH = 1,
+};
+
+enum blk_zoned_model
+{
+	BLK_ZONED_NONE = 0,
+	BLK_ZONED_HA = 1,
+	BLK_ZONED_HM = 2,
+};
+
+struct queue_limits
+{
+	enum blk_bounce bounce;
+	long unsigned int seg_boundary_mask;
+	long unsigned int virt_boundary_mask;
+	unsigned int max_hw_sectors;
+	unsigned int max_dev_sectors;
+	unsigned int chunk_sectors;
+	unsigned int max_sectors;
+	unsigned int max_segment_size;
+	unsigned int physical_block_size;
+	unsigned int logical_block_size;
+	unsigned int alignment_offset;
+	unsigned int io_min;
+	unsigned int io_opt;
+	unsigned int max_discard_sectors;
+	unsigned int max_hw_discard_sectors;
+	unsigned int max_secure_erase_sectors;
+	unsigned int max_write_zeroes_sectors;
+	unsigned int max_zone_append_sectors;
+	unsigned int discard_granularity;
+	unsigned int discard_alignment;
+	unsigned int zone_write_granularity;
+	short unsigned int max_segments;
+	short unsigned int max_integrity_segments;
+	short unsigned int max_discard_segments;
+	unsigned char misaligned;
+	unsigned char discard_misaligned;
+	unsigned char raid_partial_stripes_expensive;
+	enum blk_zoned_model zoned;
+	unsigned int dma_alignment;
+};
