@@ -483,3 +483,32 @@ enum {
 	TCA_CBQ_POLICE,
 	__TCA_CBQ_MAX,
 };
+
+#define TCA_CBQ_MAX	(__TCA_CBQ_MAX - 1)
+
+/* dsmark section */
+
+enum {
+	TCA_DSMARK_UNSPEC,
+	TCA_DSMARK_INDICES,
+	TCA_DSMARK_DEFAULT_INDEX,
+	TCA_DSMARK_SET_TC_INDEX,
+	TCA_DSMARK_MASK,
+	TCA_DSMARK_VALUE,
+	__TCA_DSMARK_MAX,
+};
+
+#define TCA_DSMARK_MAX (__TCA_DSMARK_MAX - 1)
+
+/* ATM  section */
+
+enum {
+	TCA_ATM_UNSPEC,
+	TCA_ATM_FD,		/* file/socket descriptor */
+	TCA_ATM_PTR,		/* pointer to descriptor - later */
+	TCA_ATM_HDR,		/* LL header */
+	TCA_ATM_EXCESS,		/* excess traffic class (0 for CLP)  */
+	TCA_ATM_ADDR,		/* PVC address (for output only) */
+	TCA_ATM_STATE,		/* VC state (ATM_VS_*; for output only) */
+	__TCA_ATM_MAX,
+};
