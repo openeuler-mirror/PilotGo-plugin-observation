@@ -4165,3 +4165,85 @@ struct kernel_param_ops
 	int (*get)(char *, const struct kernel_param *);
 	void (*free)(void *);
 };
+
+struct kparam_string;
+
+struct kparam_array;
+
+struct kernel_param
+{
+	const char *name;
+	struct module *mod;
+	const struct kernel_param_ops *ops;
+	const u16 perm;
+	s8 level;
+	u8 flags;
+	union
+	{
+		void *arg;
+		const struct kparam_string *str;
+		const struct kparam_array *arr;
+	};
+};
+
+struct kparam_string
+{
+	unsigned int maxlen;
+	char *string;
+};
+
+struct kparam_array
+{
+	unsigned int max;
+	unsigned int elemsize;
+	unsigned int *num;
+	const struct kernel_param_ops *ops;
+	void *elem;
+};
+
+struct error_injection_entry
+{
+	long unsigned int addr;
+	int etype;
+};
+
+struct module_attribute
+{
+	struct attribute attr;
+	ssize_t (*show)(struct module_attribute *, struct module_kobject *, char *);
+	ssize_t (*store)(struct module_attribute *, struct module_kobject *, const char *, size_t);
+	void (*setup)(struct module *, const char *);
+	int (*test)(struct module *);
+	void (*free)(struct module *);
+};
+
+struct trace_eval_map
+{
+	const char *system;
+	const char *eval_string;
+	long unsigned int eval_value;
+};
+
+enum xstate_copy_mode
+{
+	XSTATE_COPY_FP = 0,
+	XSTATE_COPY_FX = 1,
+	XSTATE_COPY_XSAVE = 2,
+};
+
+enum lockdep_wait_type
+{
+	LD_WAIT_INV = 0,
+	LD_WAIT_FREE = 1,
+	LD_WAIT_SPIN = 2,
+	LD_WAIT_CONFIG = 2,
+	LD_WAIT_SLEEP = 3,
+	LD_WAIT_MAX = 4,
+};
+
+enum lockdep_lock_type
+{
+	LD_LOCK_NORMAL = 0,
+	LD_LOCK_PERCPU = 1,
+	LD_LOCK_MAX = 2,
+};
