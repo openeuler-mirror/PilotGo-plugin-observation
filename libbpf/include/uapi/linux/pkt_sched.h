@@ -440,3 +440,46 @@ struct tc_cbq_wrropt {
 	__u32		allot;
 	__u32		weight;
 };
+
+struct tc_cbq_ovl {
+	unsigned char	strategy;
+#define	TC_CBQ_OVL_CLASSIC	0
+#define	TC_CBQ_OVL_DELAY	1
+#define	TC_CBQ_OVL_LOWPRIO	2
+#define	TC_CBQ_OVL_DROP		3
+#define	TC_CBQ_OVL_RCLASSIC	4
+	unsigned char	priority2;
+	__u16		pad;
+	__u32		penalty;
+};
+
+struct tc_cbq_police {
+	unsigned char	police;
+	unsigned char	__res1;
+	unsigned short	__res2;
+};
+
+struct tc_cbq_fopt {
+	__u32		split;
+	__u32		defmap;
+	__u32		defchange;
+};
+
+struct tc_cbq_xstats {
+	__u32		borrows;
+	__u32		overactions;
+	__s32		avgidle;
+	__s32		undertime;
+};
+
+enum {
+	TCA_CBQ_UNSPEC,
+	TCA_CBQ_LSSOPT,
+	TCA_CBQ_WRROPT,
+	TCA_CBQ_FOPT,
+	TCA_CBQ_OVL_STRATEGY,
+	TCA_CBQ_RATE,
+	TCA_CBQ_RTAB,
+	TCA_CBQ_POLICE,
+	__TCA_CBQ_MAX,
+};
