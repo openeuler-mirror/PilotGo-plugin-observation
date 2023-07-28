@@ -4247,3 +4247,93 @@ enum lockdep_lock_type
 	LD_LOCK_PERCPU = 1,
 	LD_LOCK_MAX = 2,
 };
+
+enum
+{
+	UNAME26 = 131072,
+	ADDR_NO_RANDOMIZE = 262144,
+	FDPIC_FUNCPTRS = 524288,
+	MMAP_PAGE_ZERO = 1048576,
+	ADDR_COMPAT_LAYOUT = 2097152,
+	READ_IMPLIES_EXEC = 4194304,
+	ADDR_LIMIT_32BIT = 8388608,
+	SHORT_INODE = 16777216,
+	WHOLE_SECONDS = 33554432,
+	STICKY_TIMEOUTS = 67108864,
+	ADDR_LIMIT_3GB = 134217728,
+};
+
+enum tlb_infos
+{
+	ENTRIES = 0,
+	NR_INFO = 1,
+};
+
+enum pcpu_fc
+{
+	PCPU_FC_AUTO = 0,
+	PCPU_FC_EMBED = 1,
+	PCPU_FC_PAGE = 2,
+	PCPU_FC_NR = 3,
+};
+
+enum hrtimer_base_type
+{
+	HRTIMER_BASE_MONOTONIC = 0,
+	HRTIMER_BASE_REALTIME = 1,
+	HRTIMER_BASE_BOOTTIME = 2,
+	HRTIMER_BASE_TAI = 3,
+	HRTIMER_BASE_MONOTONIC_SOFT = 4,
+	HRTIMER_BASE_REALTIME_SOFT = 5,
+	HRTIMER_BASE_BOOTTIME_SOFT = 6,
+	HRTIMER_BASE_TAI_SOFT = 7,
+	HRTIMER_MAX_CLOCK_BASES = 8,
+};
+
+enum node_states
+{
+	N_POSSIBLE = 0,
+	N_ONLINE = 1,
+	N_NORMAL_MEMORY = 2,
+	N_HIGH_MEMORY = 2,
+	N_MEMORY = 3,
+	N_CPU = 4,
+	N_GENERIC_INITIATOR = 5,
+	NR_NODE_STATES = 6,
+};
+
+enum
+{
+	MM_FILEPAGES = 0,
+	MM_ANONPAGES = 1,
+	MM_SWAPENTS = 2,
+	MM_SHMEMPAGES = 3,
+	NR_MM_COUNTERS = 4,
+};
+
+enum rseq_cs_flags_bit
+{
+	RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT = 0,
+	RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT = 1,
+	RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT = 2,
+};
+
+enum
+{
+	TASK_COMM_LEN = 16,
+};
+
+enum perf_event_task_context
+{
+	perf_invalid_context = -1,
+	perf_hw_context = 0,
+	perf_sw_context = 1,
+	perf_nr_task_contexts = 2,
+};
+
+enum rseq_event_mask_bits
+{
+	RSEQ_EVENT_PREEMPT_BIT = 0,
+	RSEQ_EVENT_SIGNAL_BIT = 1,
+	RSEQ_EVENT_MIGRATE_BIT = 2,
+};
