@@ -4103,3 +4103,65 @@ struct sysfs_ops
 	ssize_t (*show)(struct kobject *, struct attribute *, char *);
 	ssize_t (*store)(struct kobject *, struct attribute *, const char *, size_t);
 };
+
+struct kset_uevent_ops;
+
+struct kset
+{
+	struct list_head list;
+	spinlock_t list_lock;
+	struct kobject kobj;
+	const struct kset_uevent_ops *uevent_ops;
+};
+
+struct kobj_type
+{
+	void (*release)(struct kobject *);
+	const struct sysfs_ops *sysfs_ops;
+	const struct attribute_group **default_groups;
+	const struct kobj_ns_type_operations *(*child_ns_type)(struct kobject *);
+	const void *(*namespace)(struct kobject *);
+	void (*get_ownership)(struct kobject *, kuid_t *, kgid_t *);
+};
+
+struct kobj_uevent_env
+{
+	char *argv[3];
+	char *envp[64];
+	int envp_idx;
+	char buf[2048];
+	int buflen;
+};
+
+struct kset_uevent_ops
+{
+	int (*const filter)(struct kobject *);
+	const char *(*const name)(struct kobject *);
+	int (*const uevent)(struct kobject *, struct kobj_uevent_env *);
+};
+
+typedef __u64 Elf64_Addr;
+
+typedef __u16 Elf64_Half;
+
+typedef __u32 Elf64_Word;
+
+typedef __u64 Elf64_Xword;
+
+struct elf64_sym
+{
+	Elf64_Word st_name;
+	unsigned char st_info;
+	unsigned char st_other;
+	Elf64_Half st_shndx;
+	Elf64_Addr st_value;
+	Elf64_Xword st_size;
+};
+
+struct kernel_param_ops
+{
+	unsigned int flags;
+	int (*set)(const char *, const struct kernel_param *);
+	int (*get)(char *, const struct kernel_param *);
+	void (*free)(void *);
+};
