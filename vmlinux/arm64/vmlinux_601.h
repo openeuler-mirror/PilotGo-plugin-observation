@@ -1072,3 +1072,21 @@ typedef u64 pgdval_t;
 typedef struct {
 	pgdval_t pgd;
 } pgd_t;
+
+enum pcpu_fc {
+	PCPU_FC_AUTO = 0,
+	PCPU_FC_EMBED = 1,
+	PCPU_FC_PAGE = 2,
+	PCPU_FC_NR = 3,
+};
+
+enum vec_type {
+	ARM64_VEC_SVE = 0,
+	ARM64_VEC_SME = 1,
+	ARM64_VEC_MAX = 2,
+};
+
+struct wait_queue_head {
+	spinlock_t lock;
+	struct list_head head;
+};
