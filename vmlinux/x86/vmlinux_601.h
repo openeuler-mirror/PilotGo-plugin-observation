@@ -7432,3 +7432,188 @@ struct cacheline_padding
 };
 
 struct wait_queue_entry;
+
+typedef int (*wait_queue_func_t)(struct wait_queue_entry *, unsigned int, int, void *);
+
+struct wait_queue_entry
+{
+	unsigned int flags;
+	void *private;
+	wait_queue_func_t func;
+	struct list_head entry;
+};
+
+typedef struct wait_queue_entry wait_queue_entry_t;
+
+struct mem_cgroup_id
+{
+	int id;
+	refcount_t ref;
+};
+
+struct page_counter
+{
+	atomic_long_t usage;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	struct cacheline_padding _pad1_;
+	long unsigned int emin;
+	atomic_long_t min_usage;
+	atomic_long_t children_min_usage;
+	long unsigned int elow;
+	atomic_long_t low_usage;
+	atomic_long_t children_low_usage;
+	long unsigned int watermark;
+	long unsigned int failcnt;
+	struct cacheline_padding _pad2_;
+	long unsigned int min;
+	long unsigned int low;
+	long unsigned int high;
+	long unsigned int max;
+	struct page_counter *parent;
+	long : 64;
+	long : 64;
+	long : 64;
+};
+
+struct vmpressure
+{
+	long unsigned int scanned;
+	long unsigned int reclaimed;
+	long unsigned int tree_scanned;
+	long unsigned int tree_reclaimed;
+	spinlock_t sr_lock;
+	struct list_head events;
+	struct mutex events_lock;
+	struct work_struct work;
+};
+
+struct mem_cgroup_threshold_ary;
+
+struct mem_cgroup_thresholds
+{
+	struct mem_cgroup_threshold_ary *primary;
+	struct mem_cgroup_threshold_ary *spare;
+};
+
+struct fprop_global
+{
+	struct percpu_counter events;
+	unsigned int period;
+	seqcount_t sequence;
+};
+
+struct wb_domain
+{
+	spinlock_t lock;
+	struct fprop_global completions;
+	struct timer_list period_timer;
+	long unsigned int period_time;
+	long unsigned int dirty_limit_tstamp;
+	long unsigned int dirty_limit;
+};
+
+struct wb_completion
+{
+	atomic_t cnt;
+	wait_queue_head_t *waitq;
+};
+
+struct memcg_cgwb_frn
+{
+	u64 bdi_id;
+	int memcg_id;
+	u64 at;
+	struct wb_completion done;
+};
+
+struct deferred_split
+{
+	spinlock_t split_queue_lock;
+	struct list_head split_queue;
+	long unsigned int split_queue_len;
+};
+
+struct memcg_vmstats;
+
+struct obj_cgroup;
+
+struct memcg_vmstats_percpu;
+
+struct mem_cgroup_per_node;
+
+struct mem_cgroup
+{
+	struct cgroup_subsys_state css;
+	struct mem_cgroup_id id;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	struct page_counter memory;
+	union
+	{
+		struct page_counter swap;
+		struct page_counter memsw;
+	};
+	struct page_counter kmem;
+	struct page_counter tcpmem;
+	struct work_struct high_work;
+	long unsigned int soft_limit;
+	struct vmpressure vmpressure;
+	bool oom_group;
+	bool oom_lock;
+	int under_oom;
+	int swappiness;
+	int oom_kill_disable;
+	struct cgroup_file events_file;
+	struct cgroup_file events_local_file;
+	struct cgroup_file swap_events_file;
+	struct mutex thresholds_lock;
+	struct mem_cgroup_thresholds thresholds;
+	struct mem_cgroup_thresholds memsw_thresholds;
+	struct list_head oom_notify;
+	long unsigned int move_charge_at_immigrate;
+	spinlock_t move_lock;
+	long unsigned int move_lock_flags;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	struct cacheline_padding _pad1_;
+	struct memcg_vmstats *vmstats;
+	atomic_long_t memory_events[9];
+	atomic_long_t memory_events_local[9];
+	long unsigned int socket_pressure;
+	bool tcpmem_active;
+	int tcpmem_pressure;
+	int kmemcg_id;
+	struct obj_cgroup *objcg;
+	struct list_head objcg_list;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	struct cacheline_padding _pad2_;
+	atomic_t moving_account;
+	struct task_struct *move_lock_task;
+	struct memcg_vmstats_percpu *vmstats_percpu;
+	struct list_head cgwb_list;
+	struct wb_domain cgwb_domain;
+	struct memcg_cgwb_frn cgwb_frn[4];
+	struct list_head event_list;
+	spinlock_t event_list_lock;
+	struct deferred_split deferred_split_queue;
+	struct mem_cgroup_per_node *nodeinfo[0];
+	long : 64;
+	long : 64;
+};
