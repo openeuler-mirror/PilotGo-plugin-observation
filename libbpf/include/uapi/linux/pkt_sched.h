@@ -614,3 +614,27 @@ enum {
 	TCA_DRR_QUANTUM,
 	__TCA_DRR_MAX
 };
+
+#define TCA_DRR_MAX	(__TCA_DRR_MAX - 1)
+
+struct tc_drr_stats {
+	__u32	deficit;
+};
+
+/* MQPRIO */
+#define TC_QOPT_BITMASK 15
+#define TC_QOPT_MAX_QUEUE 16
+
+enum {
+	TC_MQPRIO_HW_OFFLOAD_NONE,	/* no offload requested */
+	TC_MQPRIO_HW_OFFLOAD_TCS,	/* offload TCs, no queue counts */
+	__TC_MQPRIO_HW_OFFLOAD_MAX
+};
+
+#define TC_MQPRIO_HW_OFFLOAD_MAX (__TC_MQPRIO_HW_OFFLOAD_MAX - 1)
+
+enum {
+	TC_MQPRIO_MODE_DCB,
+	TC_MQPRIO_MODE_CHANNEL,
+	__TC_MQPRIO_MODE_MAX
+};
