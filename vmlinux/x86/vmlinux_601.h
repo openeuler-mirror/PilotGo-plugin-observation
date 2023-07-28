@@ -6760,3 +6760,85 @@ struct perf_sample_data
 	long : 64;
 	long : 64;
 };
+
+struct prog_entry;
+
+struct event_filter
+{
+	struct prog_entry *prog;
+	char *filter_string;
+};
+
+struct perf_cgroup_info;
+
+struct perf_cgroup
+{
+	struct cgroup_subsys_state css;
+	struct perf_cgroup_info *info;
+};
+
+struct perf_cgroup_info
+{
+	u64 time;
+	u64 timestamp;
+	u64 timeoffset;
+	int active;
+};
+
+struct trace_entry
+{
+	short unsigned int type;
+	unsigned char flags;
+	unsigned char preempt_count;
+	int pid;
+};
+
+struct trace_array;
+
+struct tracer;
+
+struct array_buffer;
+
+struct ring_buffer_iter;
+
+struct trace_iterator
+{
+	struct trace_array *tr;
+	struct tracer *trace;
+	struct array_buffer *array_buffer;
+	void *private;
+	int cpu_file;
+	struct mutex mutex;
+	struct ring_buffer_iter **buffer_iter;
+	long unsigned int iter_flags;
+	void *temp;
+	unsigned int temp_size;
+	char *fmt;
+	unsigned int fmt_size;
+	long int wait_index;
+	struct trace_seq tmp_seq;
+	cpumask_var_t started;
+	bool snapshot;
+	struct trace_seq seq;
+	struct trace_entry *ent;
+	long unsigned int lost_events;
+	int leftover;
+	int ent_size;
+	int cpu;
+	u64 ts;
+	loff_t pos;
+	long int idx;
+};
+
+struct trace_buffer;
+
+struct trace_array_cpu;
+
+struct array_buffer
+{
+	struct trace_array *tr;
+	struct trace_buffer *buffer;
+	struct trace_array_cpu *data;
+	u64 time_start;
+	int cpu;
+};
