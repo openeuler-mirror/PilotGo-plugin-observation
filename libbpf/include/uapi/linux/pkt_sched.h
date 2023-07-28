@@ -709,3 +709,32 @@ struct tc_sfb_xstats {
 	__u32 maxprob;
 	__u32 avgprob;
 };
+
+#define SFB_MAX_PROB 0xFFFF
+
+/* QFQ */
+enum {
+	TCA_QFQ_UNSPEC,
+	TCA_QFQ_WEIGHT,
+	TCA_QFQ_LMAX,
+	__TCA_QFQ_MAX
+};
+
+#define TCA_QFQ_MAX	(__TCA_QFQ_MAX - 1)
+
+struct tc_qfq_stats {
+	__u32 weight;
+	__u32 lmax;
+};
+
+/* CODEL */
+
+enum {
+	TCA_CODEL_UNSPEC,
+	TCA_CODEL_TARGET,
+	TCA_CODEL_LIMIT,
+	TCA_CODEL_INTERVAL,
+	TCA_CODEL_ECN,
+	TCA_CODEL_CE_THRESHOLD,
+	__TCA_CODEL_MAX
+};
