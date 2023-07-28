@@ -7353,3 +7353,82 @@ enum pageflags
 	PG_isolated = 18,
 	PG_reported = 2,
 };
+
+struct perf_buffer
+{
+	refcount_t refcount;
+	struct callback_head callback_head;
+	int nr_pages;
+	int overwrite;
+	int paused;
+	atomic_t poll;
+	local_t head;
+	unsigned int nest;
+	local_t events;
+	local_t wakeup;
+	local_t lost;
+	long int watermark;
+	long int aux_watermark;
+	spinlock_t event_lock;
+	struct list_head event_list;
+	atomic_t mmap_count;
+	long unsigned int mmap_locked;
+	struct user_struct *mmap_user;
+	long int aux_head;
+	unsigned int aux_nest;
+	long int aux_wakeup;
+	long unsigned int aux_pgoff;
+	int aux_nr_pages;
+	int aux_overwrite;
+	atomic_t aux_mmap_count;
+	long unsigned int aux_mmap_locked;
+	void (*free_aux)(void *);
+	refcount_t aux_refcount;
+	int aux_in_sampling;
+	void **aux_pages;
+	void *aux_priv;
+	struct perf_event_mmap_page *user_page;
+	void *data_pages[0];
+};
+
+struct sysinfo
+{
+	__kernel_long_t uptime;
+	__kernel_ulong_t loads[3];
+	__kernel_ulong_t totalram;
+	__kernel_ulong_t freeram;
+	__kernel_ulong_t sharedram;
+	__kernel_ulong_t bufferram;
+	__kernel_ulong_t totalswap;
+	__kernel_ulong_t freeswap;
+	__u16 procs;
+	__u16 pad;
+	__kernel_ulong_t totalhigh;
+	__kernel_ulong_t freehigh;
+	__u32 mem_unit;
+	char _f[0];
+};
+
+typedef long unsigned int p4dval_t;
+
+typedef struct
+{
+	p4dval_t p4d;
+} p4d_t;
+
+struct static_key_true
+{
+	struct static_key key;
+};
+
+struct static_key_false
+{
+	struct static_key key;
+};
+
+struct cacheline_padding
+{
+	char x[0];
+};
+
+struct wait_queue_entry;
