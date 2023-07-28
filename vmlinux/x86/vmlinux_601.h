@@ -7732,3 +7732,126 @@ struct lruvec
 struct per_cpu_pages;
 
 struct per_cpu_zonestat;
+
+struct zone
+{
+	long unsigned int _watermark[4];
+	long unsigned int watermark_boost;
+	long unsigned int nr_reserved_highatomic;
+	long int lowmem_reserve[4];
+	int node;
+	struct pglist_data *zone_pgdat;
+	struct per_cpu_pages *per_cpu_pageset;
+	struct per_cpu_zonestat *per_cpu_zonestats;
+	int pageset_high;
+	int pageset_batch;
+	long unsigned int zone_start_pfn;
+	atomic_long_t managed_pages;
+	long unsigned int spanned_pages;
+	long unsigned int present_pages;
+	long unsigned int cma_pages;
+	const char *name;
+	long unsigned int nr_isolate_pageblock;
+	int initialized;
+	long : 64;
+	struct cacheline_padding _pad1_;
+	struct free_area free_area[11];
+	long unsigned int flags;
+	spinlock_t lock;
+	struct cacheline_padding _pad2_;
+	long unsigned int percpu_drift_mark;
+	long unsigned int compact_cached_free_pfn;
+	long unsigned int compact_cached_migrate_pfn[2];
+	long unsigned int compact_init_migrate_pfn;
+	long unsigned int compact_init_free_pfn;
+	unsigned int compact_considered;
+	unsigned int compact_defer_shift;
+	int compact_order_failed;
+	bool compact_blockskip_flush;
+	bool contiguous;
+	long : 0;
+	struct cacheline_padding _pad3_;
+	atomic_long_t vm_stat[10];
+	atomic_long_t vm_numa_event[6];
+};
+
+struct zoneref
+{
+	struct zone *zone;
+	int zone_idx;
+};
+
+struct zonelist
+{
+	struct zoneref _zonerefs[257];
+};
+
+enum zone_type
+{
+	ZONE_DMA = 0,
+	ZONE_DMA32 = 1,
+	ZONE_NORMAL = 2,
+	ZONE_MOVABLE = 3,
+	__MAX_NR_ZONES = 4,
+};
+
+struct per_cpu_nodestat;
+
+struct memory_tier;
+
+struct pglist_data
+{
+	struct zone node_zones[4];
+	struct zonelist node_zonelists[2];
+	int nr_zones;
+	long unsigned int node_start_pfn;
+	long unsigned int node_present_pages;
+	long unsigned int node_spanned_pages;
+	int node_id;
+	wait_queue_head_t kswapd_wait;
+	wait_queue_head_t pfmemalloc_wait;
+	wait_queue_head_t reclaim_wait[4];
+	atomic_t nr_writeback_throttled;
+	long unsigned int nr_reclaim_start;
+	struct task_struct *kswapd;
+	int kswapd_order;
+	enum zone_type kswapd_highest_zoneidx;
+	int kswapd_failures;
+	int kcompactd_max_order;
+	enum zone_type kcompactd_highest_zoneidx;
+	wait_queue_head_t kcompactd_wait;
+	struct task_struct *kcompactd;
+	bool proactive_compact_trigger;
+	long unsigned int totalreserve_pages;
+	long unsigned int min_unmapped_pages;
+	long unsigned int min_slab_pages;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	struct cacheline_padding _pad1_;
+	struct deferred_split deferred_split_queue;
+	unsigned int nbp_rl_start;
+	long unsigned int nbp_rl_nr_cand;
+	unsigned int nbp_threshold;
+	unsigned int nbp_th_start;
+	long unsigned int nbp_th_nr_cand;
+	struct lruvec __lruvec;
+	long unsigned int flags;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	struct cacheline_padding _pad2_;
+	struct per_cpu_nodestat *per_cpu_nodestats;
+	atomic_long_t vm_stat[43];
+	struct memory_tier *memtier;
+	long : 64;
+	long : 64;
+	long : 64;
+};
