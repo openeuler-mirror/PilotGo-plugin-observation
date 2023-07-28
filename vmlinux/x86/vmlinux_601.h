@@ -6906,3 +6906,112 @@ enum print_line_t
 	TRACE_TYPE_UNHANDLED = 2,
 	TRACE_TYPE_NO_CONSUME = 3,
 };
+
+struct tracer_flags;
+
+struct tracer
+{
+	const char *name;
+	int (*init)(struct trace_array *);
+	void (*reset)(struct trace_array *);
+	void (*start)(struct trace_array *);
+	void (*stop)(struct trace_array *);
+	int (*update_thresh)(struct trace_array *);
+	void (*open)(struct trace_iterator *);
+	void (*pipe_open)(struct trace_iterator *);
+	void (*close)(struct trace_iterator *);
+	void (*pipe_close)(struct trace_iterator *);
+	ssize_t (*read)(struct trace_iterator *, struct file *, char *, size_t, loff_t *);
+	ssize_t (*splice_read)(struct trace_iterator *, struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
+	void (*print_header)(struct seq_file *);
+	enum print_line_t (*print_line)(struct trace_iterator *);
+	int (*set_flag)(struct trace_array *, u32, u32, int);
+	int (*flag_changed)(struct trace_array *, u32, int);
+	struct tracer *next;
+	struct tracer_flags *flags;
+	int enabled;
+	bool print_max;
+	bool allow_instances;
+	bool noboot;
+};
+
+typedef enum print_line_t (*trace_print_func)(struct trace_iterator *, int, struct trace_event *);
+
+struct trace_event_functions
+{
+	trace_print_func trace;
+	trace_print_func raw;
+	trace_print_func hex;
+	trace_print_func binary;
+};
+
+enum trace_reg
+{
+	TRACE_REG_REGISTER = 0,
+	TRACE_REG_UNREGISTER = 1,
+	TRACE_REG_PERF_REGISTER = 2,
+	TRACE_REG_PERF_UNREGISTER = 3,
+	TRACE_REG_PERF_OPEN = 4,
+	TRACE_REG_PERF_CLOSE = 5,
+	TRACE_REG_PERF_ADD = 6,
+	TRACE_REG_PERF_DEL = 7,
+};
+
+struct trace_event_fields
+{
+	const char *type;
+	union
+	{
+		struct
+		{
+			const char *name;
+			const int size;
+			const int align;
+			const int is_signed;
+			const int filter_type;
+		};
+		int (*define_fields)(struct trace_event_call *);
+	};
+};
+
+struct trace_event_class
+{
+	const char *system;
+	void *probe;
+	void *perf_probe;
+	int (*reg)(struct trace_event_call *, enum trace_reg, void *);
+	struct trace_event_fields *fields_array;
+	struct list_head *(*get_fields)(struct trace_event_call *);
+	struct list_head fields;
+	int (*raw_init)(struct trace_event_call *);
+};
+
+struct trace_subsystem_dir;
+
+struct trace_event_file
+{
+	struct list_head list;
+	struct trace_event_call *event_call;
+	struct event_filter *filter;
+	struct dentry *dir;
+	struct trace_array *tr;
+	struct trace_subsystem_dir *system;
+	struct list_head triggers;
+	long unsigned int flags;
+	atomic_t sm_ref;
+	atomic_t tm_ref;
+};
+
+enum
+{
+	TRACE_EVENT_FL_FILTERED_BIT = 0,
+	TRACE_EVENT_FL_CAP_ANY_BIT = 1,
+	TRACE_EVENT_FL_NO_SET_FILTER_BIT = 2,
+	TRACE_EVENT_FL_IGNORE_ENABLE_BIT = 3,
+	TRACE_EVENT_FL_TRACEPOINT_BIT = 4,
+	TRACE_EVENT_FL_DYNAMIC_BIT = 5,
+	TRACE_EVENT_FL_KPROBE_BIT = 6,
+	TRACE_EVENT_FL_UPROBE_BIT = 7,
+	TRACE_EVENT_FL_EPROBE_BIT = 8,
+	TRACE_EVENT_FL_CUSTOM_BIT = 9,
+};
