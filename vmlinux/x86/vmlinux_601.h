@@ -3960,3 +3960,73 @@ struct user_regset
 	unsigned int bias;
 	unsigned int core_note_type;
 };
+
+struct kernfs_root;
+
+struct kernfs_elem_dir
+{
+	long unsigned int subdirs;
+	struct rb_root children;
+	struct kernfs_root *root;
+	long unsigned int rev;
+};
+
+struct kernfs_elem_symlink
+{
+	struct kernfs_node *target_kn;
+};
+
+struct kernfs_ops;
+
+struct kernfs_open_node;
+
+struct kernfs_elem_attr
+{
+	const struct kernfs_ops *ops;
+	struct kernfs_open_node *open;
+	loff_t size;
+	struct kernfs_node *notify_next;
+};
+
+struct kernfs_iattrs;
+
+struct kernfs_node
+{
+	atomic_t count;
+	atomic_t active;
+	struct lockdep_map dep_map;
+	struct kernfs_node *parent;
+	const char *name;
+	struct rb_node rb;
+	const void *ns;
+	unsigned int hash;
+	union
+	{
+		struct kernfs_elem_dir dir;
+		struct kernfs_elem_symlink symlink;
+		struct kernfs_elem_attr attr;
+	};
+	void *priv;
+	u64 id;
+	short unsigned int flags;
+	umode_t mode;
+	struct kernfs_iattrs *iattr;
+};
+
+struct kernfs_open_file;
+
+struct kernfs_ops
+{
+	int (*open)(struct kernfs_open_file *);
+	void (*release)(struct kernfs_open_file *);
+	int (*seq_show)(struct seq_file *, void *);
+	void *(*seq_start)(struct seq_file *, loff_t *);
+	void *(*seq_next)(struct seq_file *, void *, loff_t *);
+	void (*seq_stop)(struct seq_file *, void *);
+	ssize_t (*read)(struct kernfs_open_file *, char *, size_t, loff_t);
+	size_t atomic_write_len;
+	bool prealloc;
+	ssize_t (*write)(struct kernfs_open_file *, char *, size_t, loff_t);
+	__poll_t (*poll)(struct kernfs_open_file *, struct poll_table_struct *);
+	int (*mmap)(struct kernfs_open_file *, struct vm_area_struct *);
+};
