@@ -1058,3 +1058,17 @@ struct task_struct {
 	struct llist_head kretprobe_instances;
 	struct thread_struct thread;
 };
+
+typedef struct {
+	arch_rwlock_t raw_lock;
+	unsigned int magic;
+	unsigned int owner_cpu;
+	void *owner;
+	struct lockdep_map dep_map;
+} rwlock_t;
+
+typedef u64 pgdval_t;
+
+typedef struct {
+	pgdval_t pgd;
+} pgd_t;
