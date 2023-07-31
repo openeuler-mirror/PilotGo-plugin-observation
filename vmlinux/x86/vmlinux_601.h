@@ -5320,3 +5320,74 @@ struct class
 	const struct dev_pm_ops *pm;
 	struct subsys_private *p;
 };
+
+struct of_device_id
+{
+	char name[32];
+	char type[32];
+	char compatible[128];
+	const void *data;
+};
+
+typedef long unsigned int kernel_ulong_t;
+
+struct acpi_device_id
+{
+	__u8 id[16];
+	kernel_ulong_t driver_data;
+	__u32 cls;
+	__u32 cls_msk;
+};
+
+struct device_dma_parameters
+{
+	unsigned int max_segment_size;
+	unsigned int min_align_mask;
+	long unsigned int segment_boundary_mask;
+};
+
+enum device_physical_location_panel
+{
+	DEVICE_PANEL_TOP = 0,
+	DEVICE_PANEL_BOTTOM = 1,
+	DEVICE_PANEL_LEFT = 2,
+	DEVICE_PANEL_RIGHT = 3,
+	DEVICE_PANEL_FRONT = 4,
+	DEVICE_PANEL_BACK = 5,
+	DEVICE_PANEL_UNKNOWN = 6,
+};
+
+enum device_physical_location_vertical_position
+{
+	DEVICE_VERT_POS_UPPER = 0,
+	DEVICE_VERT_POS_CENTER = 1,
+	DEVICE_VERT_POS_LOWER = 2,
+};
+
+enum device_physical_location_horizontal_position
+{
+	DEVICE_HORI_POS_LEFT = 0,
+	DEVICE_HORI_POS_CENTER = 1,
+	DEVICE_HORI_POS_RIGHT = 2,
+};
+
+struct device_physical_location
+{
+	enum device_physical_location_panel panel;
+	enum device_physical_location_vertical_position vertical_position;
+	enum device_physical_location_horizontal_position horizontal_position;
+	bool dock;
+	bool lid;
+};
+
+enum dma_data_direction
+{
+	DMA_BIDIRECTIONAL = 0,
+	DMA_TO_DEVICE = 1,
+	DMA_FROM_DEVICE = 2,
+	DMA_NONE = 3,
+};
+
+struct sg_table;
+
+struct scatterlist;
