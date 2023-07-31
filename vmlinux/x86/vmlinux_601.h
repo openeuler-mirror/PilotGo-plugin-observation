@@ -4969,3 +4969,98 @@ struct dev_pm_info
 struct irq_domain;
 
 struct msi_device_data;
+
+struct dev_msi_info
+{
+	struct irq_domain *domain;
+	struct msi_device_data *data;
+};
+
+struct dev_archdata
+{
+};
+
+enum device_removable
+{
+	DEVICE_REMOVABLE_NOT_SUPPORTED = 0,
+	DEVICE_REMOVABLE_UNKNOWN = 1,
+	DEVICE_FIXED = 2,
+	DEVICE_REMOVABLE = 3,
+};
+
+struct device_private;
+
+struct device_type;
+
+struct bus_type;
+
+struct device_driver;
+
+struct dev_pm_domain;
+
+struct dma_map_ops;
+
+struct bus_dma_region;
+
+struct device_dma_parameters;
+
+struct cma;
+
+struct io_tlb_mem;
+
+struct device_node;
+
+struct class;
+
+struct iommu_group;
+
+struct dev_iommu;
+
+struct device_physical_location;
+
+struct device
+{
+	struct kobject kobj;
+	struct device *parent;
+	struct device_private *p;
+	const char *init_name;
+	const struct device_type *type;
+	struct bus_type *bus;
+	struct device_driver *driver;
+	void *platform_data;
+	void *driver_data;
+	struct mutex mutex;
+	struct dev_links_info links;
+	struct dev_pm_info power;
+	struct dev_pm_domain *pm_domain;
+	struct dev_msi_info msi;
+	const struct dma_map_ops *dma_ops;
+	u64 *dma_mask;
+	u64 coherent_dma_mask;
+	u64 bus_dma_limit;
+	const struct bus_dma_region *dma_range_map;
+	struct device_dma_parameters *dma_parms;
+	struct list_head dma_pools;
+	struct cma *cma_area;
+	struct io_tlb_mem *dma_io_tlb_mem;
+	struct dev_archdata archdata;
+	struct device_node *of_node;
+	struct fwnode_handle *fwnode;
+	int numa_node;
+	dev_t devt;
+	u32 id;
+	spinlock_t devres_lock;
+	struct list_head devres_head;
+	struct class *class;
+	const struct attribute_group **groups;
+	void (*release)(struct device *);
+	struct iommu_group *iommu_group;
+	struct dev_iommu *iommu;
+	struct device_physical_location *physical_location;
+	enum device_removable removable;
+	bool offline_disabled : 1;
+	bool offline : 1;
+	bool of_node_reused : 1;
+	bool state_synced : 1;
+	bool can_match : 1;
+};
