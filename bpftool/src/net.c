@@ -21,6 +21,77 @@
 #include "main.h"
 #include "netlink_dumper.h"
 
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
+struct ip_devname_ifindex {
+	char	devname[64];
+	int	ifindex;
+};
+
+struct bpf_netdev_t {
+	struct ip_devname_ifindex *devices;
+	int	used_len;
+	int	array_len;
+	int	filter_idx;
+};
+
+struct tc_kind_handle {
+	char	kind[64];
+	int	handle;
+};
+
+struct bpf_tcinfo_t {
+	struct tc_kind_handle	*handle_array;
+	int			used_len;
+	int			array_len;
+	bool			is_qdisc;
+};
+
+struct bpf_filter_t {
+	const char	*kind;
+	const char	*devname;
+	int		ifindex;
+};
+
+struct bpf_attach_info {
+	__u32 flow_dissector_id;
+};
+
+enum net_attach_type {
+	NET_ATTACH_TYPE_XDP,
+	NET_ATTACH_TYPE_XDP_GENERIC,
+	NET_ATTACH_TYPE_XDP_DRIVER,
+	NET_ATTACH_TYPE_XDP_OFFLOAD,
+};
+
+static const char * const attach_type_strings[] = {
+	[NET_ATTACH_TYPE_XDP]		= "xdp",
+	[NET_ATTACH_TYPE_XDP_GENERIC]	= "xdpgeneric",
+	[NET_ATTACH_TYPE_XDP_DRIVER]	= "xdpdrv",
+	[NET_ATTACH_TYPE_XDP_OFFLOAD]	= "xdpoffload",
+};
+
+const size_t net_attach_type_size = ARRAY_SIZE(attach_type_strings);
+
+static enum net_attach_type parse_attach_type(const char *str)
+{
+	enum net_attach_type type;
+
+	for (type = 0; type < net_attach_type_size; type++) {
+		if (attach_type_strings[type] &&
+		    is_prefix(str, attach_type_strings[type]))
+			return type;
+	}
+
+	return net_attach_type_size;
+}
+
+typedef int (*dump_nlmsg_t)(void *cookie, void *msg, struct nlattr **tb);
+
+typedef int (*__dump_nlmsg_t)(struct nlmsghdr *nlmsg, dump_nlmsg_t, void *cookie);
+
 static int net_parse_dev(int *argc, char ***argv)
 {
 	int ifindex;
@@ -39,6 +110,22 @@ static int net_parse_dev(int *argc, char ***argv)
 	}
 
 	return ifindex;
+}
+
+static int __dump_class_nlmsg(struct nlmsghdr *nlh,
+			      dump_nlmsg_t dump_class_nlmsg,
+			      void *cookie)
+{
+	struct nlattr *tb[TCA_MAX + 1], *attr;
+	struct tcmsg *t = NLMSG_DATA(nlh);
+	int len;
+
+	len = nlh->nlmsg_len - NLMSG_LENGTH(sizeof(*t));
+	attr = (struct nlattr *) ((void *) t + NLMSG_ALIGN(sizeof(*t)));
+	if (libbpf_nla_parse(tb, TCA_MAX, attr, len, NULL) != 0)
+		return -LIBBPF_ERRNO__NLPARSE;
+
+	return dump_class_nlmsg(cookie, t, tb);
 }
 
 static int do_attach_detach_xdp(int progfd, enum net_attach_type attach_type,
