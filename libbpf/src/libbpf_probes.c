@@ -284,3 +284,121 @@ int libbpf_probe_bpf_helper(enum bpf_prog_type prog_type, enum bpf_func_id helpe
         return 0;
     return 1; /* assume supported */
 }
+
+static int probe_map_create(enum bpf_map_type map_type)
+{
+    LIBBPF_OPTS(bpf_map_create_opts, opts);
+    int key_size, value_size, max_entries;
+    __u32 btf_key_type_id = 0, btf_value_type_id = 0;
+    int fd = -1, btf_fd = -1, fd_inner = -1, exp_err = 0, err = 0;
+
+    key_size = sizeof(__u32);
+    value_size = sizeof(__u32);
+    max_entries = 1;
+
+    switch (map_type)
+    {
+    case BPF_MAP_TYPE_STACK_TRACE:
+        value_size = sizeof(__u64);
+        break;
+    case BPF_MAP_TYPE_LPM_TRIE:
+        key_size = sizeof(__u64);
+        value_size = sizeof(__u64);
+        opts.map_flags = BPF_F_NO_PREALLOC;
+        break;
+    case BPF_MAP_TYPE_CGROUP_STORAGE:
+    case BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE:
+        key_size = sizeof(struct bpf_cgroup_storage_key);
+        value_size = sizeof(__u64);
+        max_entries = 0;
+        break;
+    case BPF_MAP_TYPE_QUEUE:
+    case BPF_MAP_TYPE_STACK:
+        key_size = 0;
+        break;
+    case BPF_MAP_TYPE_SK_STORAGE:
+    case BPF_MAP_TYPE_INODE_STORAGE:
+    case BPF_MAP_TYPE_TASK_STORAGE:
+    case BPF_MAP_TYPE_CGRP_STORAGE:
+        btf_key_type_id = 1;
+        btf_value_type_id = 3;
+        value_size = 8;
+        max_entries = 0;
+        opts.map_flags = BPF_F_NO_PREALLOC;
+        btf_fd = load_local_storage_btf();
+        if (btf_fd < 0)
+            return btf_fd;
+        break;
+    case BPF_MAP_TYPE_RINGBUF:
+    case BPF_MAP_TYPE_USER_RINGBUF:
+        key_size = 0;
+        value_size = 0;
+        max_entries = sysconf(_SC_PAGE_SIZE);
+        break;
+    case BPF_MAP_TYPE_STRUCT_OPS:
+        /* we'll get -ENOTSUPP for invalid BTF type ID for struct_ops */
+        opts.btf_vmlinux_value_type_id = 1;
+        exp_err = -524; /* -ENOTSUPP */
+        break;
+    case BPF_MAP_TYPE_BLOOM_FILTER:
+        key_size = 0;
+        max_entries = 1;
+        break;
+    case BPF_MAP_TYPE_HASH:
+    case BPF_MAP_TYPE_ARRAY:
+    case BPF_MAP_TYPE_PROG_ARRAY:
+    case BPF_MAP_TYPE_PERF_EVENT_ARRAY:
+    case BPF_MAP_TYPE_PERCPU_HASH:
+    case BPF_MAP_TYPE_PERCPU_ARRAY:
+    case BPF_MAP_TYPE_CGROUP_ARRAY:
+    case BPF_MAP_TYPE_LRU_HASH:
+    case BPF_MAP_TYPE_LRU_PERCPU_HASH:
+    case BPF_MAP_TYPE_ARRAY_OF_MAPS:
+    case BPF_MAP_TYPE_HASH_OF_MAPS:
+    case BPF_MAP_TYPE_DEVMAP:
+    case BPF_MAP_TYPE_DEVMAP_HASH:
+    case BPF_MAP_TYPE_SOCKMAP:
+    case BPF_MAP_TYPE_CPUMAP:
+    case BPF_MAP_TYPE_XSKMAP:
+    case BPF_MAP_TYPE_SOCKHASH:
+    case BPF_MAP_TYPE_REUSEPORT_SOCKARRAY:
+        break;
+    case BPF_MAP_TYPE_UNSPEC:
+    default:
+        return -EOPNOTSUPP;
+    }
+
+    if (map_type == BPF_MAP_TYPE_ARRAY_OF_MAPS ||
+        map_type == BPF_MAP_TYPE_HASH_OF_MAPS)
+    {
+        fd_inner = bpf_map_create(BPF_MAP_TYPE_HASH, NULL,
+                                  sizeof(__u32), sizeof(__u32), 1, NULL);
+        if (fd_inner < 0)
+            goto cleanup;
+
+        opts.inner_map_fd = fd_inner;
+    }
+
+    if (btf_fd >= 0)
+    {
+        opts.btf_fd = btf_fd;
+        opts.btf_key_type_id = btf_key_type_id;
+        opts.btf_value_type_id = btf_value_type_id;
+    }
+
+    fd = bpf_map_create(map_type, NULL, key_size, value_size, max_entries, &opts);
+    err = -errno;
+
+cleanup:
+    if (fd >= 0)
+        close(fd);
+    if (fd_inner >= 0)
+        close(fd_inner);
+    if (btf_fd >= 0)
+        close(btf_fd);
+
+    if (exp_err)
+        return fd < 0 && err == exp_err ? 1 : 0;
+    else
+        return fd >= 0 ? 1 : 0;
+}
