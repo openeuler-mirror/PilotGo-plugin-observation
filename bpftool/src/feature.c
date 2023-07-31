@@ -23,6 +23,18 @@
 # define PROC_SUPER_MAGIC	0x9fa0
 #endif
 
+static bool check_procfs(void)
+{
+	struct statfs st_fs;
+
+	if (statfs("/proc", &st_fs) < 0)
+		return false;
+	if ((unsigned long)st_fs.f_type != PROC_SUPER_MAGIC)
+		return false;
+
+	return true;
+}
+
 void set_max_rlimit(void)
 {
 	struct rlimit rinf = { RLIM_INFINITY, RLIM_INFINITY };
@@ -30,6 +42,50 @@ void set_max_rlimit(void)
 	if (known_to_need_rlimit())
 		setrlimit(RLIMIT_MEMLOCK, &rinf);
 }
+
+static void
+print_start_section(const char *json_title, const char *plain_title,
+		    const char *define_comment, const char *define_prefix)
+{
+	if (json_output) {
+		jsonw_name(json_wtr, json_title);
+		jsonw_start_object(json_wtr);
+	} else if (define_prefix) {
+		printf("%s\n", define_comment);
+	} else {
+		printf("%s\n", plain_title);
+	}
+}
+
+static void
+section_system_config(enum probe_component target, const char *define_prefix)
+{
+	switch (target) {
+	case COMPONENT_KERNEL:
+	case COMPONENT_UNSPEC:
+		print_start_section("system_config",
+				    "Scanning system configuration...",
+				    "/*** Misc kernel config items ***/",
+				    define_prefix);
+		if (!define_prefix) {
+			if (check_procfs()) {
+				probe_unprivileged_disabled();
+				probe_jit_enable();
+				probe_jit_harden();
+				probe_jit_kallsyms();
+				probe_jit_limit();
+			} else {
+				p_info("/* procfs not mounted, skipping related probes */");
+			}
+		}
+		probe_kernel_image_config(define_prefix);
+		print_end_section();
+		break;
+	default:
+		break;
+	}
+}
+
 
 #ifdef USE_LIBCAP
 #define capability(c) { c, false, #c }
