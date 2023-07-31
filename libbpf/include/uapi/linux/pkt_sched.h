@@ -806,3 +806,43 @@ struct tc_fq_codel_cl_stats {
 	__u32	dropping;
 	__s32	drop_next;
 };
+
+struct tc_fq_codel_xstats {
+	__u32	type;
+	union {
+		struct tc_fq_codel_qd_stats qdisc_stats;
+		struct tc_fq_codel_cl_stats class_stats;
+	};
+};
+
+/* FQ */
+
+enum {
+	TCA_FQ_UNSPEC,
+
+	TCA_FQ_PLIMIT,		/* limit of total number of packets in queue */
+
+	TCA_FQ_FLOW_PLIMIT,	/* limit of packets per flow */
+
+	TCA_FQ_QUANTUM,		/* RR quantum */
+
+	TCA_FQ_INITIAL_QUANTUM,		/* RR quantum for new flow */
+
+	TCA_FQ_RATE_ENABLE,	/* enable/disable rate limiting */
+
+	TCA_FQ_FLOW_DEFAULT_RATE,/* obsolete, do not use */
+
+	TCA_FQ_FLOW_MAX_RATE,	/* per flow max rate */
+
+	TCA_FQ_BUCKETS_LOG,	/* log2(number of buckets) */
+
+	TCA_FQ_FLOW_REFILL_DELAY,	/* flow credit refill delay in usec */
+
+	TCA_FQ_ORPHAN_MASK,	/* mask applied to orphaned skb hashes */
+
+	TCA_FQ_LOW_RATE_THRESHOLD, /* per packet delay under this rate */
+
+	TCA_FQ_CE_THRESHOLD,	/* DCTCP-like CE-marking threshold */
+
+	__TCA_FQ_MAX
+};
