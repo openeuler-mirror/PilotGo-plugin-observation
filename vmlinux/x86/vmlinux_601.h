@@ -4577,3 +4577,113 @@ enum memory_type
 	MEMORY_DEVICE_GENERIC = 4,
 	MEMORY_DEVICE_PCI_P2PDMA = 5,
 };
+
+struct dev_pagemap_ops;
+
+struct dev_pagemap
+{
+	struct vmem_altmap altmap;
+	struct percpu_ref ref;
+	struct completion done;
+	enum memory_type type;
+	unsigned int flags;
+	long unsigned int vmemmap_shift;
+	const struct dev_pagemap_ops *ops;
+	void *owner;
+	int nr_range;
+	union
+	{
+		struct range range;
+		struct range ranges[0];
+	};
+};
+
+enum fault_flag
+{
+	FAULT_FLAG_WRITE = 1,
+	FAULT_FLAG_MKWRITE = 2,
+	FAULT_FLAG_ALLOW_RETRY = 4,
+	FAULT_FLAG_RETRY_NOWAIT = 8,
+	FAULT_FLAG_KILLABLE = 16,
+	FAULT_FLAG_TRIED = 32,
+	FAULT_FLAG_USER = 64,
+	FAULT_FLAG_REMOTE = 128,
+	FAULT_FLAG_INSTRUCTION = 256,
+	FAULT_FLAG_INTERRUPTIBLE = 512,
+	FAULT_FLAG_UNSHARE = 1024,
+	FAULT_FLAG_ORIG_PTE_VALID = 2048,
+};
+
+struct vm_fault
+{
+	const struct
+	{
+		struct vm_area_struct *vma;
+		gfp_t gfp_mask;
+		long unsigned int pgoff;
+		long unsigned int address;
+		long unsigned int real_address;
+	};
+	enum fault_flag flags;
+	pmd_t *pmd;
+	pud_t *pud;
+	union
+	{
+		pte_t orig_pte;
+		pmd_t orig_pmd;
+	};
+	struct page *cow_page;
+	struct page *page;
+	pte_t *pte;
+	spinlock_t *ptl;
+	pgtable_t prealloc_pte;
+};
+
+typedef void percpu_ref_func_t(struct percpu_ref *);
+
+struct percpu_ref_data
+{
+	atomic_long_t count;
+	percpu_ref_func_t *release;
+	percpu_ref_func_t *confirm_switch;
+	bool force_atomic : 1;
+	bool allow_reinit : 1;
+	struct callback_head rcu;
+	struct percpu_ref *ref;
+};
+
+struct dev_pagemap_ops
+{
+	void (*page_free)(struct page *);
+	vm_fault_t (*migrate_to_ram)(struct vm_fault *);
+	int (*memory_failure)(struct dev_pagemap *, long unsigned int, long unsigned int, int);
+};
+
+enum
+{
+	DQF_ROOT_SQUASH_B = 0,
+	DQF_SYS_FILE_B = 16,
+	DQF_PRIVATE = 17,
+};
+
+enum
+{
+	DQST_LOOKUPS = 0,
+	DQST_DROPS = 1,
+	DQST_READS = 2,
+	DQST_WRITES = 3,
+	DQST_CACHE_HITS = 4,
+	DQST_ALLOC_DQUOTS = 5,
+	DQST_FREE_DQUOTS = 6,
+	DQST_SYNCS = 7,
+	_DQST_DQSTAT_LAST = 8,
+};
+
+enum
+{
+	SB_UNFROZEN = 0,
+	SB_FREEZE_WRITE = 1,
+	SB_FREEZE_PAGEFAULT = 2,
+	SB_FREEZE_FS = 3,
+	SB_FREEZE_COMPLETE = 4,
+};
