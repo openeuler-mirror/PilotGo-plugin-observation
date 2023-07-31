@@ -192,4 +192,105 @@ const struct btf_type *skip_mods_and_typedefs(const struct btf *btf, __u32 id, _
 static inline enum btf_func_linkage btf_func_linkage(const struct btf_type *t)
 {
     return (enum btf_func_linkage)(int)btf_vlen(t);
+<<<<<<< HEAD
 }
+=======
+}
+
+static inline __u32 btf_type_info(int kind, int vlen, int kflag)
+{
+    return (kflag << 31) | (kind << 24) | vlen;
+}
+
+enum map_def_parts
+{
+    MAP_DEF_MAP_TYPE = 0x001,
+    MAP_DEF_KEY_TYPE = 0x002,
+    MAP_DEF_KEY_SIZE = 0x004,
+    MAP_DEF_VALUE_TYPE = 0x008,
+    MAP_DEF_VALUE_SIZE = 0x010,
+    MAP_DEF_MAX_ENTRIES = 0x020,
+    MAP_DEF_MAP_FLAGS = 0x040,
+    MAP_DEF_NUMA_NODE = 0x080,
+    MAP_DEF_PINNING = 0x100,
+    MAP_DEF_INNER_MAP = 0x200,
+    MAP_DEF_MAP_EXTRA = 0x400,
+
+    MAP_DEF_ALL = 0x7ff, /* combination of all above */
+};
+
+struct btf_map_def
+{
+    enum map_def_parts parts;
+    __u32 map_type;
+    __u32 key_type_id;
+    __u32 key_size;
+    __u32 value_type_id;
+    __u32 value_size;
+    __u32 max_entries;
+    __u32 map_flags;
+    __u32 numa_node;
+    __u32 pinning;
+    __u64 map_extra;
+};
+
+int parse_btf_map_def(const char *map_name, struct btf *btf,
+                      const struct btf_type *def_t, bool strict,
+                      struct btf_map_def *map_def, struct btf_map_def *inner_def);
+
+void *libbpf_add_mem(void **data, size_t *cap_cnt, size_t elem_sz,
+                     size_t cur_cnt, size_t max_cnt, size_t add_cnt);
+int libbpf_ensure_mem(void **data, size_t *cap_cnt, size_t elem_sz, size_t need_cnt);
+
+static inline bool libbpf_is_mem_zeroed(const char *p, ssize_t len)
+{
+    while (len > 0)
+    {
+        if (*p)
+            return false;
+        p++;
+        len--;
+    }
+    return true;
+}
+
+static inline bool libbpf_validate_opts(const char *opts,
+                                        size_t opts_sz, size_t user_sz,
+                                        const char *type_name)
+{
+    if (user_sz < sizeof(size_t))
+    {
+        pr_warn("%s size (%zu) is too small\n", type_name, user_sz);
+        return false;
+    }
+    if (!libbpf_is_mem_zeroed(opts + opts_sz, (ssize_t)user_sz - opts_sz))
+    {
+        pr_warn("%s has non-zero extra bytes\n", type_name);
+        return false;
+    }
+    return true;
+}
+
+#define OPTS_VALID(opts, type)                                        \
+    (!(opts) || libbpf_validate_opts((const char *)opts,              \
+                                     offsetofend(struct type,         \
+                                                 type##__last_field), \
+                                     (opts)->sz, #type))
+#define OPTS_HAS(opts, field) \
+    ((opts) && opts->sz >= offsetofend(typeof(*(opts)), field))
+#define OPTS_GET(opts, field, fallback_value) \
+    (OPTS_HAS(opts, field) ? (opts)->field : fallback_value)
+#define OPTS_SET(opts, field, value) \
+    do                               \
+    {                                \
+        if (OPTS_HAS(opts, field))   \
+            (opts)->field = value;   \
+    } while (0)
+
+#define OPTS_ZEROED(opts, last_nonzero_field)                             \
+    ({                                                                    \
+        ssize_t __off = offsetofend(typeof(*(opts)), last_nonzero_field); \
+        !(opts) || libbpf_is_mem_zeroed((const void *)opts + __off,       \
+                                        (opts)->sz - __off);              \
+    })
+>>>>>>> 53a2112 (Defines internal bpf file macro variables)
