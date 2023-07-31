@@ -481,3 +481,51 @@ static inline bool is_ldimm64_insn(struct bpf_insn *insn)
 {
     return insn->code == (BPF_LD | BPF_IMM | BPF_DW);
 }
+
+static inline int ensure_good_fd(int fd)
+{
+    int old_fd = fd, saved_errno;
+
+    if (fd < 0)
+        return fd;
+    if (fd < 3)
+    {
+        fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+        saved_errno = errno;
+        close(old_fd);
+        errno = saved_errno;
+        if (fd < 0)
+        {
+            pr_warn("failed to dup FD %d to FD > 2: %d\n", old_fd, -saved_errno);
+            errno = saved_errno;
+        }
+    }
+    return fd;
+}
+
+/* The following two functions are exposed to bpftool */
+int bpf_core_add_cands(struct bpf_core_cand *local_cand,
+                       size_t local_essent_len,
+                       const struct btf *targ_btf,
+                       const char *targ_btf_name,
+                       int targ_start_id,
+                       struct bpf_core_cand_list *cands);
+void bpf_core_free_cands(struct bpf_core_cand_list *cands);
+
+struct usdt_manager *usdt_manager_new(struct bpf_object *obj);
+void usdt_manager_free(struct usdt_manager *man);
+struct bpf_link *usdt_manager_attach_usdt(struct usdt_manager *man,
+                                          const struct bpf_program *prog,
+                                          pid_t pid, const char *path,
+                                          const char *usdt_provider, const char *usdt_name,
+                                          __u64 usdt_cookie);
+
+static inline bool is_pow_of_2(size_t x)
+{
+    return x && (x & (x - 1)) == 0;
+}
+
+#define PROG_LOAD_ATTEMPTS 5
+int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size, int attempts);
+
+#endif /* __LIBBPF_LIBBPF_INTERNAL_H */
