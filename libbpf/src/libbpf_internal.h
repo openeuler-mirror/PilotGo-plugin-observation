@@ -290,3 +290,144 @@ static inline bool libbpf_validate_opts(const char *opts,
         !(opts) || libbpf_is_mem_zeroed((const void *)opts + __off,       \
                                         (opts)->sz - __off);              \
     })
+
+enum kern_feature_id
+{
+    /* v4.14: kernel support for program & map names. */
+    FEAT_PROG_NAME,
+    /* v5.2: kernel support for global data sections. */
+    FEAT_GLOBAL_DATA,
+    /* BTF support */
+    FEAT_BTF,
+    /* BTF_KIND_FUNC and BTF_KIND_FUNC_PROTO support */
+    FEAT_BTF_FUNC,
+    /* BTF_KIND_VAR and BTF_KIND_DATASEC support */
+    FEAT_BTF_DATASEC,
+    /* BTF_FUNC_GLOBAL is supported */
+    FEAT_BTF_GLOBAL_FUNC,
+    /* BPF_F_MMAPABLE is supported for arrays */
+    FEAT_ARRAY_MMAP,
+    /* kernel support for expected_attach_type in BPF_PROG_LOAD */
+    FEAT_EXP_ATTACH_TYPE,
+    /* bpf_probe_read_{kernel,user}[_str] helpers */
+    FEAT_PROBE_READ_KERN,
+    /* BPF_PROG_BIND_MAP is supported */
+    FEAT_PROG_BIND_MAP,
+    /* Kernel support for module BTFs */
+    FEAT_MODULE_BTF,
+    /* BTF_KIND_FLOAT support */
+    FEAT_BTF_FLOAT,
+    /* BPF perf link support */
+    FEAT_PERF_LINK,
+    /* BTF_KIND_DECL_TAG support */
+    FEAT_BTF_DECL_TAG,
+    /* BTF_KIND_TYPE_TAG support */
+    FEAT_BTF_TYPE_TAG,
+    /* memcg-based accounting for BPF maps and progs */
+    FEAT_MEMCG_ACCOUNT,
+    /* BPF cookie (bpf_get_attach_cookie() BPF helper) support */
+    FEAT_BPF_COOKIE,
+    /* BTF_KIND_ENUM64 support and BTF_KIND_ENUM kflag support */
+    FEAT_BTF_ENUM64,
+    /* Kernel uses syscall wrapper (CONFIG_ARCH_HAS_SYSCALL_WRAPPER) */
+    FEAT_SYSCALL_WRAPPER,
+    __FEAT_CNT,
+};
+
+int probe_memcg_account(void);
+bool kernel_supports(const struct bpf_object *obj, enum kern_feature_id feat_id);
+int bump_rlimit_memlock(void);
+
+int parse_cpu_mask_str(const char *s, bool **mask, int *mask_sz);
+int parse_cpu_mask_file(const char *fcpu, bool **mask, int *mask_sz);
+int libbpf__load_raw_btf(const char *raw_types, size_t types_len,
+                         const char *str_sec, size_t str_len);
+int btf_load_into_kernel(struct btf *btf, char *log_buf, size_t log_sz, __u32 log_level);
+
+struct btf *btf_get_from_fd(int btf_fd, struct btf *base_btf);
+void btf_get_kernel_prefix_kind(enum bpf_attach_type attach_type,
+                                const char **prefix, int *kind);
+
+struct btf_ext_info
+{
+    void *info;
+    __u32 rec_size;
+    __u32 len;
+    __u32 *sec_idxs;
+    int sec_cnt;
+};
+
+#define for_each_btf_ext_sec(seg, sec)                         \
+    for (sec = (seg)->info;                                    \
+         (void *)sec < (seg)->info + (seg)->len;               \
+         sec = (void *)sec + sizeof(struct btf_ext_info_sec) + \
+               (seg)->rec_size * sec->num_info)
+
+#define for_each_btf_ext_rec(seg, sec, i, rec) \
+    for (i = 0, rec = (void *)&(sec)->data;    \
+         i < (sec)->num_info;                  \
+         i++, rec = (void *)rec + (seg)->rec_size)
+
+struct btf_ext_header
+{
+    __u16 magic;
+    __u8 version;
+    __u8 flags;
+    __u32 hdr_len;
+
+    /* All offsets are in bytes relative to the end of this header */
+    __u32 func_info_off;
+    __u32 func_info_len;
+    __u32 line_info_off;
+    __u32 line_info_len;
+
+    /* optional part of .BTF.ext header */
+    __u32 core_relo_off;
+    __u32 core_relo_len;
+};
+
+struct btf_ext
+{
+    union
+    {
+        struct btf_ext_header *hdr;
+        void *data;
+    };
+    struct btf_ext_info func_info;
+    struct btf_ext_info line_info;
+    struct btf_ext_info core_relo_info;
+    __u32 data_size;
+};
+
+struct btf_ext_info_sec
+{
+    __u32 sec_name_off;
+    __u32 num_info;
+    /* Followed by num_info * record_size number of bytes */
+    __u8 data[];
+};
+
+/* The minimum bpf_func_info checked by the loader */
+struct bpf_func_info_min
+{
+    __u32 insn_off;
+    __u32 type_id;
+};
+
+/* The minimum bpf_line_info checked by the loader */
+struct bpf_line_info_min
+{
+    __u32 insn_off;
+    __u32 file_name_off;
+    __u32 line_off;
+    __u32 line_col;
+};
+
+typedef int (*type_id_visit_fn)(__u32 *type_id, void *ctx);
+typedef int (*str_off_visit_fn)(__u32 *str_off, void *ctx);
+int btf_type_visit_type_ids(struct btf_type *t, type_id_visit_fn visit, void *ctx);
+int btf_type_visit_str_offs(struct btf_type *t, str_off_visit_fn visit, void *ctx);
+int btf_ext_visit_type_ids(struct btf_ext *btf_ext, type_id_visit_fn visit, void *ctx);
+int btf_ext_visit_str_offs(struct btf_ext *btf_ext, str_off_visit_fn visit, void *ctx);
+__s32 btf__find_by_name_kind_own(const struct btf *btf, const char *type_name,
+                                 __u32 kind);
