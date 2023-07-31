@@ -192,9 +192,6 @@ const struct btf_type *skip_mods_and_typedefs(const struct btf *btf, __u32 id, _
 static inline enum btf_func_linkage btf_func_linkage(const struct btf_type *t)
 {
     return (enum btf_func_linkage)(int)btf_vlen(t);
-<<<<<<< HEAD
-}
-=======
 }
 
 static inline __u32 btf_type_info(int kind, int vlen, int kflag)
@@ -293,4 +290,3 @@ static inline bool libbpf_validate_opts(const char *opts,
         !(opts) || libbpf_is_mem_zeroed((const void *)opts + __off,       \
                                         (opts)->sz - __off);              \
     })
->>>>>>> 53a2112 (Defines internal bpf file macro variables)
