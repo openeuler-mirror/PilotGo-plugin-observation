@@ -5391,3 +5391,127 @@ enum dma_data_direction
 struct sg_table;
 
 struct scatterlist;
+
+struct dma_map_ops
+{
+	unsigned int flags;
+	void *(*alloc)(struct device *, size_t, dma_addr_t *, gfp_t, long unsigned int);
+	void (*free)(struct device *, size_t, void *, dma_addr_t, long unsigned int);
+	struct page *(*alloc_pages)(struct device *, size_t, dma_addr_t *, enum dma_data_direction, gfp_t);
+	void (*free_pages)(struct device *, size_t, struct page *, dma_addr_t, enum dma_data_direction);
+	struct sg_table *(*alloc_noncontiguous)(struct device *, size_t, enum dma_data_direction, gfp_t, long unsigned int);
+	void (*free_noncontiguous)(struct device *, size_t, struct sg_table *, enum dma_data_direction);
+	int (*mmap)(struct device *, struct vm_area_struct *, void *, dma_addr_t, size_t, long unsigned int);
+	int (*get_sgtable)(struct device *, struct sg_table *, void *, dma_addr_t, size_t, long unsigned int);
+	dma_addr_t (*map_page)(struct device *, struct page *, long unsigned int, size_t, enum dma_data_direction, long unsigned int);
+	void (*unmap_page)(struct device *, dma_addr_t, size_t, enum dma_data_direction, long unsigned int);
+	int (*map_sg)(struct device *, struct scatterlist *, int, enum dma_data_direction, long unsigned int);
+	void (*unmap_sg)(struct device *, struct scatterlist *, int, enum dma_data_direction, long unsigned int);
+	dma_addr_t (*map_resource)(struct device *, phys_addr_t, size_t, enum dma_data_direction, long unsigned int);
+	void (*unmap_resource)(struct device *, dma_addr_t, size_t, enum dma_data_direction, long unsigned int);
+	void (*sync_single_for_cpu)(struct device *, dma_addr_t, size_t, enum dma_data_direction);
+	void (*sync_single_for_device)(struct device *, dma_addr_t, size_t, enum dma_data_direction);
+	void (*sync_sg_for_cpu)(struct device *, struct scatterlist *, int, enum dma_data_direction);
+	void (*sync_sg_for_device)(struct device *, struct scatterlist *, int, enum dma_data_direction);
+	void (*cache_sync)(struct device *, void *, size_t, enum dma_data_direction);
+	int (*dma_supported)(struct device *, u64);
+	u64 (*get_required_mask)(struct device *);
+	size_t (*max_mapping_size)(struct device *);
+	size_t (*opt_mapping_size)();
+	long unsigned int (*get_merge_boundary)(struct device *);
+};
+
+struct bus_dma_region
+{
+	phys_addr_t cpu_start;
+	dma_addr_t dma_start;
+	u64 size;
+	u64 offset;
+};
+
+struct io_tlb_area;
+
+struct io_tlb_slot;
+
+struct io_tlb_mem
+{
+	phys_addr_t start;
+	phys_addr_t end;
+	void *vaddr;
+	long unsigned int nslabs;
+	long unsigned int used;
+	struct dentry *debugfs;
+	bool late_alloc;
+	bool force_bounce;
+	bool for_alloc;
+	unsigned int nareas;
+	unsigned int area_nslabs;
+	struct io_tlb_area *areas;
+	struct io_tlb_slot *slots;
+};
+
+struct scatterlist
+{
+	long unsigned int page_link;
+	unsigned int offset;
+	unsigned int length;
+	dma_addr_t dma_address;
+	unsigned int dma_length;
+};
+
+struct sg_table
+{
+	struct scatterlist *sgl;
+	unsigned int nents;
+	unsigned int orig_nents;
+};
+
+enum pci_p2pdma_map_type
+{
+	PCI_P2PDMA_MAP_UNKNOWN = 0,
+	PCI_P2PDMA_MAP_NOT_SUPPORTED = 1,
+	PCI_P2PDMA_MAP_BUS_ADDR = 2,
+	PCI_P2PDMA_MAP_THRU_HOST_BRIDGE = 3,
+};
+
+struct pci_p2pdma_map_state
+{
+	struct dev_pagemap *pgmap;
+	int map;
+	u64 bus_off;
+};
+
+typedef u16 uint16_t;
+
+struct xbc_node
+{
+	uint16_t next;
+	uint16_t child;
+	uint16_t parent;
+	uint16_t data;
+};
+
+struct pollfd
+{
+	int fd;
+	short int events;
+	short int revents;
+};
+
+struct seq_operations
+{
+	void *(*start)(struct seq_file *, loff_t *);
+	void (*stop)(struct seq_file *, void *);
+	void *(*next)(struct seq_file *, void *, loff_t *);
+	int (*show)(struct seq_file *, void *);
+};
+
+enum perf_event_state
+{
+	PERF_EVENT_STATE_DEAD = -4,
+	PERF_EVENT_STATE_EXIT = -3,
+	PERF_EVENT_STATE_ERROR = -2,
+	PERF_EVENT_STATE_OFF = -1,
+	PERF_EVENT_STATE_INACTIVE = 0,
+	PERF_EVENT_STATE_ACTIVE = 1,
+};
