@@ -5064,3 +5064,115 @@ struct device
 	bool state_synced : 1;
 	bool can_match : 1;
 };
+
+struct fwnode_endpoint
+{
+	unsigned int port;
+	unsigned int id;
+	const struct fwnode_handle *local_fwnode;
+};
+
+struct fwnode_reference_args
+{
+	struct fwnode_handle *fwnode;
+	unsigned int nargs;
+	u64 args[8];
+};
+
+enum cpu_idle_type
+{
+	CPU_IDLE = 0,
+	CPU_NOT_IDLE = 1,
+	CPU_NEWLY_IDLE = 2,
+	CPU_MAX_IDLE_TYPES = 3,
+};
+
+enum
+{
+	__SD_BALANCE_NEWIDLE = 0,
+	__SD_BALANCE_EXEC = 1,
+	__SD_BALANCE_FORK = 2,
+	__SD_BALANCE_WAKE = 3,
+	__SD_WAKE_AFFINE = 4,
+	__SD_ASYM_CPUCAPACITY = 5,
+	__SD_ASYM_CPUCAPACITY_FULL = 6,
+	__SD_SHARE_CPUCAPACITY = 7,
+	__SD_SHARE_PKG_RESOURCES = 8,
+	__SD_SERIALIZE = 9,
+	__SD_ASYM_PACKING = 10,
+	__SD_PREFER_SIBLING = 11,
+	__SD_OVERLAP = 12,
+	__SD_NUMA = 13,
+	__SD_FLAG_CNT = 14,
+};
+
+struct dev_pm_ops
+{
+	int (*prepare)(struct device *);
+	void (*complete)(struct device *);
+	int (*suspend)(struct device *);
+	int (*resume)(struct device *);
+	int (*freeze)(struct device *);
+	int (*thaw)(struct device *);
+	int (*poweroff)(struct device *);
+	int (*restore)(struct device *);
+	int (*suspend_late)(struct device *);
+	int (*resume_early)(struct device *);
+	int (*freeze_late)(struct device *);
+	int (*thaw_early)(struct device *);
+	int (*poweroff_late)(struct device *);
+	int (*restore_early)(struct device *);
+	int (*suspend_noirq)(struct device *);
+	int (*resume_noirq)(struct device *);
+	int (*freeze_noirq)(struct device *);
+	int (*thaw_noirq)(struct device *);
+	int (*poweroff_noirq)(struct device *);
+	int (*restore_noirq)(struct device *);
+	int (*runtime_suspend)(struct device *);
+	int (*runtime_resume)(struct device *);
+	int (*runtime_idle)(struct device *);
+};
+
+struct pm_subsys_data
+{
+	spinlock_t lock;
+	unsigned int refcount;
+};
+
+struct wakeup_source
+{
+	const char *name;
+	int id;
+	struct list_head entry;
+	spinlock_t lock;
+	struct wake_irq *wakeirq;
+	struct timer_list timer;
+	long unsigned int timer_expires;
+	ktime_t total_time;
+	ktime_t max_time;
+	ktime_t last_time;
+	ktime_t start_prevent_time;
+	ktime_t prevent_sleep_time;
+	long unsigned int event_count;
+	long unsigned int active_count;
+	long unsigned int relax_count;
+	long unsigned int expire_count;
+	long unsigned int wakeup_count;
+	struct device *dev;
+	bool active : 1;
+	bool autosleep_enabled : 1;
+};
+
+struct dev_pm_domain
+{
+	struct dev_pm_ops ops;
+	int (*start)(struct device *);
+	void (*detach)(struct device *, bool);
+	int (*activate)(struct device *);
+	void (*sync)(struct device *);
+	void (*dismiss)(struct device *);
+};
+
+struct iommu_ops;
+
+struct subsys_private;
