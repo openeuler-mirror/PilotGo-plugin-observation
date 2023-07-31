@@ -203,3 +203,84 @@ int libbpf_probe_bpf_map_type(enum bpf_map_type map_type, const void *opts)
     ret = probe_map_create(map_type);
     return libbpf_err(ret);
 }
+
+int libbpf__load_raw_btf(const char *raw_types, size_t types_len,
+                         const char *str_sec, size_t str_len)
+{
+    struct btf_header hdr = {
+        .magic = BTF_MAGIC,
+        .version = BTF_VERSION,
+        .hdr_len = sizeof(struct btf_header),
+        .type_len = types_len,
+        .str_off = types_len,
+        .str_len = str_len,
+    };
+    int btf_fd, btf_len;
+    __u8 *raw_btf;
+
+    btf_len = hdr.hdr_len + hdr.type_len + hdr.str_len;
+    raw_btf = malloc(btf_len);
+    if (!raw_btf)
+        return -ENOMEM;
+
+    memcpy(raw_btf, &hdr, sizeof(hdr));
+    memcpy(raw_btf + hdr.hdr_len, raw_types, hdr.type_len);
+    memcpy(raw_btf + hdr.hdr_len + hdr.type_len, str_sec, hdr.str_len);
+
+    btf_fd = bpf_btf_load(raw_btf, btf_len, NULL);
+
+    free(raw_btf);
+    return btf_fd;
+}
+
+static int load_local_storage_btf(void)
+{
+    const char strs[] = "\0bpf_spin_lock\0val\0cnt\0l";
+    __u32 types[] = {
+        /* int */
+        BTF_TYPE_INT_ENC(0, BTF_INT_SIGNED, 0, 32, 4), /* [1] */
+        /* struct bpf_spin_lock */                     /* [2] */
+        BTF_TYPE_ENC(1, BTF_INFO_ENC(BTF_KIND_STRUCT, 0, 1), 4),
+        BTF_MEMBER_ENC(15, 1, 0), /* int val; */
+        /* struct val */          /* [3] */
+        BTF_TYPE_ENC(15, BTF_INFO_ENC(BTF_KIND_STRUCT, 0, 2), 8),
+        BTF_MEMBER_ENC(19, 1, 0),  /* int cnt; */
+        BTF_MEMBER_ENC(23, 2, 32), /* struct bpf_spin_lock l; */
+    };
+
+    return libbpf__load_raw_btf((char *)types, sizeof(types),
+                                strs, sizeof(strs));
+}
+
+int libbpf_probe_bpf_helper(enum bpf_prog_type prog_type, enum bpf_func_id helper_id,
+                            const void *opts)
+{
+    struct bpf_insn insns[] = {
+        BPF_EMIT_CALL((__u32)helper_id),
+        BPF_EXIT_INSN(),
+    };
+    const size_t insn_cnt = ARRAY_SIZE(insns);
+    char buf[4096];
+    int ret;
+
+    if (opts)
+        return libbpf_err(-EINVAL);
+    switch (prog_type)
+    {
+    case BPF_PROG_TYPE_TRACING:
+    case BPF_PROG_TYPE_EXT:
+    case BPF_PROG_TYPE_LSM:
+    case BPF_PROG_TYPE_STRUCT_OPS:
+        return -EOPNOTSUPP;
+    default:
+        break;
+    }
+
+    buf[0] = '\0';
+    ret = probe_prog_load(prog_type, insns, insn_cnt, buf, sizeof(buf));
+    if (ret < 0)
+        return libbpf_err(ret);
+    if (ret == 0 && (strstr(buf, "invalid func ") || strstr(buf, "unknown func ")))
+        return 0;
+    return 1; /* assume supported */
+}
