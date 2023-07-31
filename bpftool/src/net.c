@@ -217,6 +217,34 @@ cleanup:
 	return err;
 }
 
+static int do_help(int argc, char **argv)
+{
+	if (json_output) {
+		jsonw_null(json_wtr);
+		return 0;
+	}
+
+	fprintf(stderr,
+		"Usage: %1$s %2$s { show | list } [dev <devname>]\n"
+		"       %1$s %2$s attach ATTACH_TYPE PROG dev <devname> [ overwrite ]\n"
+		"       %1$s %2$s detach ATTACH_TYPE dev <devname>\n"
+		"       %1$s %2$s help\n"
+		"\n"
+		"       " HELP_SPEC_PROGRAM "\n"
+		"       ATTACH_TYPE := { xdp | xdpgeneric | xdpdrv | xdpoffload }\n"
+		"       " HELP_SPEC_OPTIONS " }\n"
+		"\n"
+		"Note: Only xdp and tc attachments are supported now.\n"
+		"      For progs attached to cgroups, use \"bpftool cgroup\"\n"
+		"      to dump program attachments. For program types\n"
+		"      sk_{filter,skb,msg,reuseport} and lwt/seg6, please\n"
+		"      consult iproute2.\n"
+		"",
+		bin_name, argv[-2]);
+
+	return 0;
+}
+
 static const struct cmd cmds[] = {
 	{ "show",	do_show },
 	{ "list",	do_show },
