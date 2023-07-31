@@ -5176,3 +5176,67 @@ struct dev_pm_domain
 struct iommu_ops;
 
 struct subsys_private;
+
+struct bus_type
+{
+	const char *name;
+	const char *dev_name;
+	struct device *dev_root;
+	const struct attribute_group **bus_groups;
+	const struct attribute_group **dev_groups;
+	const struct attribute_group **drv_groups;
+	int (*match)(struct device *, struct device_driver *);
+	int (*uevent)(struct device *, struct kobj_uevent_env *);
+	int (*probe)(struct device *);
+	void (*sync_state)(struct device *);
+	void (*remove)(struct device *);
+	void (*shutdown)(struct device *);
+	int (*online)(struct device *);
+	int (*offline)(struct device *);
+	int (*suspend)(struct device *, pm_message_t);
+	int (*resume)(struct device *);
+	int (*num_vf)(struct device *);
+	int (*dma_configure)(struct device *);
+	void (*dma_cleanup)(struct device *);
+	const struct dev_pm_ops *pm;
+	const struct iommu_ops *iommu_ops;
+	struct subsys_private *p;
+	struct lock_class_key lock_key;
+	bool need_parent_lock;
+};
+
+enum probe_type
+{
+	PROBE_DEFAULT_STRATEGY = 0,
+	PROBE_PREFER_ASYNCHRONOUS = 1,
+	PROBE_FORCE_SYNCHRONOUS = 2,
+};
+
+struct of_device_id;
+
+struct acpi_device_id;
+
+struct driver_private;
+
+struct device_driver
+{
+	const char *name;
+	struct bus_type *bus;
+	struct module *owner;
+	const char *mod_name;
+	bool suppress_bind_attrs;
+	enum probe_type probe_type;
+	const struct of_device_id *of_match_table;
+	const struct acpi_device_id *acpi_match_table;
+	int (*probe)(struct device *);
+	void (*sync_state)(struct device *);
+	int (*remove)(struct device *);
+	void (*shutdown)(struct device *);
+	int (*suspend)(struct device *, pm_message_t);
+	int (*resume)(struct device *);
+	const struct attribute_group **groups;
+	const struct attribute_group **dev_groups;
+	const struct dev_pm_ops *pm;
+	void (*coredump)(struct device *);
+	struct driver_private *p;
+};
