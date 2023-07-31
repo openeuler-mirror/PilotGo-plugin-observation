@@ -154,3 +154,52 @@ static int probe_prog_load(enum bpf_prog_type prog_type,
     }
     return fd >= 0 ? 1 : 0;
 }
+
+__u32 get_kernel_version(void)
+{
+    __u32 major, minor, patch, version;
+    struct utsname info;
+
+    /* Check if this is an Ubuntu kernel. */
+    version = get_ubuntu_kernel_version();
+    if (version != 0)
+        return version;
+
+    uname(&info);
+
+    /* Check if this is a Debian kernel. */
+    version = get_debian_kernel_version(&info);
+    if (version != 0)
+        return version;
+
+    if (sscanf(info.release, "%u.%u.%u", &major, &minor, &patch) != 3)
+        return 0;
+
+    return KERNEL_VERSION(major, minor, patch);
+}
+
+int libbpf_probe_bpf_prog_type(enum bpf_prog_type prog_type, const void *opts)
+{
+    struct bpf_insn insns[] = {
+        BPF_MOV64_IMM(BPF_REG_0, 0),
+        BPF_EXIT_INSN()};
+    const size_t insn_cnt = ARRAY_SIZE(insns);
+    int ret;
+
+    if (opts)
+        return libbpf_err(-EINVAL);
+
+    ret = probe_prog_load(prog_type, insns, insn_cnt, NULL, 0);
+    return libbpf_err(ret);
+}
+
+int libbpf_probe_bpf_map_type(enum bpf_map_type map_type, const void *opts)
+{
+    int ret;
+
+    if (opts)
+        return libbpf_err(-EINVAL);
+
+    ret = probe_map_create(map_type);
+    return libbpf_err(ret);
+}
