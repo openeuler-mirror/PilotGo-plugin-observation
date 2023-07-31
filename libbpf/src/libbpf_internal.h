@@ -431,3 +431,53 @@ int btf_ext_visit_type_ids(struct btf_ext *btf_ext, type_id_visit_fn visit, void
 int btf_ext_visit_str_offs(struct btf_ext *btf_ext, str_off_visit_fn visit, void *ctx);
 __s32 btf__find_by_name_kind_own(const struct btf *btf, const char *type_name,
                                  __u32 kind);
+
+typedef int (*kallsyms_cb_t)(unsigned long long sym_addr, char sym_type,
+                             const char *sym_name, void *ctx);
+
+int libbpf_kallsyms_parse(kallsyms_cb_t cb, void *arg);
+
+/* handle direct returned errors */
+static inline int libbpf_err(int ret)
+{
+    if (ret < 0)
+        errno = -ret;
+    return ret;
+}
+
+/* handle errno-based (e.g., syscall or libc) errors according to libbpf's
+ * strict mode settings
+ */
+static inline int libbpf_err_errno(int ret)
+{
+    /* errno is already assumed to be set on error */
+    return ret < 0 ? -errno : ret;
+}
+
+/* handle error for pointer-returning APIs, err is assumed to be < 0 always */
+static inline void *libbpf_err_ptr(int err)
+{
+    /* set errno on error, this doesn't break anything */
+    errno = -err;
+    return NULL;
+}
+
+/* handle pointer-returning APIs' error handling */
+static inline void *libbpf_ptr(void *ret)
+{
+    /* set errno on error, this doesn't break anything */
+    if (IS_ERR(ret))
+        errno = -PTR_ERR(ret);
+
+    return IS_ERR(ret) ? NULL : ret;
+}
+
+static inline bool str_is_empty(const char *s)
+{
+    return !s || !s[0];
+}
+
+static inline bool is_ldimm64_insn(struct bpf_insn *insn)
+{
+    return insn->code == (BPF_LD | BPF_IMM | BPF_DW);
+}
