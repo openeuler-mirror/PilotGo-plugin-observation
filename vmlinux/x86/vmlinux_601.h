@@ -5616,3 +5616,105 @@ struct hw_perf_event_extra
 	int alloc;
 	int idx;
 };
+
+struct arch_hw_breakpoint
+{
+	long unsigned int address;
+	long unsigned int mask;
+	u8 len;
+	u8 type;
+};
+
+struct rhash_head
+{
+	struct rhash_head *next;
+};
+
+struct rhlist_head
+{
+	struct rhash_head rhead;
+	struct rhlist_head *next;
+};
+
+struct hw_perf_event
+{
+	union
+	{
+		struct
+		{
+			u64 config;
+			u64 last_tag;
+			long unsigned int config_base;
+			long unsigned int event_base;
+			int event_base_rdpmc;
+			int idx;
+			int last_cpu;
+			int flags;
+			struct hw_perf_event_extra extra_reg;
+			struct hw_perf_event_extra branch_reg;
+		};
+		struct
+		{
+			struct hrtimer hrtimer;
+		};
+		struct
+		{
+			struct list_head tp_list;
+		};
+		struct
+		{
+			u64 pwr_acc;
+			u64 ptsc;
+		};
+		struct
+		{
+			struct arch_hw_breakpoint info;
+			struct rhlist_head bp_list;
+		};
+		struct
+		{
+			u8 iommu_bank;
+			u8 iommu_cntr;
+			u16 padding;
+			u64 conf;
+			u64 conf1;
+		};
+	};
+	struct task_struct *target;
+	void *addr_filters;
+	long unsigned int addr_filters_gen;
+	int state;
+	local64_t prev_count;
+	u64 sample_period;
+	union
+	{
+		struct
+		{
+			u64 last_period;
+			local64_t period_left;
+		};
+		struct
+		{
+			u64 saved_metric;
+			u64 saved_slots;
+		};
+	};
+	u64 interrupts_seq;
+	u64 interrupts;
+	u64 freq_time_stamp;
+	u64 freq_count_stamp;
+};
+
+struct irq_work
+{
+	struct __call_single_node node;
+	void (*func)(struct irq_work *);
+	struct rcuwait irqwait;
+};
+
+struct perf_addr_filters_head
+{
+	struct list_head list;
+	raw_spinlock_t lock;
+	unsigned int nr_file_filters;
+};
