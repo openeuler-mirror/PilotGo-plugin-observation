@@ -1151,3 +1151,67 @@ struct address_space;
 struct page_pool;
 
 struct dev_pagemap;
+
+struct page {
+	long unsigned int flags;
+	union {
+		struct {
+			union {
+				struct list_head lru;
+				struct {
+					void *__filler;
+					unsigned int mlock_count;
+				};
+				struct list_head buddy_list;
+				struct list_head pcp_list;
+			};
+			struct address_space *mapping;
+			long unsigned int index;
+			long unsigned int private;
+		};
+		struct {
+			long unsigned int pp_magic;
+			struct page_pool *pp;
+			long unsigned int _pp_mapping_pad;
+			long unsigned int dma_addr;
+			union {
+				long unsigned int dma_addr_upper;
+				atomic_long_t pp_frag_count;
+			};
+		};
+		struct {
+			long unsigned int compound_head;
+			unsigned char compound_dtor;
+			unsigned char compound_order;
+			atomic_t compound_mapcount;
+			atomic_t compound_pincount;
+			unsigned int compound_nr;
+		};
+		struct {
+			long unsigned int _compound_pad_1;
+			long unsigned int _compound_pad_2;
+			struct list_head deferred_list;
+		};
+		struct {
+			long unsigned int _pt_pad_1;
+			pgtable_t pmd_huge_pte;
+			long unsigned int _pt_pad_2;
+			union {
+				struct mm_struct *pt_mm;
+				atomic_t pt_frag_refcount;
+			};
+			spinlock_t *ptl;
+		};
+		struct {
+			struct dev_pagemap *pgmap;
+			void *zone_device_data;
+		};
+		struct callback_head callback_head;
+	};
+	union {
+		atomic_t _mapcount;
+		unsigned int page_type;
+	};
+	atomic_t _refcount;
+	long unsigned int memcg_data;
+};
