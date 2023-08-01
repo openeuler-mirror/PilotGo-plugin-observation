@@ -6097,3 +6097,69 @@ struct perf_event_context
 	struct callback_head callback_head;
 	local_t nr_pending;
 };
+
+struct ftrace_ret_stack
+{
+	long unsigned int ret;
+	long unsigned int func;
+	long long unsigned int calltime;
+	long unsigned int *retp;
+};
+
+struct cgroup_subsys;
+
+struct cgroup_subsys_state
+{
+	struct cgroup *cgroup;
+	struct cgroup_subsys *ss;
+	struct percpu_ref refcnt;
+	struct list_head sibling;
+	struct list_head children;
+	struct list_head rstat_css_node;
+	int id;
+	unsigned int flags;
+	u64 serial_nr;
+	atomic_t online_cnt;
+	struct work_struct destroy_work;
+	struct rcu_work destroy_rwork;
+	struct cgroup_subsys_state *parent;
+};
+
+struct cgroup_file
+{
+	struct kernfs_node *kn;
+	long unsigned int notified_at;
+	struct timer_list notify_timer;
+};
+
+struct cgroup_base_stat
+{
+	struct task_cputime cputime;
+};
+
+struct bpf_prog_array;
+
+struct cgroup_bpf
+{
+	struct bpf_prog_array *effective[33];
+	struct hlist_head progs[33];
+	u8 flags[33];
+	struct list_head storages;
+	struct bpf_prog_array *inactive;
+	struct percpu_ref refcnt;
+	struct work_struct release_work;
+};
+
+struct cgroup_freezer_state
+{
+	bool freeze;
+	int e_freeze;
+	int nr_frozen_descendants;
+	int nr_frozen_tasks;
+};
+
+struct cgroup_root;
+
+struct cgroup_rstat_cpu;
+
+struct psi_group;
