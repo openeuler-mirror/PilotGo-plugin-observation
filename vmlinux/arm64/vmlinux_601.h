@@ -1222,3 +1222,50 @@ struct seqcount_raw_spinlock {
 };
 
 typedef struct seqcount_raw_spinlock seqcount_raw_spinlock_t;
+
+struct hrtimer_cpu_base;
+
+struct hrtimer_clock_base {
+	struct hrtimer_cpu_base *cpu_base;
+	unsigned int index;
+	clockid_t clockid;
+	seqcount_raw_spinlock_t seq;
+	struct hrtimer *running;
+	struct timerqueue_head active;
+	ktime_t (*get_time)();
+	ktime_t offset;
+	long: 64;
+	long: 64;
+};
+
+struct hrtimer_cpu_base {
+	raw_spinlock_t lock;
+	unsigned int cpu;
+	unsigned int active_bases;
+	unsigned int clock_was_set_seq;
+	unsigned int hres_active: 1;
+	unsigned int in_hrtirq: 1;
+	unsigned int hang_detected: 1;
+	unsigned int softirq_activated: 1;
+	unsigned int nr_events;
+	short unsigned int nr_retries;
+	short unsigned int nr_hangs;
+	unsigned int max_hang_time;
+	ktime_t expires_next;
+	struct hrtimer *next_timer;
+	ktime_t softirq_expires_next;
+	struct hrtimer *softirq_next_timer;
+	struct hrtimer_clock_base clock_base[8];
+};
+
+enum hrtimer_base_type {
+	HRTIMER_BASE_MONOTONIC = 0,
+	HRTIMER_BASE_REALTIME = 1,
+	HRTIMER_BASE_BOOTTIME = 2,
+	HRTIMER_BASE_TAI = 3,
+	HRTIMER_BASE_MONOTONIC_SOFT = 4,
+	HRTIMER_BASE_REALTIME_SOFT = 5,
+	HRTIMER_BASE_BOOTTIME_SOFT = 6,
+	HRTIMER_BASE_TAI_SOFT = 7,
+	HRTIMER_MAX_CLOCK_BASES = 8,
+};
