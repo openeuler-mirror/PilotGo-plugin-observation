@@ -5949,3 +5949,68 @@ struct ctl_dir
 	struct ctl_table_header header;
 	struct rb_root root;
 };
+
+struct ctl_table_set
+{
+	int (*is_seen)(struct ctl_table_set *);
+	struct ctl_dir dir;
+};
+
+struct user_namespace
+{
+	struct uid_gid_map uid_map;
+	struct uid_gid_map gid_map;
+	struct uid_gid_map projid_map;
+	struct user_namespace *parent;
+	int level;
+	kuid_t owner;
+	kgid_t group;
+	struct ns_common ns;
+	long unsigned int flags;
+	bool parent_could_setfcap;
+	struct list_head keyring_name_list;
+	struct key *user_keyring_register;
+	struct rw_semaphore keyring_sem;
+	struct work_struct work;
+	struct ctl_table_set set;
+	struct ctl_table_header *sysctls;
+	struct ucounts *ucounts;
+	long int ucount_max[10];
+	long int rlimit_max[4];
+};
+
+struct rcu_work
+{
+	struct work_struct work;
+	struct callback_head rcu;
+	struct workqueue_struct *wq;
+};
+
+struct task_cputime
+{
+	u64 stime;
+	u64 utime;
+	long long unsigned int sum_exec_runtime;
+};
+
+struct ucounts
+{
+	struct hlist_node node;
+	struct user_namespace *ns;
+	kuid_t uid;
+	atomic_t count;
+	atomic_long_t ucount[10];
+	atomic_long_t rlimit[4];
+};
+
+struct uts_namespace;
+
+struct ipc_namespace;
+
+struct mnt_namespace;
+
+struct net;
+
+struct time_namespace;
+
+struct cgroup_namespace;
