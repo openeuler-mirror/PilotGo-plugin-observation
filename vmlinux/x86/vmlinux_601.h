@@ -6478,3 +6478,87 @@ union perf_sample_weight
 		__u16 var3_w;
 	};
 };
+
+typedef u32 phandle;
+
+struct property;
+
+struct device_node
+{
+	const char *name;
+	phandle phandle;
+	const char *full_name;
+	struct fwnode_handle fwnode;
+	struct property *properties;
+	struct property *deadprops;
+	struct device_node *parent;
+	struct device_node *child;
+	struct device_node *sibling;
+	long unsigned int _flags;
+	void *data;
+};
+
+struct perf_cpu_context;
+
+struct perf_output_handle;
+
+struct pmu
+{
+	struct list_head entry;
+	struct module *module;
+	struct device *dev;
+	const struct attribute_group **attr_groups;
+	const struct attribute_group **attr_update;
+	const char *name;
+	int type;
+	int capabilities;
+	int *pmu_disable_count;
+	struct perf_cpu_context *pmu_cpu_context;
+	atomic_t exclusive_cnt;
+	int task_ctx_nr;
+	int hrtimer_interval_ms;
+	unsigned int nr_addr_filters;
+	void (*pmu_enable)(struct pmu *);
+	void (*pmu_disable)(struct pmu *);
+	int (*event_init)(struct perf_event *);
+	void (*event_mapped)(struct perf_event *, struct mm_struct *);
+	void (*event_unmapped)(struct perf_event *, struct mm_struct *);
+	int (*add)(struct perf_event *, int);
+	void (*del)(struct perf_event *, int);
+	void (*start)(struct perf_event *, int);
+	void (*stop)(struct perf_event *, int);
+	void (*read)(struct perf_event *);
+	void (*start_txn)(struct pmu *, unsigned int);
+	int (*commit_txn)(struct pmu *);
+	void (*cancel_txn)(struct pmu *);
+	int (*event_idx)(struct perf_event *);
+	void (*sched_task)(struct perf_event_context *, bool);
+	struct kmem_cache *task_ctx_cache;
+	void (*swap_task_ctx)(struct perf_event_context *, struct perf_event_context *);
+	void *(*setup_aux)(struct perf_event *, void **, int, bool);
+	void (*free_aux)(void *);
+	long int (*snapshot_aux)(struct perf_event *, struct perf_output_handle *, long unsigned int);
+	int (*addr_filters_validate)(struct list_head *);
+	void (*addr_filters_sync)(struct perf_event *);
+	int (*aux_output_match)(struct perf_event *);
+	int (*filter_match)(struct perf_event *);
+	int (*check_period)(struct perf_event *, u64);
+};
+
+struct perf_regs
+{
+	__u64 abi;
+	struct pt_regs *regs;
+};
+
+struct u64_stats_sync
+{
+};
+
+struct psi_group
+{
+};
+
+struct cgroup_taskset;
+
+struct cftype;
