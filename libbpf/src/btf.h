@@ -58,3 +58,27 @@ LIBBPF_API const struct btf_type *btf__type_by_id(const struct btf *btf,
 LIBBPF_API size_t btf__pointer_size(const struct btf *btf);
 LIBBPF_API int btf__set_pointer_size(struct btf *btf, size_t ptr_sz);
 LIBBPF_API enum btf_endianness btf__endianness(const struct btf *btf);
+LIBBPF_API int btf__set_endianness(struct btf *btf, enum btf_endianness endian);
+LIBBPF_API __s64 btf__resolve_size(const struct btf *btf, __u32 type_id);
+LIBBPF_API int btf__resolve_type(const struct btf *btf, __u32 type_id);
+LIBBPF_API int btf__align_of(const struct btf *btf, __u32 id);
+LIBBPF_API int btf__fd(const struct btf *btf);
+LIBBPF_API void btf__set_fd(struct btf *btf, int fd);
+LIBBPF_API const void *btf__raw_data(const struct btf *btf, __u32 *size);
+LIBBPF_API const char *btf__name_by_offset(const struct btf *btf, __u32 offset);
+LIBBPF_API const char *btf__str_by_offset(const struct btf *btf, __u32 offset);
+LIBBPF_API struct btf_ext *btf_ext__new(const __u8 *data, __u32 size);
+LIBBPF_API void btf_ext__free(struct btf_ext *btf_ext);
+LIBBPF_API const void *btf_ext__raw_data(const struct btf_ext *btf_ext, __u32 *size);
+
+LIBBPF_API int btf__find_str(struct btf *btf, const char *s);
+LIBBPF_API int btf__add_str(struct btf *btf, const char *s);
+LIBBPF_API int btf__add_type(struct btf *btf, const struct btf *src_btf,
+			     const struct btf_type *src_type);
+LIBBPF_API int btf__add_btf(struct btf *btf, const struct btf *src_btf);
+
+LIBBPF_API int btf__add_int(struct btf *btf, const char *name, size_t byte_sz, int encoding);
+LIBBPF_API int btf__add_float(struct btf *btf, const char *name, size_t byte_sz);
+LIBBPF_API int btf__add_ptr(struct btf *btf, int ref_type_id);
+LIBBPF_API int btf__add_array(struct btf *btf,
+			      int index_type_id, int elem_type_id, __u32 nr_elems);
