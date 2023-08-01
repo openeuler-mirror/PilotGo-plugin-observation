@@ -324,3 +324,78 @@ struct reloc_desc
         };
     };
 };
+
+enum sec_def_flags
+{
+    SEC_NONE = 0,
+    SEC_EXP_ATTACH_OPT = 1,
+    SEC_ATTACHABLE = 2,
+    SEC_ATTACHABLE_OPT = SEC_ATTACHABLE | SEC_EXP_ATTACH_OPT,
+    SEC_ATTACH_BTF = 4,
+    SEC_SLEEPABLE = 8,
+    SEC_XDP_FRAGS = 16,
+};
+
+struct bpf_sec_def
+{
+    char *sec;
+    enum bpf_prog_type prog_type;
+    enum bpf_attach_type expected_attach_type;
+    long cookie;
+    int handler_id;
+
+    libbpf_prog_setup_fn_t prog_setup_fn;
+    libbpf_prog_prepare_load_fn_t prog_prepare_load_fn;
+    libbpf_prog_attach_fn_t prog_attach_fn;
+};
+
+struct bpf_program
+{
+    char *name;
+    char *sec_name;
+    size_t sec_idx;
+    const struct bpf_sec_def *sec_def;
+    size_t sec_insn_off;
+    size_t sec_insn_cnt;
+    size_t sub_insn_off;
+    struct bpf_insn *insns;
+    size_t insns_cnt;
+    struct reloc_desc *reloc_desc;
+    int nr_reloc;
+    char *log_buf;
+    size_t log_size;
+    __u32 log_level;
+
+    struct bpf_object *obj;
+    int fd;
+    bool autoload;
+    bool autoattach;
+    bool mark_btf_static;
+    enum bpf_prog_type type;
+    enum bpf_attach_type expected_attach_type;
+
+    int prog_ifindex;
+    __u32 attach_btf_obj_fd;
+    __u32 attach_btf_id;
+    __u32 attach_prog_fd;
+
+    void *func_info;
+    __u32 func_info_rec_size;
+    __u32 func_info_cnt;
+
+    void *line_info;
+    __u32 line_info_rec_size;
+    __u32 line_info_cnt;
+    __u32 prog_flags;
+};
+
+struct bpf_struct_ops
+{
+    const char *tname;
+    const struct btf_type *type;
+    struct bpf_program **progs;
+    __u32 *kern_func_off;
+    void *data;
+    void *kern_vdata;
+    __u32 type_id;
+};
