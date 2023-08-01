@@ -1215,3 +1215,10 @@ struct page {
 	atomic_t _refcount;
 	long unsigned int memcg_data;
 };
+
+struct seqcount_raw_spinlock {
+	seqcount_t seqcount;
+	raw_spinlock_t *lock;
+};
+
+typedef struct seqcount_raw_spinlock seqcount_raw_spinlock_t;
