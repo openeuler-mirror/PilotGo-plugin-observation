@@ -206,3 +206,64 @@ libbpf_print_fn_t libbpf_set_print(libbpf_print_fn_t fn)
 
     return old_print_fn;
 }
+
+__printf(2, 3) void libbpf_print(enum libbpf_print_level level, const char *format, ...)
+{
+    va_list args;
+    int old_errno;
+    libbpf_print_fn_t print_fn;
+
+    print_fn = __atomic_load_n(&__libbpf_pr, __ATOMIC_RELAXED);
+    if (!print_fn)
+        return;
+
+    old_errno = errno;
+
+    va_start(args, format);
+    __libbpf_pr(level, format, args);
+    va_end(args);
+
+    errno = old_errno;
+}
+
+static void pr_perm_msg(int err)
+{
+    struct rlimit limit;
+    char buf[100];
+
+    if (err != -EPERM || geteuid() != 0)
+        return;
+
+    err = getrlimit(RLIMIT_MEMLOCK, &limit);
+    if (err)
+        return;
+
+    if (limit.rlim_cur == RLIM_INFINITY)
+        return;
+
+    if (limit.rlim_cur < 1024)
+        snprintf(buf, sizeof(buf), "%zu bytes", (size_t)limit.rlim_cur);
+    else if (limit.rlim_cur < 1024 * 1024)
+        snprintf(buf, sizeof(buf), "%.1f KiB", (double)limit.rlim_cur / 1024);
+    else
+        snprintf(buf, sizeof(buf), "%.1f MiB", (double)limit.rlim_cur / (1024 * 1024));
+
+    pr_warn("permission error while running as root; try raising 'ulimit -l'? current value: %s\n",
+            buf);
+}
+
+#define STRERR_BUFSIZE 128
+
+/* Copied from tools/perf/util/util.h */
+#ifndef zfree
+#define zfree(ptr) ({ free(*ptr); *ptr = NULL; })
+#endif
+
+#ifndef zclose
+#define zclose(fd) ({			\
+	int ___err = 0;			\
+	if ((fd) >= 0)			\
+		___err = close((fd));	\
+	fd = -1;			\
+	___err; })
+#endif
