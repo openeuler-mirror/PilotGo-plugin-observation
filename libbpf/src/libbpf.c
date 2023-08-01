@@ -399,3 +399,75 @@ struct bpf_struct_ops
     void *kern_vdata;
     __u32 type_id;
 };
+
+#define DATA_SEC ".data"
+#define BSS_SEC ".bss"
+#define RODATA_SEC ".rodata"
+#define KCONFIG_SEC ".kconfig"
+#define KSYMS_SEC ".ksyms"
+#define STRUCT_OPS_SEC ".struct_ops"
+#define STRUCT_OPS_LINK_SEC ".struct_ops.link"
+
+enum libbpf_map_type
+{
+    LIBBPF_MAP_UNSPEC,
+    LIBBPF_MAP_DATA,
+    LIBBPF_MAP_BSS,
+    LIBBPF_MAP_RODATA,
+    LIBBPF_MAP_KCONFIG,
+};
+
+struct bpf_map_def
+{
+    unsigned int type;
+    unsigned int key_size;
+    unsigned int value_size;
+    unsigned int max_entries;
+    unsigned int map_flags;
+};
+
+struct bpf_map
+{
+    struct bpf_object *obj;
+    char *name;
+    char *real_name;
+    int fd;
+    int sec_idx;
+    size_t sec_offset;
+    int map_ifindex;
+    int inner_map_fd;
+    struct bpf_map_def def;
+    __u32 numa_node;
+    __u32 btf_var_idx;
+    __u32 btf_key_type_id;
+    __u32 btf_value_type_id;
+    __u32 btf_vmlinux_value_type_id;
+    enum libbpf_map_type libbpf_type;
+    void *mmaped;
+    struct bpf_struct_ops *st_ops;
+    struct bpf_map *inner_map;
+    void **init_slots;
+    int init_slots_sz;
+    char *pin_path;
+    bool pinned;
+    bool reused;
+    bool autocreate;
+    __u64 map_extra;
+};
+
+enum extern_type
+{
+    EXT_UNKNOWN,
+    EXT_KCFG,
+    EXT_KSYM,
+};
+
+enum kcfg_type
+{
+    KCFG_UNKNOWN,
+    KCFG_CHAR,
+    KCFG_BOOL,
+    KCFG_INT,
+    KCFG_TRISTATE,
+    KCFG_CHAR_ARR,
+};
