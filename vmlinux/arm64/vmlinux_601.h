@@ -1342,3 +1342,24 @@ union __sifields {
 		unsigned int _arch;
 	} _sigsys;
 };
+
+struct kernel_siginfo {
+	struct {
+		int si_signo;
+		int si_errno;
+		int si_code;
+		union __sifields _sifields;
+	};
+};
+
+enum {
+	MM_FILEPAGES = 0,
+	MM_ANONPAGES = 1,
+	MM_SWAPENTS = 2,
+	MM_SHMEMPAGES = 3,
+	NR_MM_COUNTERS = 4,
+};
+
+struct mm_rss_stat {
+	atomic_long_t count[4];
+};
