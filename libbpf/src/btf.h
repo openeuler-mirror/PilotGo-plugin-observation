@@ -82,3 +82,33 @@ LIBBPF_API int btf__add_float(struct btf *btf, const char *name, size_t byte_sz)
 LIBBPF_API int btf__add_ptr(struct btf *btf, int ref_type_id);
 LIBBPF_API int btf__add_array(struct btf *btf,
 			      int index_type_id, int elem_type_id, __u32 nr_elems);
+/* struct/union construction APIs */
+LIBBPF_API int btf__add_struct(struct btf *btf, const char *name, __u32 sz);
+LIBBPF_API int btf__add_union(struct btf *btf, const char *name, __u32 sz);
+LIBBPF_API int btf__add_field(struct btf *btf, const char *name, int field_type_id,
+			      __u32 bit_offset, __u32 bit_size);
+
+/* enum construction APIs */
+LIBBPF_API int btf__add_enum(struct btf *btf, const char *name, __u32 bytes_sz);
+LIBBPF_API int btf__add_enum_value(struct btf *btf, const char *name, __s64 value);
+LIBBPF_API int btf__add_enum64(struct btf *btf, const char *name, __u32 bytes_sz, bool is_signed);
+LIBBPF_API int btf__add_enum64_value(struct btf *btf, const char *name, __u64 value);
+
+enum btf_fwd_kind {
+	BTF_FWD_STRUCT = 0,
+	BTF_FWD_UNION = 1,
+	BTF_FWD_ENUM = 2,
+};
+
+LIBBPF_API int btf__add_fwd(struct btf *btf, const char *name, enum btf_fwd_kind fwd_kind);
+LIBBPF_API int btf__add_typedef(struct btf *btf, const char *name, int ref_type_id);
+LIBBPF_API int btf__add_volatile(struct btf *btf, int ref_type_id);
+LIBBPF_API int btf__add_const(struct btf *btf, int ref_type_id);
+LIBBPF_API int btf__add_restrict(struct btf *btf, int ref_type_id);
+LIBBPF_API int btf__add_type_tag(struct btf *btf, const char *value, int ref_type_id);
+
+/* func and func_proto construction APIs */
+LIBBPF_API int btf__add_func(struct btf *btf, const char *name,
+			     enum btf_func_linkage linkage, int proto_type_id);
+LIBBPF_API int btf__add_func_proto(struct btf *btf, int ret_type_id);
+LIBBPF_API int btf__add_func_param(struct btf *btf, const char *name, int type_id);
