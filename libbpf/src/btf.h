@@ -231,3 +231,45 @@ static inline bool btf_kflag(const struct btf_type *t)
 {
 	return BTF_INFO_KFLAG(t->info);
 }
+
+static inline bool btf_is_void(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_UNKN;
+}
+
+static inline bool btf_is_int(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_INT;
+}
+
+static inline bool btf_is_ptr(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_PTR;
+}
+
+static inline bool btf_is_array(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_ARRAY;
+}
+
+static inline bool btf_is_struct(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_STRUCT;
+}
+
+static inline bool btf_is_union(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_UNION;
+}
+
+static inline bool btf_is_composite(const struct btf_type *t)
+{
+	__u16 kind = btf_kind(t);
+
+	return kind == BTF_KIND_STRUCT || kind == BTF_KIND_UNION;
+}
+
+static inline bool btf_is_enum(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_ENUM;
+}
