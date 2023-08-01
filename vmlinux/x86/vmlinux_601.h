@@ -6014,3 +6014,86 @@ struct net;
 struct time_namespace;
 
 struct cgroup_namespace;
+
+struct nsproxy
+{
+	atomic_t count;
+	struct uts_namespace *uts_ns;
+	struct ipc_namespace *ipc_ns;
+	struct mnt_namespace *mnt_ns;
+	struct pid_namespace *pid_ns_for_children;
+	struct net *net_ns;
+	struct time_namespace *time_ns;
+	struct time_namespace *time_ns_for_children;
+	struct cgroup_namespace *cgroup_ns;
+};
+
+struct cgroup_subsys_state;
+
+struct cgroup;
+
+struct css_set
+{
+	struct cgroup_subsys_state *subsys[10];
+	refcount_t refcount;
+	struct css_set *dom_cset;
+	struct cgroup *dfl_cgrp;
+	int nr_tasks;
+	struct list_head tasks;
+	struct list_head mg_tasks;
+	struct list_head dying_tasks;
+	struct list_head task_iters;
+	struct list_head e_cset_node[10];
+	struct list_head threaded_csets;
+	struct list_head threaded_csets_node;
+	struct hlist_node hlist;
+	struct list_head cgrp_links;
+	struct list_head mg_src_preload_node;
+	struct list_head mg_dst_preload_node;
+	struct list_head mg_node;
+	struct cgroup *mg_src_cgrp;
+	struct cgroup *mg_dst_cgrp;
+	struct css_set *mg_dst_cset;
+	bool dead;
+	struct callback_head callback_head;
+};
+
+struct perf_event_groups
+{
+	struct rb_root tree;
+	u64 index;
+};
+
+struct perf_event_context
+{
+	struct pmu *pmu;
+	raw_spinlock_t lock;
+	struct mutex mutex;
+	struct list_head active_ctx_list;
+	struct perf_event_groups pinned_groups;
+	struct perf_event_groups flexible_groups;
+	struct list_head event_list;
+	struct list_head pinned_active;
+	struct list_head flexible_active;
+	int nr_events;
+	int nr_active;
+	int nr_user;
+	int is_active;
+	int nr_stat;
+	int nr_freq;
+	int rotate_disable;
+	int rotate_necessary;
+	refcount_t refcount;
+	struct task_struct *task;
+	u64 time;
+	u64 timestamp;
+	u64 timeoffset;
+	struct perf_event_context *parent_ctx;
+	u64 parent_gen;
+	u64 generation;
+	int pin_count;
+	int nr_cgroups;
+	void *task_ctx_data;
+	struct callback_head callback_head;
+	local_t nr_pending;
+};
