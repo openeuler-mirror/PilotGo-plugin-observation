@@ -6386,3 +6386,95 @@ struct proc_ns_operations
 	struct user_namespace *(*owner)(struct ns_common *);
 	struct ns_common *(*get_parent)(struct ns_common *);
 };
+
+struct ftrace_regs
+{
+	struct pt_regs regs;
+};
+
+struct ftrace_hash
+{
+	long unsigned int size_bits;
+	struct hlist_head *buckets;
+	long unsigned int count;
+	long unsigned int flags;
+	struct callback_head rcu;
+};
+
+struct seq_buf
+{
+	char *buffer;
+	size_t size;
+	size_t len;
+	loff_t readpos;
+};
+
+struct trace_seq
+{
+	char buffer[4096];
+	struct seq_buf seq;
+	int full;
+};
+
+enum perf_sw_ids
+{
+	PERF_COUNT_SW_CPU_CLOCK = 0,
+	PERF_COUNT_SW_TASK_CLOCK = 1,
+	PERF_COUNT_SW_PAGE_FAULTS = 2,
+	PERF_COUNT_SW_CONTEXT_SWITCHES = 3,
+	PERF_COUNT_SW_CPU_MIGRATIONS = 4,
+	PERF_COUNT_SW_PAGE_FAULTS_MIN = 5,
+	PERF_COUNT_SW_PAGE_FAULTS_MAJ = 6,
+	PERF_COUNT_SW_ALIGNMENT_FAULTS = 7,
+	PERF_COUNT_SW_EMULATION_FAULTS = 8,
+	PERF_COUNT_SW_DUMMY = 9,
+	PERF_COUNT_SW_BPF_OUTPUT = 10,
+	PERF_COUNT_SW_CGROUP_SWITCHES = 11,
+	PERF_COUNT_SW_MAX = 12,
+};
+
+union perf_mem_data_src
+{
+	__u64 val;
+	struct
+	{
+		__u64 mem_op : 5;
+		__u64 mem_lvl : 14;
+		__u64 mem_snoop : 5;
+		__u64 mem_lock : 2;
+		__u64 mem_dtlb : 7;
+		__u64 mem_lvl_num : 4;
+		__u64 mem_remote : 1;
+		__u64 mem_snoopx : 2;
+		__u64 mem_blk : 3;
+		__u64 mem_hops : 3;
+		__u64 mem_rsvd : 18;
+	};
+};
+
+struct perf_branch_entry
+{
+	__u64 from;
+	__u64 to;
+	__u64 mispred : 1;
+	__u64 predicted : 1;
+	__u64 in_tx : 1;
+	__u64 abort : 1;
+	__u64 cycles : 16;
+	__u64 type : 4;
+	__u64 spec : 2;
+	__u64 new_type : 4;
+	__u64 priv : 3;
+	__u64 reserved : 31;
+};
+
+union perf_sample_weight
+{
+	__u64 full;
+	struct
+	{
+		__u32 var1_dw;
+		__u16 var2_w;
+		__u16 var3_w;
+	};
+};
