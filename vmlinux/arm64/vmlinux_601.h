@@ -1287,3 +1287,58 @@ union sigval {
 };
 
 typedef union sigval sigval_t;
+
+union __sifields {
+	struct {
+		__kernel_pid_t _pid;
+		__kernel_uid32_t _uid;
+	} _kill;
+	struct {
+		__kernel_timer_t _tid;
+		int _overrun;
+		sigval_t _sigval;
+		int _sys_private;
+	} _timer;
+	struct {
+		__kernel_pid_t _pid;
+		__kernel_uid32_t _uid;
+		sigval_t _sigval;
+	} _rt;
+	struct {
+		__kernel_pid_t _pid;
+		__kernel_uid32_t _uid;
+		int _status;
+		__kernel_clock_t _utime;
+		__kernel_clock_t _stime;
+	} _sigchld;
+	struct {
+		void *_addr;
+		union {
+			int _trapno;
+			short int _addr_lsb;
+			struct {
+				char _dummy_bnd[8];
+				void *_lower;
+				void *_upper;
+			} _addr_bnd;
+			struct {
+				char _dummy_pkey[8];
+				__u32 _pkey;
+			} _addr_pkey;
+			struct {
+				long unsigned int _data;
+				__u32 _type;
+				__u32 _flags;
+			} _perf;
+		};
+	} _sigfault;
+	struct {
+		long int _band;
+		int _fd;
+	} _sigpoll;
+	struct {
+		void *_call_addr;
+		int _syscall;
+		unsigned int _arch;
+	} _sigsys;
+};
