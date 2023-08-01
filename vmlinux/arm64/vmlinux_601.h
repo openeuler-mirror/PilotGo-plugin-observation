@@ -1363,3 +1363,22 @@ enum {
 struct mm_rss_stat {
 	atomic_long_t count[4];
 };
+
+enum rseq_cs_flags_bit {
+	RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT = 0,
+	RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT = 1,
+	RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT = 2,
+};
+
+struct rseq {
+	__u32 cpu_id_start;
+	__u32 cpu_id;
+	__u64 rseq_cs;
+	__u32 flags;
+	long: 32;
+	long: 64;
+};
+
+enum {
+	TASK_COMM_LEN = 16,
+};
