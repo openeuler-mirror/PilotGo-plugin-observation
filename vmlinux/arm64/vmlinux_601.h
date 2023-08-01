@@ -1269,3 +1269,21 @@ enum hrtimer_base_type {
 	HRTIMER_BASE_TAI_SOFT = 7,
 	HRTIMER_MAX_CLOCK_BASES = 8,
 };
+
+enum node_states {
+	N_POSSIBLE = 0,
+	N_ONLINE = 1,
+	N_NORMAL_MEMORY = 2,
+	N_HIGH_MEMORY = 2,
+	N_MEMORY = 3,
+	N_CPU = 4,
+	N_GENERIC_INITIATOR = 5,
+	NR_NODE_STATES = 6,
+};
+
+union sigval {
+	int sival_int;
+	void *sival_ptr;
+};
+
+typedef union sigval sigval_t;
