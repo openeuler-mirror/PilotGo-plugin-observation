@@ -273,3 +273,43 @@ static inline bool btf_is_enum(const struct btf_type *t)
 {
 	return btf_kind(t) == BTF_KIND_ENUM;
 }
+
+static inline bool btf_is_enum64(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_ENUM64;
+}
+
+static inline bool btf_is_fwd(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_FWD;
+}
+
+static inline bool btf_is_typedef(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_TYPEDEF;
+}
+
+static inline bool btf_is_volatile(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_VOLATILE;
+}
+
+static inline bool btf_is_const(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_CONST;
+}
+
+static inline bool btf_is_restrict(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_RESTRICT;
+}
+
+static inline bool btf_is_mod(const struct btf_type *t)
+{
+	__u16 kind = btf_kind(t);
+
+	return kind == BTF_KIND_VOLATILE ||
+	       kind == BTF_KIND_CONST ||
+	       kind == BTF_KIND_RESTRICT ||
+	       kind == BTF_KIND_TYPE_TAG;
+}
