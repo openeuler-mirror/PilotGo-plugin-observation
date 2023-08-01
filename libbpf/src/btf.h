@@ -112,3 +112,32 @@ LIBBPF_API int btf__add_func(struct btf *btf, const char *name,
 			     enum btf_func_linkage linkage, int proto_type_id);
 LIBBPF_API int btf__add_func_proto(struct btf *btf, int ret_type_id);
 LIBBPF_API int btf__add_func_param(struct btf *btf, const char *name, int type_id);
+
+/* var & datasec construction APIs */
+LIBBPF_API int btf__add_var(struct btf *btf, const char *name, int linkage, int type_id);
+LIBBPF_API int btf__add_datasec(struct btf *btf, const char *name, __u32 byte_sz);
+LIBBPF_API int btf__add_datasec_var_info(struct btf *btf, int var_type_id,
+					 __u32 offset, __u32 byte_sz);
+
+/* tag construction API */
+LIBBPF_API int btf__add_decl_tag(struct btf *btf, const char *value, int ref_type_id,
+			    int component_idx);
+
+struct btf_dedup_opts {
+	size_t sz;
+	/* optional .BTF.ext info to dedup along the main BTF info */
+	struct btf_ext *btf_ext;
+	/* force hash collisions (used for testing) */
+	bool force_collisions;
+	size_t :0;
+};
+
+#define btf_dedup_opts__last_field force_collisions
+
+LIBBPF_API int btf__dedup(struct btf *btf, const struct btf_dedup_opts *opts);
+
+struct btf_dump;
+
+struct btf_dump_opts {
+	size_t sz;
+};
