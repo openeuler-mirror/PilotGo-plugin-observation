@@ -1129,3 +1129,25 @@ struct work_struct {
 	work_func_t func;
 	struct lockdep_map lockdep_map;
 };
+
+enum {
+	UNAME26 = 131072,
+	ADDR_NO_RANDOMIZE = 262144,
+	FDPIC_FUNCPTRS = 524288,
+	MMAP_PAGE_ZERO = 1048576,
+	ADDR_COMPAT_LAYOUT = 2097152,
+	READ_IMPLIES_EXEC = 4194304,
+	ADDR_LIMIT_32BIT = 8388608,
+	SHORT_INODE = 16777216,
+	WHOLE_SECONDS = 33554432,
+	STICKY_TIMEOUTS = 67108864,
+	ADDR_LIMIT_3GB = 134217728,
+};
+
+typedef struct page *pgtable_t;
+
+struct address_space;
+
+struct page_pool;
+
+struct dev_pagemap;
