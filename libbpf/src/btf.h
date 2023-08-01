@@ -200,3 +200,34 @@ LIBBPF_API int
 btf_dump__dump_type_data(struct btf_dump *d, __u32 id,
 			 const void *data, size_t data_sz,
 			 const struct btf_dump_type_data_opts *opts);
+
+#ifndef BTF_KIND_FUNC
+#define BTF_KIND_FUNC		12	/* Function	*/
+#define BTF_KIND_FUNC_PROTO	13	/* Function Proto	*/
+#endif
+#ifndef BTF_KIND_VAR
+#define BTF_KIND_VAR		14	/* Variable	*/
+#define BTF_KIND_DATASEC	15	/* Section	*/
+#endif
+#ifndef BTF_KIND_FLOAT
+#define BTF_KIND_FLOAT		16	/* Floating point	*/
+#endif
+/* The kernel header switched to enums, so the following were never #defined */
+#define BTF_KIND_DECL_TAG	17	/* Decl Tag */
+#define BTF_KIND_TYPE_TAG	18	/* Type Tag */
+#define BTF_KIND_ENUM64		19	/* Enum for up-to 64bit values */
+
+static inline __u16 btf_kind(const struct btf_type *t)
+{
+	return BTF_INFO_KIND(t->info);
+}
+
+static inline __u16 btf_vlen(const struct btf_type *t)
+{
+	return BTF_INFO_VLEN(t->info);
+}
+
+static inline bool btf_kflag(const struct btf_type *t)
+{
+	return BTF_INFO_KFLAG(t->info);
+}
