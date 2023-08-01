@@ -267,3 +267,60 @@ static void pr_perm_msg(int err)
 	fd = -1;			\
 	___err; })
 #endif
+
+static inline __u64 ptr_to_u64(const void *ptr)
+{
+    return (__u64)(unsigned long)ptr;
+}
+
+int libbpf_set_strict_mode(enum libbpf_strict_mode mode)
+{
+    /* as of v1.0 libbpf_set_strict_mode() is a no-op */
+    return 0;
+}
+
+__u32 libbpf_major_version(void)
+{
+    return LIBBPF_MAJOR_VERSION;
+}
+
+__u32 libbpf_minor_version(void)
+{
+    return LIBBPF_MINOR_VERSION;
+}
+
+const char *libbpf_version_string(void)
+{
+#define __S(X) #X
+#define _S(X) __S(X)
+    return "v" _S(LIBBPF_MAJOR_VERSION) "." _S(LIBBPF_MINOR_VERSION);
+#undef _S
+#undef __S
+}
+
+enum reloc_type
+{
+    RELO_LD64,
+    RELO_CALL,
+    RELO_DATA,
+    RELO_EXTERN_LD64,
+    RELO_EXTERN_CALL,
+    RELO_SUBPROG_ADDR,
+    RELO_CORE,
+};
+
+struct reloc_desc
+{
+    enum reloc_type type;
+    int insn_idx;
+    union
+    {
+        const struct bpf_core_relo *core_relo; /* used when type == RELO_CORE */
+        struct
+        {
+            int map_idx;
+            int sym_off;
+            int ext_idx;
+        };
+    };
+};
