@@ -7617,3 +7617,118 @@ struct mem_cgroup
 	long : 64;
 	long : 64;
 };
+
+struct maple_alloc
+{
+	long unsigned int total;
+	unsigned char node_count;
+	unsigned int request_count;
+	struct maple_alloc *slot[30];
+};
+
+struct maple_enode;
+
+struct ma_state
+{
+	struct maple_tree *tree;
+	long unsigned int index;
+	long unsigned int last;
+	struct maple_enode *node;
+	long unsigned int min;
+	long unsigned int max;
+	struct maple_alloc *alloc;
+	unsigned char depth;
+	unsigned char offset;
+	unsigned char mas_flags;
+};
+
+enum
+{
+	WORK_STRUCT_PENDING_BIT = 0LL,
+	WORK_STRUCT_INACTIVE_BIT = 1LL,
+	WORK_STRUCT_PWQ_BIT = 2LL,
+	WORK_STRUCT_LINKED_BIT = 3LL,
+	WORK_STRUCT_COLOR_SHIFT = 4LL,
+	WORK_STRUCT_COLOR_BITS = 4LL,
+	WORK_STRUCT_PENDING = 1LL,
+	WORK_STRUCT_INACTIVE = 2LL,
+	WORK_STRUCT_PWQ = 4LL,
+	WORK_STRUCT_LINKED = 8LL,
+	WORK_STRUCT_STATIC = 0LL,
+	WORK_NR_COLORS = 16LL,
+	WORK_CPU_UNBOUND = 128LL,
+	WORK_STRUCT_FLAG_BITS = 8LL,
+	WORK_OFFQ_FLAG_BASE = 4LL,
+	__WORK_OFFQ_CANCELING = 4LL,
+	WORK_OFFQ_CANCELING = 16LL,
+	WORK_OFFQ_FLAG_BITS = 1LL,
+	WORK_OFFQ_POOL_SHIFT = 5LL,
+	WORK_OFFQ_LEFT = 59LL,
+	WORK_OFFQ_POOL_BITS = 31LL,
+	WORK_OFFQ_POOL_NONE = 2147483647LL,
+	WORK_STRUCT_FLAG_MASK = 255LL,
+	WORK_STRUCT_WQ_DATA_MASK = -256LL,
+	WORK_STRUCT_NO_POOL = 68719476704LL,
+	WORK_BUSY_PENDING = 1LL,
+	WORK_BUSY_RUNNING = 2LL,
+	WORKER_DESC_LEN = 24LL,
+};
+
+struct anon_vma
+{
+	struct anon_vma *root;
+	struct rw_semaphore rwsem;
+	atomic_t refcount;
+	long unsigned int num_children;
+	long unsigned int num_active_vmas;
+	struct anon_vma *parent;
+	struct rb_root_cached rb_root;
+};
+
+struct mempolicy
+{
+	atomic_t refcnt;
+	short unsigned int mode;
+	short unsigned int flags;
+	nodemask_t nodes;
+	int home_node;
+	union
+	{
+		nodemask_t cpuset_mems_allowed;
+		nodemask_t user_nodemask;
+	} w;
+};
+
+struct vma_iterator
+{
+	struct ma_state mas;
+};
+
+typedef struct
+{
+	long unsigned int val;
+} swp_entry_t;
+
+struct free_area
+{
+	struct list_head free_list[6];
+	long unsigned int nr_free;
+};
+
+struct pglist_data;
+
+struct lruvec
+{
+	struct list_head lists[5];
+	spinlock_t lru_lock;
+	long unsigned int anon_cost;
+	long unsigned int file_cost;
+	atomic_long_t nonresident_age;
+	long unsigned int refaults[2];
+	long unsigned int flags;
+	struct pglist_data *pgdat;
+};
+
+struct per_cpu_pages;
+
+struct per_cpu_zonestat;
