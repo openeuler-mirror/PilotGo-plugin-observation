@@ -674,3 +674,67 @@ static bool insn_is_pseudo_func(struct bpf_insn *insn)
 {
     return is_ldimm64_insn(insn) && insn->src_reg == BPF_PSEUDO_FUNC;
 }
+
+static int
+bpf_object__init_prog(struct bpf_object *obj, struct bpf_program *prog,
+                      const char *name, size_t sec_idx, const char *sec_name,
+                      size_t sec_off, void *insn_data, size_t insn_data_sz)
+{
+    if (insn_data_sz == 0 || insn_data_sz % BPF_INSN_SZ || sec_off % BPF_INSN_SZ)
+    {
+        pr_warn("sec '%s': corrupted program '%s', offset %zu, size %zu\n",
+                sec_name, name, sec_off, insn_data_sz);
+        return -EINVAL;
+    }
+
+    memset(prog, 0, sizeof(*prog));
+    prog->obj = obj;
+
+    prog->sec_idx = sec_idx;
+    prog->sec_insn_off = sec_off / BPF_INSN_SZ;
+    prog->sec_insn_cnt = insn_data_sz / BPF_INSN_SZ;
+    /* insns_cnt can later be increased by appending used subprograms */
+    prog->insns_cnt = prog->sec_insn_cnt;
+
+    prog->type = BPF_PROG_TYPE_UNSPEC;
+    prog->fd = -1;
+
+    /* libbpf's convention for SEC("?abc...") is that it's just like
+     * SEC("abc...") but the corresponding bpf_program starts out with
+     * autoload set to false.
+     */
+    if (sec_name[0] == '?')
+    {
+        prog->autoload = false;
+        /* from now on forget there was ? in section name */
+        sec_name++;
+    }
+    else
+    {
+        prog->autoload = true;
+    }
+
+    prog->autoattach = true;
+
+    /* inherit object's log_level */
+    prog->log_level = obj->log_level;
+
+    prog->sec_name = strdup(sec_name);
+    if (!prog->sec_name)
+        goto errout;
+
+    prog->name = strdup(name);
+    if (!prog->name)
+        goto errout;
+
+    prog->insns = malloc(insn_data_sz);
+    if (!prog->insns)
+        goto errout;
+    memcpy(prog->insns, insn_data, insn_data_sz);
+
+    return 0;
+errout:
+    pr_warn("sec '%s': failed to allocate memory for prog '%s'\n", sec_name, name);
+    bpf_program__exit(prog);
+    return -ENOMEM;
+}
