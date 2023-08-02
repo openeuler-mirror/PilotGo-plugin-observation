@@ -817,3 +817,89 @@ bpf_object__add_programs(struct bpf_object *obj, Elf_Data *sec_data,
 
     return 0;
 }
+
+static const struct btf_member *
+find_member_by_offset(const struct btf_type *t, __u32 bit_offset)
+{
+    struct btf_member *m;
+    int i;
+
+    for (i = 0, m = btf_members(t); i < btf_vlen(t); i++, m++)
+    {
+        if (btf_member_bit_offset(t, i) == bit_offset)
+            return m;
+    }
+
+    return NULL;
+}
+
+static const struct btf_member *
+find_member_by_name(const struct btf *btf, const struct btf_type *t,
+                    const char *name)
+{
+    struct btf_member *m;
+    int i;
+
+    for (i = 0, m = btf_members(t); i < btf_vlen(t); i++, m++)
+    {
+        if (!strcmp(btf__name_by_offset(btf, m->name_off), name))
+            return m;
+    }
+
+    return NULL;
+}
+
+#define STRUCT_OPS_VALUE_PREFIX "bpf_struct_ops_"
+static int find_btf_by_prefix_kind(const struct btf *btf, const char *prefix,
+                                   const char *name, __u32 kind);
+
+static int
+find_struct_ops_kern_types(const struct btf *btf, const char *tname,
+                           const struct btf_type **type, __u32 *type_id,
+                           const struct btf_type **vtype, __u32 *vtype_id,
+                           const struct btf_member **data_member)
+{
+    const struct btf_type *kern_type, *kern_vtype;
+    const struct btf_member *kern_data_member;
+    __s32 kern_vtype_id, kern_type_id;
+    __u32 i;
+
+    kern_type_id = btf__find_by_name_kind(btf, tname, BTF_KIND_STRUCT);
+    if (kern_type_id < 0)
+    {
+        pr_warn("struct_ops init_kern: struct %s is not found in kernel BTF\n",
+                tname);
+        return kern_type_id;
+    }
+    kern_type = btf__type_by_id(btf, kern_type_id);
+    kern_vtype_id = find_btf_by_prefix_kind(btf, STRUCT_OPS_VALUE_PREFIX,
+                                            tname, BTF_KIND_STRUCT);
+    if (kern_vtype_id < 0)
+    {
+        pr_warn("struct_ops init_kern: struct %s%s is not found in kernel BTF\n",
+                STRUCT_OPS_VALUE_PREFIX, tname);
+        return kern_vtype_id;
+    }
+    kern_vtype = btf__type_by_id(btf, kern_vtype_id);
+
+    kern_data_member = btf_members(kern_vtype);
+    for (i = 0; i < btf_vlen(kern_vtype); i++, kern_data_member++)
+    {
+        if (kern_data_member->type == kern_type_id)
+            break;
+    }
+    if (i == btf_vlen(kern_vtype))
+    {
+        pr_warn("struct_ops init_kern: struct %s data is not found in struct %s%s\n",
+                tname, STRUCT_OPS_VALUE_PREFIX, tname);
+        return -EINVAL;
+    }
+
+    *type = kern_type;
+    *type_id = kern_type_id;
+    *vtype = kern_vtype;
+    *vtype_id = kern_vtype_id;
+    *data_member = kern_data_member;
+
+    return 0;
+}
