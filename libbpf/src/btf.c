@@ -132,3 +132,62 @@ static int btf_add_type_idx_entry(struct btf *btf, __u32 type_off)
 	*p = type_off;
 	return 0;
 }
+
+static void btf_bswap_hdr(struct btf_header *h)
+{
+	h->magic = bswap_16(h->magic);
+	h->hdr_len = bswap_32(h->hdr_len);
+	h->type_off = bswap_32(h->type_off);
+	h->type_len = bswap_32(h->type_len);
+	h->str_off = bswap_32(h->str_off);
+	h->str_len = bswap_32(h->str_len);
+}
+
+static int btf_parse_hdr(struct btf *btf)
+{
+	struct btf_header *hdr = btf->hdr;
+	__u32 meta_left;
+
+	if (btf->raw_size < sizeof(struct btf_header)) {
+		pr_debug("BTF header not found\n");
+		return -EINVAL;
+	}
+
+	if (hdr->magic == bswap_16(BTF_MAGIC)) {
+		btf->swapped_endian = true;
+		if (bswap_32(hdr->hdr_len) != sizeof(struct btf_header)) {
+			pr_warn("Can't load BTF with non-native endianness due to unsupported header length %u\n",
+				bswap_32(hdr->hdr_len));
+			return -ENOTSUP;
+		}
+		btf_bswap_hdr(hdr);
+	} else if (hdr->magic != BTF_MAGIC) {
+		pr_debug("Invalid BTF magic: %x\n", hdr->magic);
+		return -EINVAL;
+	}
+
+	if (btf->raw_size < hdr->hdr_len) {
+		pr_debug("BTF header len %u larger than data size %u\n",
+			 hdr->hdr_len, btf->raw_size);
+		return -EINVAL;
+	}
+
+	meta_left = btf->raw_size - hdr->hdr_len;
+	if (meta_left < (long long)hdr->str_off + hdr->str_len) {
+		pr_debug("Invalid BTF total size: %u\n", btf->raw_size);
+		return -EINVAL;
+	}
+
+	if ((long long)hdr->type_off + hdr->type_len > hdr->str_off) {
+		pr_debug("Invalid BTF data sections layout: type data at %u + %u, strings data at %u + %u\n",
+			 hdr->type_off, hdr->type_len, hdr->str_off, hdr->str_len);
+		return -EINVAL;
+	}
+
+	if (hdr->type_off % 4) {
+		pr_debug("BTF type section is not aligned to 4 bytes\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
