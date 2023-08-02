@@ -248,6 +248,82 @@ static void probe_jit_enable(void)
 	}
 }
 
+static void probe_jit_harden(void)
+{
+	int res;
+
+	/* No support for C-style ouptut */
+
+	res = read_procfs("/proc/sys/net/core/bpf_jit_harden");
+	if (json_output) {
+		jsonw_int_field(json_wtr, "bpf_jit_harden", res);
+	} else {
+		switch (res) {
+		case 0:
+			printf("JIT compiler hardening is disabled\n");
+			break;
+		case 1:
+			printf("JIT compiler hardening is enabled for unprivileged users\n");
+			break;
+		case 2:
+			printf("JIT compiler hardening is enabled for all users\n");
+			break;
+		case -1:
+			printf("Unable to retrieve JIT hardening status\n");
+			break;
+		default:
+			printf("JIT hardening status has unknown value %d\n",
+			       res);
+		}
+	}
+}
+
+static void probe_jit_kallsyms(void)
+{
+	int res;
+
+	/* No support for C-style ouptut */
+
+	res = read_procfs("/proc/sys/net/core/bpf_jit_kallsyms");
+	if (json_output) {
+		jsonw_int_field(json_wtr, "bpf_jit_kallsyms", res);
+	} else {
+		switch (res) {
+		case 0:
+			printf("JIT compiler kallsyms exports are disabled\n");
+			break;
+		case 1:
+			printf("JIT compiler kallsyms exports are enabled for root\n");
+			break;
+		case -1:
+			printf("Unable to retrieve JIT kallsyms export status\n");
+			break;
+		default:
+			printf("JIT kallsyms exports status has unknown value %d\n", res);
+		}
+	}
+}
+
+static void probe_jit_limit(void)
+{
+	int res;
+
+	/* No support for C-style ouptut */
+
+	res = read_procfs("/proc/sys/net/core/bpf_jit_limit");
+	if (json_output) {
+		jsonw_int_field(json_wtr, "bpf_jit_limit", res);
+	} else {
+		switch (res) {
+		case -1:
+			printf("Unable to retrieve global memory limit for JIT compiler for unprivileged users\n");
+			break;
+		default:
+			printf("Global memory limit for JIT compiler for unprivileged users is %d bytes\n", res);
+		}
+	}
+}
+
 
 static void
 section_system_config(enum probe_component target, const char *define_prefix)
