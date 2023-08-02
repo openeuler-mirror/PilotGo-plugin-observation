@@ -1,27 +1,31 @@
-#include <ctype.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
-#include <unistd.h>
-#include <net/if.h>
-#ifdef USE_LIBCAP
-#include <sys/capability.h>
-#endif
-#include <sys/utsname.h>
-#include <sys/vfs.h>
-
-#include <linux/filter.h>
-#include <linux/limits.h>
-
-#include <bpf/bpf.h>
-#include <bpf/libbpf.h>
-#include <zlib.h>
-
-#include "main.h"
-
 #ifndef PROC_SUPER_MAGIC
 # define PROC_SUPER_MAGIC	0x9fa0
 #endif
+
+enum probe_component {
+	COMPONENT_UNSPEC,
+	COMPONENT_KERNEL,
+	COMPONENT_DEVICE,
+};
+
+#define BPF_HELPER_MAKE_ENTRY(name)	[BPF_FUNC_ ## name] = "bpf_" # name
+static const char * const helper_name[] = {
+	__BPF_FUNC_MAPPER(BPF_HELPER_MAKE_ENTRY)
+};
+
+#undef BPF_HELPER_MAKE_ENTRY
+
+static bool full_mode;
+#ifdef USE_LIBCAP
+static bool run_as_unprivileged;
+#endif
+
+/* Miscellaneous utility functions */
+
+static bool grep(const char *buffer, const char *pattern)
+{
+	return !!strstr(buffer, pattern);
+}
 
 static bool check_procfs(void)
 {
@@ -33,6 +37,29 @@ static bool check_procfs(void)
 		return false;
 
 	return true;
+}
+
+static void uppercase(char *str, size_t len)
+{
+	size_t i;
+
+	for (i = 0; i < len && str[i] != '\0'; i++)
+		str[i] = toupper(str[i]);
+}
+
+/* Printing utility functions */
+
+static void
+print_bool_feature(const char *feat_name, const char *plain_name,
+		   const char *define_name, bool res, const char *define_prefix)
+{
+	if (json_output)
+		jsonw_bool_field(json_wtr, feat_name, res);
+	else if (define_prefix)
+		printf("#define %s%sHAVE_%s\n", define_prefix,
+		       res ? "" : "NO_", define_name);
+	else
+		printf("%s is %savailable\n", plain_name, res ? "" : "NOT ");
 }
 
 void set_max_rlimit(void)
@@ -320,7 +347,7 @@ static int do_list_builtins(int argc, char **argv)
 	}
 
 	if (json_output)
-		jsonw_start_array(json_wtr);	/* root array */
+		jsonw_start_array(json_wtr);
 
 	while (true) {
 		const char *name;
@@ -335,7 +362,7 @@ static int do_list_builtins(int argc, char **argv)
 	}
 
 	if (json_output)
-		jsonw_end_array(json_wtr);	/* root array */
+		jsonw_end_array(json_wtr);
 
 	return 0;
 }
