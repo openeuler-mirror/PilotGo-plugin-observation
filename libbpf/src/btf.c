@@ -61,3 +61,42 @@ struct btf {
 	/* Pointer size (in bytes) for a target architecture of this BTF */
 	int ptr_sz;
 };
+
+static inline __u64 ptr_to_u64(const void *ptr)
+{
+	return (__u64) (unsigned long) ptr;
+}
+
+void *libbpf_add_mem(void **data, size_t *cap_cnt, size_t elem_sz,
+		     size_t cur_cnt, size_t max_cnt, size_t add_cnt)
+{
+	size_t new_cnt;
+	void *new_data;
+
+	if (cur_cnt + add_cnt <= *cap_cnt)
+		return *data + cur_cnt * elem_sz;
+
+	/* requested more than the set limit */
+	if (cur_cnt + add_cnt > max_cnt)
+		return NULL;
+
+	new_cnt = *cap_cnt;
+	new_cnt += new_cnt / 4;		  /* expand by 25% */
+	if (new_cnt < 16)		  /* but at least 16 elements */
+		new_cnt = 16;
+	if (new_cnt > max_cnt)		  /* but not exceeding a set limit */
+		new_cnt = max_cnt;
+	if (new_cnt < cur_cnt + add_cnt)  /* also ensure we have enough memory */
+		new_cnt = cur_cnt + add_cnt;
+
+	new_data = libbpf_reallocarray(*data, new_cnt, elem_sz);
+	if (!new_data)
+		return NULL;
+
+	/* zero out newly allocated portion of memory */
+	memset(new_data + (*cap_cnt) * elem_sz, 0, (new_cnt - *cap_cnt) * elem_sz);
+
+	*data = new_data;
+	*cap_cnt = new_cnt;
+	return new_data + cur_cnt * elem_sz;
+}
