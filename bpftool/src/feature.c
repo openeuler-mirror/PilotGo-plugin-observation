@@ -600,6 +600,124 @@ probe_map_type(enum bpf_map_type map_type, char const *map_type_str,
 			   define_prefix);
 }
 
+static bool
+probe_helper_ifindex(enum bpf_func_id id, enum bpf_prog_type prog_type,
+		     __u32 ifindex)
+{
+	struct bpf_insn insns[2] = {
+		BPF_EMIT_CALL(id),
+		BPF_EXIT_INSN()
+	};
+	char buf[4096] = {};
+	bool res;
+
+	probe_prog_load_ifindex(prog_type, insns, ARRAY_SIZE(insns), buf,
+				sizeof(buf), ifindex);
+	res = !grep(buf, "invalid func ") && !grep(buf, "unknown func ");
+
+	switch (get_vendor_id(ifindex)) {
+	case 0x19ee: /* Netronome specific */
+		res = res && !grep(buf, "not supported by FW") &&
+			!grep(buf, "unsupported function id");
+		break;
+	default:
+		break;
+	}
+
+	return res;
+}
+
+static bool
+probe_helper_for_progtype(enum bpf_prog_type prog_type, bool supported_type,
+			  const char *define_prefix, unsigned int id,
+			  const char *ptype_name, __u32 ifindex)
+{
+	bool res = false;
+
+	if (supported_type) {
+		if (ifindex)
+			res = probe_helper_ifindex(id, prog_type, ifindex);
+		else
+			res = libbpf_probe_bpf_helper(prog_type, id, NULL) > 0;
+#ifdef USE_LIBCAP
+		/* Probe may succeed even if program load fails, for
+		 * unprivileged users check that we did not fail because of
+		 * insufficient permissions
+		 */
+		if (run_as_unprivileged && errno == EPERM)
+			res = false;
+#endif
+	}
+
+	if (json_output) {
+		if (res)
+			jsonw_string(json_wtr, helper_name[id]);
+	} else if (define_prefix) {
+		printf("#define %sBPF__PROG_TYPE_%s__HELPER_%s %s\n",
+		       define_prefix, ptype_name, helper_name[id],
+		       res ? "1" : "0");
+	} else {
+		if (res)
+			printf("\n\t- %s", helper_name[id]);
+	}
+
+	return res;
+}
+
+static void
+probe_helpers_for_progtype(enum bpf_prog_type prog_type,
+			   const char *prog_type_str, bool supported_type,
+			   const char *define_prefix, __u32 ifindex)
+{
+	char feat_name[128];
+	unsigned int id;
+	bool probe_res = false;
+
+	if (ifindex)
+		switch (prog_type) {
+		case BPF_PROG_TYPE_SCHED_CLS:
+		case BPF_PROG_TYPE_XDP:
+			break;
+		default:
+			return;
+		}
+
+	if (json_output) {
+		sprintf(feat_name, "%s_available_helpers", prog_type_str);
+		jsonw_name(json_wtr, feat_name);
+		jsonw_start_array(json_wtr);
+	} else if (!define_prefix) {
+		printf("eBPF helpers supported for program type %s:",
+		       prog_type_str);
+	}
+
+	for (id = 1; id < ARRAY_SIZE(helper_name); id++) {
+		switch (id) {
+		case BPF_FUNC_trace_printk:
+		case BPF_FUNC_trace_vprintk:
+		case BPF_FUNC_probe_write_user:
+			if (!full_mode)
+				continue;
+		default:
+			probe_res |= probe_helper_for_progtype(prog_type, supported_type,
+						  define_prefix, id, prog_type_str,
+						  ifindex);
+		}
+	}
+
+	if (json_output)
+		jsonw_end_array(json_wtr);
+	else if (!define_prefix) {
+		printf("\n");
+		if (!probe_res) {
+			if (!supported_type)
+				printf("\tProgram type not supported\n");
+			else
+				printf("\tCould not determine which helpers are available\n");
+		}
+	}
+}
+
 static void
 section_system_config(enum probe_component target, const char *define_prefix)
 {
