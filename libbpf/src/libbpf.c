@@ -617,3 +617,60 @@ struct bpf_object
 
     char path[];
 };
+
+static const char *elf_sym_str(const struct bpf_object *obj, size_t off);
+static const char *elf_sec_str(const struct bpf_object *obj, size_t off);
+static Elf_Scn *elf_sec_by_idx(const struct bpf_object *obj, size_t idx);
+static Elf_Scn *elf_sec_by_name(const struct bpf_object *obj, const char *name);
+static Elf64_Shdr *elf_sec_hdr(const struct bpf_object *obj, Elf_Scn *scn);
+static const char *elf_sec_name(const struct bpf_object *obj, Elf_Scn *scn);
+static Elf_Data *elf_sec_data(const struct bpf_object *obj, Elf_Scn *scn);
+static Elf64_Sym *elf_sym_by_idx(const struct bpf_object *obj, size_t idx);
+static Elf64_Rel *elf_rel_by_idx(Elf_Data *data, size_t idx);
+
+void bpf_program__unload(struct bpf_program *prog)
+{
+    if (!prog)
+        return;
+
+    zclose(prog->fd);
+
+    zfree(&prog->func_info);
+    zfree(&prog->line_info);
+}
+
+static void bpf_program__exit(struct bpf_program *prog)
+{
+    if (!prog)
+        return;
+
+    bpf_program__unload(prog);
+    zfree(&prog->name);
+    zfree(&prog->sec_name);
+    zfree(&prog->insns);
+    zfree(&prog->reloc_desc);
+
+    prog->nr_reloc = 0;
+    prog->insns_cnt = 0;
+    prog->sec_idx = -1;
+}
+
+static bool insn_is_subprog_call(const struct bpf_insn *insn)
+{
+    return BPF_CLASS(insn->code) == BPF_JMP &&
+           BPF_OP(insn->code) == BPF_CALL &&
+           BPF_SRC(insn->code) == BPF_K &&
+           insn->src_reg == BPF_PSEUDO_CALL &&
+           insn->dst_reg == 0 &&
+           insn->off == 0;
+}
+
+static bool is_call_insn(const struct bpf_insn *insn)
+{
+    return insn->code == (BPF_JMP | BPF_CALL);
+}
+
+static bool insn_is_pseudo_func(struct bpf_insn *insn)
+{
+    return is_ldimm64_insn(insn) && insn->src_reg == BPF_PSEUDO_FUNC;
+}
