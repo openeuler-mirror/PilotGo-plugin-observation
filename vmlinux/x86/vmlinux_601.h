@@ -6842,3 +6842,67 @@ struct array_buffer
 	u64 time_start;
 	int cpu;
 };
+
+struct trace_pid_list;
+
+struct trace_event_file;
+
+struct trace_options;
+
+struct trace_func_repeats;
+
+struct trace_array
+{
+	struct list_head list;
+	char *name;
+	struct array_buffer array_buffer;
+	struct trace_pid_list *filtered_pids;
+	struct trace_pid_list *filtered_no_pids;
+	arch_spinlock_t max_lock;
+	int buffer_disabled;
+	int sys_refcount_enter;
+	int sys_refcount_exit;
+	struct trace_event_file *enter_syscall_files[451];
+	struct trace_event_file *exit_syscall_files[451];
+	int stop_count;
+	int clock_id;
+	int nr_topts;
+	bool clear_trace;
+	int buffer_percent;
+	unsigned int n_err_log_entries;
+	struct tracer *current_trace;
+	unsigned int trace_flags;
+	unsigned char trace_flags_index[32];
+	unsigned int flags;
+	raw_spinlock_t start_lock;
+	struct list_head err_log;
+	struct dentry *dir;
+	struct dentry *options;
+	struct dentry *percpu_dir;
+	struct dentry *event_dir;
+	struct trace_options *topts;
+	struct list_head systems;
+	struct list_head events;
+	struct trace_event_file *trace_marker_file;
+	cpumask_var_t tracing_cpumask;
+	int ref;
+	int trace_ref;
+	struct ftrace_ops *ops;
+	struct trace_pid_list *function_pids;
+	struct trace_pid_list *function_no_pids;
+	struct list_head func_probes;
+	struct list_head mod_trace;
+	struct list_head mod_notrace;
+	int function_enabled;
+	int no_filter_buffering_ref;
+	struct list_head hist_vars;
+	struct trace_func_repeats *last_func_repeats;
+};
+
+enum print_line_t
+{
+	TRACE_TYPE_PARTIAL_LINE = 0,
+	TRACE_TYPE_HANDLED = 1,
+	TRACE_TYPE_UNHANDLED = 2,
+	TRACE_TYPE_NO_CONSUME = 3,
+};
