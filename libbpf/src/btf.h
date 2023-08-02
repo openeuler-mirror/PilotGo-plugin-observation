@@ -404,3 +404,53 @@ static inline struct btf_member *btf_members(const struct btf_type *t)
 {
 	return (struct btf_member *)(t + 1);
 }
+
+/* Get bit offset of a member with specified index. */
+static inline __u32 btf_member_bit_offset(const struct btf_type *t,
+					  __u32 member_idx)
+{
+	const struct btf_member *m = btf_members(t) + member_idx;
+	bool kflag = btf_kflag(t);
+
+	return kflag ? BTF_MEMBER_BIT_OFFSET(m->offset) : m->offset;
+}
+/*
+ * Get bitfield size of a member, assuming t is BTF_KIND_STRUCT or
+ * BTF_KIND_UNION. If member is not a bitfield, zero is returned.
+ */
+static inline __u32 btf_member_bitfield_size(const struct btf_type *t,
+					     __u32 member_idx)
+{
+	const struct btf_member *m = btf_members(t) + member_idx;
+	bool kflag = btf_kflag(t);
+
+	return kflag ? BTF_MEMBER_BITFIELD_SIZE(m->offset) : 0;
+}
+
+static inline struct btf_param *btf_params(const struct btf_type *t)
+{
+	return (struct btf_param *)(t + 1);
+}
+
+static inline struct btf_var *btf_var(const struct btf_type *t)
+{
+	return (struct btf_var *)(t + 1);
+}
+
+static inline struct btf_var_secinfo *
+btf_var_secinfos(const struct btf_type *t)
+{
+	return (struct btf_var_secinfo *)(t + 1);
+}
+
+struct btf_decl_tag;
+static inline struct btf_decl_tag *btf_decl_tag(const struct btf_type *t)
+{
+	return (struct btf_decl_tag *)(t + 1);
+}
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* __LIBBPF_BTF_H */
