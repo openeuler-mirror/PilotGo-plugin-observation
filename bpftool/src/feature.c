@@ -776,6 +776,23 @@ probe_bounded_loops(const char *define_prefix, __u32 ifindex)
 }
 
 static void
+probe_v2_isa_extension(const char *define_prefix, __u32 ifindex)
+{
+	struct bpf_insn insns[4] = {
+		BPF_MOV64_IMM(BPF_REG_0, 0),
+		BPF_JMP_IMM(BPF_JLT, BPF_REG_0, 0, 1),
+		BPF_MOV64_IMM(BPF_REG_0, 1),
+		BPF_EXIT_INSN()
+	};
+
+	probe_misc_feature(insns, ARRAY_SIZE(insns),
+			   define_prefix, ifindex,
+			   "have_v2_isa_extension",
+			   "ISA extension v2",
+			   "V2_ISA_EXTENSION");
+}
+
+static void
 section_system_config(enum probe_component target, const char *define_prefix)
 {
 	switch (target) {
