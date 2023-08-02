@@ -324,6 +324,132 @@ static void probe_jit_limit(void)
 	}
 }
 
+static bool read_next_kernel_config_option(gzFile file, char *buf, size_t n,
+					   char **value)
+{
+	char *sep;
+
+	while (gzgets(file, buf, n)) {
+		if (strncmp(buf, "CONFIG_", 7))
+			continue;
+
+		sep = strchr(buf, '=');
+		if (!sep)
+			continue;
+
+		/* Trim ending '\n' */
+		buf[strlen(buf) - 1] = '\0';
+
+		/* Split on '=' and ensure that a value is present. */
+		*sep = '\0';
+		if (!sep[1])
+			continue;
+
+		*value = sep + 1;
+		return true;
+	}
+
+	return false;
+}
+
+static void probe_kernel_image_config(const char *define_prefix)
+{
+	static const struct {
+		const char * const name;
+		bool macro_dump;
+	} options[] = {
+		{ "CONFIG_BPF", },
+		{ "CONFIG_BPF_SYSCALL", },
+		{ "CONFIG_HAVE_EBPF_JIT", },
+		{ "CONFIG_BPF_JIT", },
+		{ "CONFIG_BPF_JIT_ALWAYS_ON", },
+		{ "CONFIG_DEBUG_INFO_BTF", },
+		{ "CONFIG_DEBUG_INFO_BTF_MODULES", },
+
+		{ "CONFIG_CGROUPS", },
+		{ "CONFIG_CGROUP_BPF", },
+		{ "CONFIG_CGROUP_NET_CLASSID", },
+		{ "CONFIG_SOCK_CGROUP_DATA", },
+
+		{ "CONFIG_BPF_EVENTS", },
+		{ "CONFIG_KPROBE_EVENTS", },
+		{ "CONFIG_UPROBE_EVENTS", },
+		{ "CONFIG_TRACING", },
+		{ "CONFIG_FTRACE_SYSCALLS", },
+		{ "CONFIG_FUNCTION_ERROR_INJECTION", },
+		{ "CONFIG_BPF_KPROBE_OVERRIDE", },
+		{ "CONFIG_NET", },
+		{ "CONFIG_XDP_SOCKETS", },
+		{ "CONFIG_LWTUNNEL_BPF", },
+		{ "CONFIG_NET_ACT_BPF", },
+		{ "CONFIG_NET_CLS_BPF", },
+		{ "CONFIG_NET_CLS_ACT", },
+		{ "CONFIG_NET_SCH_INGRESS", },
+		{ "CONFIG_XFRM", },
+		{ "CONFIG_IP_ROUTE_CLASSID", },
+		{ "CONFIG_IPV6_SEG6_BPF", },
+		{ "CONFIG_BPF_LIRC_MODE2", },
+		{ "CONFIG_BPF_STREAM_PARSER", },
+		{ "CONFIG_NETFILTER_XT_MATCH_BPF", },
+		{ "CONFIG_BPFILTER", },
+		{ "CONFIG_BPFILTER_UMH", },
+
+		{ "CONFIG_TEST_BPF", },
+		{ "CONFIG_HZ", true, }
+	};
+	char *values[ARRAY_SIZE(options)] = { };
+	struct utsname utsn;
+	char path[PATH_MAX];
+	gzFile file = NULL;
+	char buf[4096];
+	char *value;
+	size_t i;
+
+	if (!uname(&utsn)) {
+		snprintf(path, sizeof(path), "/boot/config-%s", utsn.release);
+		file = gzopen(path, "r");
+	}
+
+	if (!file) {
+		file = gzopen("/proc/config.gz", "r");
+	}
+	if (!file) {
+		p_info("skipping kernel config, can't open file: %s",
+		       strerror(errno));
+		goto end_parse;
+	}
+	if (!gzgets(file, buf, sizeof(buf)) ||
+	    !gzgets(file, buf, sizeof(buf))) {
+		p_info("skipping kernel config, can't read from file: %s",
+		       strerror(errno));
+		goto end_parse;
+	}
+	if (strcmp(buf, "# Automatically generated file; DO NOT EDIT.\n")) {
+		p_info("skipping kernel config, can't find correct file");
+		goto end_parse;
+	}
+
+	while (read_next_kernel_config_option(file, buf, sizeof(buf), &value)) {
+		for (i = 0; i < ARRAY_SIZE(options); i++) {
+			if ((define_prefix && !options[i].macro_dump) ||
+			    values[i] || strcmp(buf, options[i].name))
+				continue;
+
+			values[i] = strdup(value);
+		}
+	}
+
+	for (i = 0; i < ARRAY_SIZE(options); i++) {
+		if (define_prefix && !options[i].macro_dump)
+			continue;
+		print_kernel_option(options[i].name, values[i], define_prefix);
+		free(values[i]);
+	}
+
+end_parse:
+	if (file)
+		gzclose(file);
+}
 
 static void
 section_system_config(enum probe_component target, const char *define_prefix)
