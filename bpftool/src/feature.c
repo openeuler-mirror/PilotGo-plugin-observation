@@ -1,3 +1,24 @@
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
+#include <net/if.h>
+#ifdef USE_LIBCAP
+#include <sys/capability.h>
+#endif
+#include <sys/utsname.h>
+#include <sys/vfs.h>
+
+#include <linux/filter.h>
+#include <linux/limits.h>
+
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+#include <zlib.h>
+
+#include "main.h"
+
 #ifndef PROC_SUPER_MAGIC
 # define PROC_SUPER_MAGIC	0x9fa0
 #endif
@@ -62,12 +83,35 @@ print_bool_feature(const char *feat_name, const char *plain_name,
 		printf("%s is %savailable\n", plain_name, res ? "" : "NOT ");
 }
 
-void set_max_rlimit(void)
+static void print_kernel_option(const char *name, const char *value,
+				const char *define_prefix)
 {
-	struct rlimit rinf = { RLIM_INFINITY, RLIM_INFINITY };
+	char *endptr;
+	int res;
 
-	if (known_to_need_rlimit())
-		setrlimit(RLIMIT_MEMLOCK, &rinf);
+	if (json_output) {
+		if (!value) {
+			jsonw_null_field(json_wtr, name);
+			return;
+		}
+		errno = 0;
+		res = strtol(value, &endptr, 0);
+		if (!errno && *endptr == '\n')
+			jsonw_int_field(json_wtr, name, res);
+		else
+			jsonw_string_field(json_wtr, name, value);
+	} else if (define_prefix) {
+		if (value)
+			printf("#define %s%s %s\n", define_prefix,
+			       name, value);
+		else
+			printf("/* %s%s is not set */\n", define_prefix, name);
+	} else {
+		if (value)
+			printf("%s is set to %s\n", name, value);
+		else
+			printf("%s is not set\n", name);
+	}
 }
 
 static void
@@ -83,6 +127,127 @@ print_start_section(const char *json_title, const char *plain_title,
 		printf("%s\n", plain_title);
 	}
 }
+
+static void print_end_section(void)
+{
+	if (json_output)
+		jsonw_end_object(json_wtr);
+	else
+		printf("\n");
+}
+
+/* Probing functions */
+
+static int get_vendor_id(int ifindex)
+{
+	char ifname[IF_NAMESIZE], path[64], buf[8];
+	ssize_t len;
+	int fd;
+
+	if (!if_indextoname(ifindex, ifname))
+		return -1;
+
+	snprintf(path, sizeof(path), "/sys/class/net/%s/device/vendor", ifname);
+
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return -1;
+
+	len = read(fd, buf, sizeof(buf));
+	close(fd);
+	if (len < 0)
+		return -1;
+	if (len >= (ssize_t)sizeof(buf))
+		return -1;
+	buf[len] = '\0';
+
+	return strtol(buf, NULL, 0);
+}
+
+static int read_procfs(const char *path)
+{
+	char *endptr, *line = NULL;
+	size_t len = 0;
+	FILE *fd;
+	int res;
+
+	fd = fopen(path, "r");
+	if (!fd)
+		return -1;
+
+	res = getline(&line, &len, fd);
+	fclose(fd);
+	if (res < 0)
+		return -1;
+
+	errno = 0;
+	res = strtol(line, &endptr, 10);
+	if (errno || *line == '\0' || *endptr != '\n')
+		res = -1;
+	free(line);
+
+	return res;
+}
+
+static void probe_unprivileged_disabled(void)
+{
+	int res;
+
+	/* No support for C-style ouptut */
+
+	res = read_procfs("/proc/sys/kernel/unprivileged_bpf_disabled");
+	if (json_output) {
+		jsonw_int_field(json_wtr, "unprivileged_bpf_disabled", res);
+	} else {
+		switch (res) {
+		case 0:
+			printf("bpf() syscall for unprivileged users is enabled\n");
+			break;
+		case 1:
+			printf("bpf() syscall restricted to privileged users (without recovery)\n");
+			break;
+		case 2:
+			printf("bpf() syscall restricted to privileged users (admin can change)\n");
+			break;
+		case -1:
+			printf("Unable to retrieve required privileges for bpf() syscall\n");
+			break;
+		default:
+			printf("bpf() syscall restriction has unknown value %d\n", res);
+		}
+	}
+}
+
+static void probe_jit_enable(void)
+{
+	int res;
+
+	/* No support for C-style ouptut */
+
+	res = read_procfs("/proc/sys/net/core/bpf_jit_enable");
+	if (json_output) {
+		jsonw_int_field(json_wtr, "bpf_jit_enable", res);
+	} else {
+		switch (res) {
+		case 0:
+			printf("JIT compiler is disabled\n");
+			break;
+		case 1:
+			printf("JIT compiler is enabled\n");
+			break;
+		case 2:
+			printf("JIT compiler is enabled with debugging traces in kernel logs\n");
+			break;
+		case -1:
+			printf("Unable to retrieve JIT-compiler status\n");
+			break;
+		default:
+			printf("JIT-compiler status has unknown value %d\n",
+			       res);
+		}
+	}
+}
+
 
 static void
 section_system_config(enum probe_component target, const char *define_prefix)
