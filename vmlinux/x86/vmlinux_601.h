@@ -6650,3 +6650,113 @@ struct perf_callchain_entry
 	__u64 nr;
 	__u64 ip[0];
 };
+
+typedef long unsigned int (*perf_copy_f)(void *, const void *, long unsigned int, long unsigned int);
+
+struct perf_raw_frag
+{
+	union
+	{
+		struct perf_raw_frag *next;
+		long unsigned int pad;
+	};
+	perf_copy_f copy;
+	void *data;
+	u32 size;
+} __attribute__((packed));
+
+struct perf_raw_record
+{
+	struct perf_raw_frag frag;
+	u32 size;
+};
+
+struct perf_branch_stack
+{
+	__u64 nr;
+	__u64 hw_idx;
+	struct perf_branch_entry entries[0];
+};
+
+struct perf_cpu_context
+{
+	struct perf_event_context ctx;
+	struct perf_event_context *task_ctx;
+	int active_oncpu;
+	int exclusive;
+	raw_spinlock_t hrtimer_lock;
+	struct hrtimer hrtimer;
+	ktime_t hrtimer_interval;
+	unsigned int hrtimer_active;
+	struct perf_cgroup *cgrp;
+	struct list_head cgrp_cpuctx_entry;
+	struct list_head sched_cb_entry;
+	int sched_cb_usage;
+	int online;
+	int heap_size;
+	struct perf_event **heap;
+	struct perf_event *heap_default[2];
+};
+
+struct perf_output_handle
+{
+	struct perf_event *event;
+	struct perf_buffer *rb;
+	long unsigned int wakeup;
+	long unsigned int size;
+	u64 aux_flags;
+	union
+	{
+		void *addr;
+		long unsigned int head;
+	};
+	int page;
+};
+
+struct perf_addr_filter_range
+{
+	long unsigned int start;
+	long unsigned int size;
+};
+
+struct perf_sample_data
+{
+	u64 sample_flags;
+	u64 period;
+	struct perf_branch_stack *br_stack;
+	union perf_sample_weight weight;
+	union perf_mem_data_src data_src;
+	u64 txn;
+	u64 addr;
+	struct perf_raw_record *raw;
+	u64 type;
+	u64 ip;
+	struct
+	{
+		u32 pid;
+		u32 tid;
+	} tid_entry;
+	u64 time;
+	u64 id;
+	u64 stream_id;
+	struct
+	{
+		u32 cpu;
+		u32 reserved;
+	} cpu_entry;
+	struct perf_callchain_entry *callchain;
+	u64 aux_size;
+	struct perf_regs regs_user;
+	struct perf_regs regs_intr;
+	u64 stack_user_size;
+	u64 phys_addr;
+	u64 cgroup;
+	u64 data_page_size;
+	u64 code_page_size;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+	long : 64;
+};
