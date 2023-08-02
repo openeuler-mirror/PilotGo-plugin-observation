@@ -375,3 +375,32 @@ static inline __u8 btf_int_bits(const struct btf_type *t)
 {
 	return BTF_INT_BITS(*(__u32 *)(t + 1));
 }
+
+static inline struct btf_array *btf_array(const struct btf_type *t)
+{
+	return (struct btf_array *)(t + 1);
+}
+
+static inline struct btf_enum *btf_enum(const struct btf_type *t)
+{
+	return (struct btf_enum *)(t + 1);
+}
+
+struct btf_enum64;
+
+static inline struct btf_enum64 *btf_enum64(const struct btf_type *t)
+{
+	return (struct btf_enum64 *)(t + 1);
+}
+
+static inline __u64 btf_enum64_value(const struct btf_enum64 *e)
+{
+	const __u32 *e64 = (const __u32 *)e;
+
+	return ((__u64)e64[2] << 32) | e64[1];
+}
+
+static inline struct btf_member *btf_members(const struct btf_type *t)
+{
+	return (struct btf_member *)(t + 1);
+}
