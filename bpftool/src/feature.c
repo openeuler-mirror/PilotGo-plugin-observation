@@ -451,6 +451,54 @@ end_parse:
 		gzclose(file);
 }
 
+static bool probe_bpf_syscall(const char *define_prefix)
+{
+	bool res;
+
+	bpf_prog_load(BPF_PROG_TYPE_UNSPEC, NULL, NULL, NULL, 0, NULL);
+	res = (errno != ENOSYS);
+
+	print_bool_feature("have_bpf_syscall",
+			   "bpf() syscall",
+			   "BPF_SYSCALL",
+			   res, define_prefix);
+
+	return res;
+}
+
+static bool
+probe_prog_load_ifindex(enum bpf_prog_type prog_type,
+			const struct bpf_insn *insns, size_t insns_cnt,
+			char *log_buf, size_t log_buf_sz,
+			__u32 ifindex)
+{
+	LIBBPF_OPTS(bpf_prog_load_opts, opts,
+		    .log_buf = log_buf,
+		    .log_size = log_buf_sz,
+		    .log_level = log_buf ? 1 : 0,
+		    .prog_ifindex = ifindex,
+		   );
+	int fd;
+
+	errno = 0;
+	fd = bpf_prog_load(prog_type, NULL, "GPL", insns, insns_cnt, &opts);
+	if (fd >= 0)
+		close(fd);
+
+	return fd >= 0 && errno != EINVAL && errno != EOPNOTSUPP;
+}
+
+static bool probe_prog_type_ifindex(enum bpf_prog_type prog_type, __u32 ifindex)
+{
+	struct bpf_insn insns[2] = {
+		BPF_MOV64_IMM(BPF_REG_0, 2),
+		BPF_EXIT_INSN()
+	};
+
+	return probe_prog_load_ifindex(prog_type, insns, ARRAY_SIZE(insns),
+				       NULL, 0, ifindex);
+}
+
 static void
 section_system_config(enum probe_component target, const char *define_prefix)
 {
