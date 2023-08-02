@@ -7159,3 +7159,197 @@ struct tracer_flags
 	struct tracer_opt *opts;
 	struct tracer *trace;
 };
+
+enum trace_iterator_bits
+{
+	TRACE_ITER_PRINT_PARENT_BIT = 0,
+	TRACE_ITER_SYM_OFFSET_BIT = 1,
+	TRACE_ITER_SYM_ADDR_BIT = 2,
+	TRACE_ITER_VERBOSE_BIT = 3,
+	TRACE_ITER_RAW_BIT = 4,
+	TRACE_ITER_HEX_BIT = 5,
+	TRACE_ITER_BIN_BIT = 6,
+	TRACE_ITER_BLOCK_BIT = 7,
+	TRACE_ITER_PRINTK_BIT = 8,
+	TRACE_ITER_ANNOTATE_BIT = 9,
+	TRACE_ITER_USERSTACKTRACE_BIT = 10,
+	TRACE_ITER_SYM_USEROBJ_BIT = 11,
+	TRACE_ITER_PRINTK_MSGONLY_BIT = 12,
+	TRACE_ITER_CONTEXT_INFO_BIT = 13,
+	TRACE_ITER_LATENCY_FMT_BIT = 14,
+	TRACE_ITER_RECORD_CMD_BIT = 15,
+	TRACE_ITER_RECORD_TGID_BIT = 16,
+	TRACE_ITER_OVERWRITE_BIT = 17,
+	TRACE_ITER_STOP_ON_FREE_BIT = 18,
+	TRACE_ITER_IRQ_INFO_BIT = 19,
+	TRACE_ITER_MARKERS_BIT = 20,
+	TRACE_ITER_EVENT_FORK_BIT = 21,
+	TRACE_ITER_PAUSE_ON_TRACE_BIT = 22,
+	TRACE_ITER_HASH_PTR_BIT = 23,
+	TRACE_ITER_FUNCTION_BIT = 24,
+	TRACE_ITER_FUNC_FORK_BIT = 25,
+	TRACE_ITER_DISPLAY_GRAPH_BIT = 26,
+	TRACE_ITER_STACKTRACE_BIT = 27,
+	TRACE_ITER_LAST_BIT = 28,
+};
+
+struct event_subsystem
+{
+	struct list_head list;
+	const char *name;
+	struct event_filter *filter;
+	int ref_count;
+};
+
+enum perf_branch_sample_type_shift
+{
+	PERF_SAMPLE_BRANCH_USER_SHIFT = 0,
+	PERF_SAMPLE_BRANCH_KERNEL_SHIFT = 1,
+	PERF_SAMPLE_BRANCH_HV_SHIFT = 2,
+	PERF_SAMPLE_BRANCH_ANY_SHIFT = 3,
+	PERF_SAMPLE_BRANCH_ANY_CALL_SHIFT = 4,
+	PERF_SAMPLE_BRANCH_ANY_RETURN_SHIFT = 5,
+	PERF_SAMPLE_BRANCH_IND_CALL_SHIFT = 6,
+	PERF_SAMPLE_BRANCH_ABORT_TX_SHIFT = 7,
+	PERF_SAMPLE_BRANCH_IN_TX_SHIFT = 8,
+	PERF_SAMPLE_BRANCH_NO_TX_SHIFT = 9,
+	PERF_SAMPLE_BRANCH_COND_SHIFT = 10,
+	PERF_SAMPLE_BRANCH_CALL_STACK_SHIFT = 11,
+	PERF_SAMPLE_BRANCH_IND_JUMP_SHIFT = 12,
+	PERF_SAMPLE_BRANCH_CALL_SHIFT = 13,
+	PERF_SAMPLE_BRANCH_NO_FLAGS_SHIFT = 14,
+	PERF_SAMPLE_BRANCH_NO_CYCLES_SHIFT = 15,
+	PERF_SAMPLE_BRANCH_TYPE_SAVE_SHIFT = 16,
+	PERF_SAMPLE_BRANCH_HW_INDEX_SHIFT = 17,
+	PERF_SAMPLE_BRANCH_PRIV_SAVE_SHIFT = 18,
+	PERF_SAMPLE_BRANCH_MAX_SHIFT = 19,
+};
+
+struct perf_event_mmap_page
+{
+	__u32 version;
+	__u32 compat_version;
+	__u32 lock;
+	__u32 index;
+	__s64 offset;
+	__u64 time_enabled;
+	__u64 time_running;
+	union
+	{
+		__u64 capabilities;
+		struct
+		{
+			__u64 cap_bit0 : 1;
+			__u64 cap_bit0_is_deprecated : 1;
+			__u64 cap_user_rdpmc : 1;
+			__u64 cap_user_time : 1;
+			__u64 cap_user_time_zero : 1;
+			__u64 cap_user_time_short : 1;
+			__u64 cap_____res : 58;
+		};
+	};
+	__u16 pmc_width;
+	__u16 time_shift;
+	__u32 time_mult;
+	__u64 time_offset;
+	__u64 time_zero;
+	__u32 size;
+	__u32 __reserved_1;
+	__u64 time_cycles;
+	__u64 time_mask;
+	__u8 __reserved[928];
+	__u64 data_head;
+	__u64 data_tail;
+	__u64 data_offset;
+	__u64 data_size;
+	__u64 aux_head;
+	__u64 aux_tail;
+	__u64 aux_offset;
+	__u64 aux_size;
+};
+
+struct perf_event_header
+{
+	__u32 type;
+	__u16 misc;
+	__u16 size;
+};
+
+enum perf_event_type
+{
+	PERF_RECORD_MMAP = 1,
+	PERF_RECORD_LOST = 2,
+	PERF_RECORD_COMM = 3,
+	PERF_RECORD_EXIT = 4,
+	PERF_RECORD_THROTTLE = 5,
+	PERF_RECORD_UNTHROTTLE = 6,
+	PERF_RECORD_FORK = 7,
+	PERF_RECORD_READ = 8,
+	PERF_RECORD_SAMPLE = 9,
+	PERF_RECORD_MMAP2 = 10,
+	PERF_RECORD_AUX = 11,
+	PERF_RECORD_ITRACE_START = 12,
+	PERF_RECORD_LOST_SAMPLES = 13,
+	PERF_RECORD_SWITCH = 14,
+	PERF_RECORD_SWITCH_CPU_WIDE = 15,
+	PERF_RECORD_NAMESPACES = 16,
+	PERF_RECORD_KSYMBOL = 17,
+	PERF_RECORD_BPF_EVENT = 18,
+	PERF_RECORD_CGROUP = 19,
+	PERF_RECORD_TEXT_POKE = 20,
+	PERF_RECORD_AUX_OUTPUT_HW_ID = 21,
+	PERF_RECORD_MAX = 22,
+};
+
+enum refcount_saturation_type
+{
+	REFCOUNT_ADD_NOT_ZERO_OVF = 0,
+	REFCOUNT_ADD_OVF = 1,
+	REFCOUNT_ADD_UAF = 2,
+	REFCOUNT_SUB_UAF = 3,
+	REFCOUNT_DEC_LEAK = 4,
+};
+
+enum pageflags
+{
+	PG_locked = 0,
+	PG_referenced = 1,
+	PG_uptodate = 2,
+	PG_dirty = 3,
+	PG_lru = 4,
+	PG_active = 5,
+	PG_workingset = 6,
+	PG_waiters = 7,
+	PG_error = 8,
+	PG_slab = 9,
+	PG_owner_priv_1 = 10,
+	PG_arch_1 = 11,
+	PG_reserved = 12,
+	PG_private = 13,
+	PG_private_2 = 14,
+	PG_writeback = 15,
+	PG_head = 16,
+	PG_mappedtodisk = 17,
+	PG_reclaim = 18,
+	PG_swapbacked = 19,
+	PG_unevictable = 20,
+	PG_mlocked = 21,
+	PG_uncached = 22,
+	PG_hwpoison = 23,
+	PG_arch_2 = 24,
+	__NR_PAGEFLAGS = 25,
+	PG_readahead = 18,
+	PG_anon_exclusive = 17,
+	PG_checked = 10,
+	PG_swapcache = 10,
+	PG_fscache = 14,
+	PG_pinned = 10,
+	PG_savepinned = 3,
+	PG_foreign = 10,
+	PG_xen_remapped = 10,
+	PG_slob_free = 13,
+	PG_double_map = 6,
+	PG_has_hwpoisoned = 8,
+	PG_isolated = 18,
+	PG_reported = 2,
+};
