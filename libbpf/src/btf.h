@@ -313,3 +313,33 @@ static inline bool btf_is_mod(const struct btf_type *t)
 	       kind == BTF_KIND_RESTRICT ||
 	       kind == BTF_KIND_TYPE_TAG;
 }
+
+static inline bool btf_is_func(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_FUNC;
+}
+
+static inline bool btf_is_func_proto(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_FUNC_PROTO;
+}
+
+static inline bool btf_is_var(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_VAR;
+}
+
+static inline bool btf_is_datasec(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_DATASEC;
+}
+
+static inline bool btf_is_float(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_FLOAT;
+}
+
+static inline bool btf_is_decl_tag(const struct btf_type *t)
+{
+	return btf_kind(t) == BTF_KIND_DECL_TAG;
+}
