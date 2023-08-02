@@ -719,6 +719,46 @@ probe_helpers_for_progtype(enum bpf_prog_type prog_type,
 }
 
 static void
+probe_misc_feature(struct bpf_insn *insns, size_t len,
+		   const char *define_prefix, __u32 ifindex,
+		   const char *feat_name, const char *plain_name,
+		   const char *define_name)
+{
+	LIBBPF_OPTS(bpf_prog_load_opts, opts,
+		.prog_ifindex = ifindex,
+	);
+	bool res;
+	int fd;
+
+	errno = 0;
+	fd = bpf_prog_load(BPF_PROG_TYPE_SOCKET_FILTER, NULL, "GPL",
+			   insns, len, &opts);
+	res = fd >= 0 || !errno;
+
+	if (fd >= 0)
+		close(fd);
+
+	print_bool_feature(feat_name, plain_name, define_name, res,
+			   define_prefix);
+}
+
+static void probe_large_insn_limit(const char *define_prefix, __u32 ifindex)
+{
+	struct bpf_insn insns[BPF_MAXINSNS + 1];
+	int i;
+
+	for (i = 0; i < BPF_MAXINSNS; i++)
+		insns[i] = BPF_MOV64_IMM(BPF_REG_0, 1);
+	insns[BPF_MAXINSNS] = BPF_EXIT_INSN();
+
+	probe_misc_feature(insns, ARRAY_SIZE(insns),
+			   define_prefix, ifindex,
+			   "have_large_insn_limit",
+			   "Large program size limit",
+			   "LARGE_INSN_LIMIT");
+}
+
+static void
 section_system_config(enum probe_component target, const char *define_prefix)
 {
 	switch (target) {
