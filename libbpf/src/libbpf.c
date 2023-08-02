@@ -903,3 +903,146 @@ find_struct_ops_kern_types(const struct btf *btf, const char *tname,
 
     return 0;
 }
+
+static bool bpf_map__is_struct_ops(const struct bpf_map *map)
+{
+    return map->def.type == BPF_MAP_TYPE_STRUCT_OPS;
+}
+
+/* Init the map's fields that depend on kern_btf */
+static int bpf_map__init_kern_struct_ops(struct bpf_map *map,
+                                         const struct btf *btf,
+                                         const struct btf *kern_btf)
+{
+    const struct btf_member *member, *kern_member, *kern_data_member;
+    const struct btf_type *type, *kern_type, *kern_vtype;
+    __u32 i, kern_type_id, kern_vtype_id, kern_data_off;
+    struct bpf_struct_ops *st_ops;
+    void *data, *kern_data;
+    const char *tname;
+    int err;
+
+    st_ops = map->st_ops;
+    type = st_ops->type;
+    tname = st_ops->tname;
+    err = find_struct_ops_kern_types(kern_btf, tname,
+                                     &kern_type, &kern_type_id,
+                                     &kern_vtype, &kern_vtype_id,
+                                     &kern_data_member);
+    if (err)
+        return err;
+
+    pr_debug("struct_ops init_kern %s: type_id:%u kern_type_id:%u kern_vtype_id:%u\n",
+             map->name, st_ops->type_id, kern_type_id, kern_vtype_id);
+
+    map->def.value_size = kern_vtype->size;
+    map->btf_vmlinux_value_type_id = kern_vtype_id;
+
+    st_ops->kern_vdata = calloc(1, kern_vtype->size);
+    if (!st_ops->kern_vdata)
+        return -ENOMEM;
+
+    data = st_ops->data;
+    kern_data_off = kern_data_member->offset / 8;
+    kern_data = st_ops->kern_vdata + kern_data_off;
+
+    member = btf_members(type);
+    for (i = 0; i < btf_vlen(type); i++, member++)
+    {
+        const struct btf_type *mtype, *kern_mtype;
+        __u32 mtype_id, kern_mtype_id;
+        void *mdata, *kern_mdata;
+        __s64 msize, kern_msize;
+        __u32 moff, kern_moff;
+        __u32 kern_member_idx;
+        const char *mname;
+
+        mname = btf__name_by_offset(btf, member->name_off);
+        kern_member = find_member_by_name(kern_btf, kern_type, mname);
+        if (!kern_member)
+        {
+            pr_warn("struct_ops init_kern %s: Cannot find member %s in kernel BTF\n",
+                    map->name, mname);
+            return -ENOTSUP;
+        }
+
+        kern_member_idx = kern_member - btf_members(kern_type);
+        if (btf_member_bitfield_size(type, i) ||
+            btf_member_bitfield_size(kern_type, kern_member_idx))
+        {
+            pr_warn("struct_ops init_kern %s: bitfield %s is not supported\n",
+                    map->name, mname);
+            return -ENOTSUP;
+        }
+
+        moff = member->offset / 8;
+        kern_moff = kern_member->offset / 8;
+
+        mdata = data + moff;
+        kern_mdata = kern_data + kern_moff;
+
+        mtype = skip_mods_and_typedefs(btf, member->type, &mtype_id);
+        kern_mtype = skip_mods_and_typedefs(kern_btf, kern_member->type,
+                                            &kern_mtype_id);
+        if (BTF_INFO_KIND(mtype->info) !=
+            BTF_INFO_KIND(kern_mtype->info))
+        {
+            pr_warn("struct_ops init_kern %s: Unmatched member type %s %u != %u(kernel)\n",
+                    map->name, mname, BTF_INFO_KIND(mtype->info),
+                    BTF_INFO_KIND(kern_mtype->info));
+            return -ENOTSUP;
+        }
+
+        if (btf_is_ptr(mtype))
+        {
+            struct bpf_program *prog;
+
+            prog = st_ops->progs[i];
+            if (!prog)
+                continue;
+
+            kern_mtype = skip_mods_and_typedefs(kern_btf,
+                                                kern_mtype->type,
+                                                &kern_mtype_id);
+
+            /* mtype->type must be a func_proto which was
+             * guaranteed in bpf_object__collect_st_ops_relos(),
+             * so only check kern_mtype for func_proto here.
+             */
+            if (!btf_is_func_proto(kern_mtype))
+            {
+                pr_warn("struct_ops init_kern %s: kernel member %s is not a func ptr\n",
+                        map->name, mname);
+                return -ENOTSUP;
+            }
+
+            prog->attach_btf_id = kern_type_id;
+            prog->expected_attach_type = kern_member_idx;
+
+            st_ops->kern_func_off[i] = kern_data_off + kern_moff;
+
+            pr_debug("struct_ops init_kern %s: func ptr %s is set to prog %s from data(+%u) to kern_data(+%u)\n",
+                     map->name, mname, prog->name, moff,
+                     kern_moff);
+
+            continue;
+        }
+
+        msize = btf__resolve_size(btf, mtype_id);
+        kern_msize = btf__resolve_size(kern_btf, kern_mtype_id);
+        if (msize < 0 || kern_msize < 0 || msize != kern_msize)
+        {
+            pr_warn("struct_ops init_kern %s: Error in size of member %s: %zd != %zd(kernel)\n",
+                    map->name, mname, (ssize_t)msize,
+                    (ssize_t)kern_msize);
+            return -ENOTSUP;
+        }
+
+        pr_debug("struct_ops init_kern %s: copy %s %u bytes from data(+%u) to kern_data(+%u)\n",
+                 map->name, mname, (unsigned int)msize,
+                 moff, kern_moff);
+        memcpy(kern_mdata, mdata, msize);
+    }
+
+    return 0;
+}
