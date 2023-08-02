@@ -1046,3 +1046,126 @@ static int bpf_map__init_kern_struct_ops(struct bpf_map *map,
 
     return 0;
 }
+
+static int bpf_object__init_kern_struct_ops_maps(struct bpf_object *obj)
+{
+    struct bpf_map *map;
+    size_t i;
+    int err;
+
+    for (i = 0; i < obj->nr_maps; i++)
+    {
+        map = &obj->maps[i];
+
+        if (!bpf_map__is_struct_ops(map))
+            continue;
+
+        err = bpf_map__init_kern_struct_ops(map, obj->btf,
+                                            obj->btf_vmlinux);
+        if (err)
+            return err;
+    }
+
+    return 0;
+}
+
+static int init_struct_ops_maps(struct bpf_object *obj, const char *sec_name,
+                                int shndx, Elf_Data *data, __u32 map_flags)
+{
+    const struct btf_type *type, *datasec;
+    const struct btf_var_secinfo *vsi;
+    struct bpf_struct_ops *st_ops;
+    const char *tname, *var_name;
+    __s32 type_id, datasec_id;
+    const struct btf *btf;
+    struct bpf_map *map;
+    __u32 i;
+
+    if (shndx == -1)
+        return 0;
+
+    btf = obj->btf;
+    datasec_id = btf__find_by_name_kind(btf, sec_name,
+                                        BTF_KIND_DATASEC);
+    if (datasec_id < 0)
+    {
+        pr_warn("struct_ops init: DATASEC %s not found\n",
+                sec_name);
+        return -EINVAL;
+    }
+
+    datasec = btf__type_by_id(btf, datasec_id);
+    vsi = btf_var_secinfos(datasec);
+    for (i = 0; i < btf_vlen(datasec); i++, vsi++)
+    {
+        type = btf__type_by_id(obj->btf, vsi->type);
+        var_name = btf__name_by_offset(obj->btf, type->name_off);
+
+        type_id = btf__resolve_type(obj->btf, vsi->type);
+        if (type_id < 0)
+        {
+            pr_warn("struct_ops init: Cannot resolve var type_id %u in DATASEC %s\n",
+                    vsi->type, sec_name);
+            return -EINVAL;
+        }
+
+        type = btf__type_by_id(obj->btf, type_id);
+        tname = btf__name_by_offset(obj->btf, type->name_off);
+        if (!tname[0])
+        {
+            pr_warn("struct_ops init: anonymous type is not supported\n");
+            return -ENOTSUP;
+        }
+        if (!btf_is_struct(type))
+        {
+            pr_warn("struct_ops init: %s is not a struct\n", tname);
+            return -EINVAL;
+        }
+
+        map = bpf_object__add_map(obj);
+        if (IS_ERR(map))
+            return PTR_ERR(map);
+
+        map->sec_idx = shndx;
+        map->sec_offset = vsi->offset;
+        map->name = strdup(var_name);
+        if (!map->name)
+            return -ENOMEM;
+
+        map->def.type = BPF_MAP_TYPE_STRUCT_OPS;
+        map->def.key_size = sizeof(int);
+        map->def.value_size = type->size;
+        map->def.max_entries = 1;
+        map->def.map_flags = map_flags;
+
+        map->st_ops = calloc(1, sizeof(*map->st_ops));
+        if (!map->st_ops)
+            return -ENOMEM;
+        st_ops = map->st_ops;
+        st_ops->data = malloc(type->size);
+        st_ops->progs = calloc(btf_vlen(type), sizeof(*st_ops->progs));
+        st_ops->kern_func_off = malloc(btf_vlen(type) *
+                                       sizeof(*st_ops->kern_func_off));
+        if (!st_ops->data || !st_ops->progs || !st_ops->kern_func_off)
+            return -ENOMEM;
+
+        if (vsi->offset + type->size > data->d_size)
+        {
+            pr_warn("struct_ops init: var %s is beyond the end of DATASEC %s\n",
+                    var_name, sec_name);
+            return -EINVAL;
+        }
+
+        memcpy(st_ops->data,
+               data->d_buf + vsi->offset,
+               type->size);
+        st_ops->tname = tname;
+        st_ops->type = type;
+        st_ops->type_id = type_id;
+
+        pr_debug("struct_ops init: struct %s(type_id=%u) %s found at offset %u\n",
+                 tname, type_id, var_name, vsi->offset);
+    }
+
+    return 0;
+}
