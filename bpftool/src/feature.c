@@ -759,6 +759,23 @@ static void probe_large_insn_limit(const char *define_prefix, __u32 ifindex)
 }
 
 static void
+probe_bounded_loops(const char *define_prefix, __u32 ifindex)
+{
+	struct bpf_insn insns[4] = {
+		BPF_MOV64_IMM(BPF_REG_0, 10),
+		BPF_ALU64_IMM(BPF_SUB, BPF_REG_0, 1),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_0, 0, -2),
+		BPF_EXIT_INSN()
+	};
+
+	probe_misc_feature(insns, ARRAY_SIZE(insns),
+			   define_prefix, ifindex,
+			   "have_bounded_loops",
+			   "Bounded loop support",
+			   "BOUNDED_LOOPS");
+}
+
+static void
 section_system_config(enum probe_component target, const char *define_prefix)
 {
 	switch (target) {
