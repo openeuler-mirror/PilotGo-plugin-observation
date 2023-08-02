@@ -500,6 +500,107 @@ static bool probe_prog_type_ifindex(enum bpf_prog_type prog_type, __u32 ifindex)
 }
 
 static void
+probe_prog_type(enum bpf_prog_type prog_type, const char *prog_type_str,
+		bool *supported_types, const char *define_prefix, __u32 ifindex)
+{
+	char feat_name[128], plain_desc[128], define_name[128];
+	const char *plain_comment = "eBPF program_type ";
+	size_t maxlen;
+	bool res;
+
+	if (ifindex) {
+		switch (prog_type) {
+		case BPF_PROG_TYPE_SCHED_CLS:
+		case BPF_PROG_TYPE_XDP:
+			break;
+		default:
+			return;
+		}
+
+		res = probe_prog_type_ifindex(prog_type, ifindex);
+	} else {
+		res = libbpf_probe_bpf_prog_type(prog_type, NULL) > 0;
+	}
+
+#ifdef USE_LIBCAP
+	if (run_as_unprivileged && errno == EPERM)
+		res = false;
+#endif
+
+	supported_types[prog_type] |= res;
+
+	maxlen = sizeof(plain_desc) - strlen(plain_comment) - 1;
+	if (strlen(prog_type_str) > maxlen) {
+		p_info("program type name too long");
+		return;
+	}
+
+	sprintf(feat_name, "have_%s_prog_type", prog_type_str);
+	sprintf(define_name, "%s_prog_type", prog_type_str);
+	uppercase(define_name, sizeof(define_name));
+	sprintf(plain_desc, "%s%s", plain_comment, prog_type_str);
+	print_bool_feature(feat_name, plain_desc, define_name, res,
+			   define_prefix);
+}
+
+static bool probe_map_type_ifindex(enum bpf_map_type map_type, __u32 ifindex)
+{
+	LIBBPF_OPTS(bpf_map_create_opts, opts);
+	int key_size, value_size, max_entries;
+	int fd;
+
+	opts.map_ifindex = ifindex;
+
+	key_size = sizeof(__u32);
+	value_size = sizeof(__u32);
+	max_entries = 1;
+
+	fd = bpf_map_create(map_type, NULL, key_size, value_size, max_entries,
+			    &opts);
+	if (fd >= 0)
+		close(fd);
+
+	return fd >= 0;
+}
+
+static void
+probe_map_type(enum bpf_map_type map_type, char const *map_type_str,
+	       const char *define_prefix, __u32 ifindex)
+{
+	char feat_name[128], plain_desc[128], define_name[128];
+	const char *plain_comment = "eBPF map_type ";
+	size_t maxlen;
+	bool res;
+
+	if (ifindex) {
+		switch (map_type) {
+		case BPF_MAP_TYPE_HASH:
+		case BPF_MAP_TYPE_ARRAY:
+			break;
+		default:
+			return;
+		}
+
+		res = probe_map_type_ifindex(map_type, ifindex);
+	} else {
+		res = libbpf_probe_bpf_map_type(map_type, NULL) > 0;
+	}
+
+	maxlen = sizeof(plain_desc) - strlen(plain_comment) - 1;
+	if (strlen(map_type_str) > maxlen) {
+		p_info("map type name too long");
+		return;
+	}
+
+	sprintf(feat_name, "have_%s_map_type", map_type_str);
+	sprintf(define_name, "%s_map_type", map_type_str);
+	uppercase(define_name, sizeof(define_name));
+	sprintf(plain_desc, "%s%s", plain_comment, map_type_str);
+	print_bool_feature(feat_name, plain_desc, define_name, res,
+			   define_prefix);
+}
+
+static void
 section_system_config(enum probe_component target, const char *define_prefix)
 {
 	switch (target) {
