@@ -471,3 +471,88 @@ enum kcfg_type
     KCFG_TRISTATE,
     KCFG_CHAR_ARR,
 };
+
+struct extern_desc
+{
+    enum extern_type type;
+    int sym_idx;
+    int btf_id;
+    int sec_btf_id;
+    const char *name;
+    bool is_set;
+    bool is_weak;
+    union
+    {
+        struct
+        {
+            enum kcfg_type type;
+            int sz;
+            int align;
+            int data_off;
+            bool is_signed;
+        } kcfg;
+        struct
+        {
+            unsigned long long addr;
+
+            /* target btf_id of the corresponding kernel var. */
+            int kernel_btf_obj_fd;
+            int kernel_btf_id;
+
+            /* local btf_id of the ksym extern's type. */
+            __u32 type_id;
+            /* BTF fd index to be patched in for insn->off, this is
+             * 0 for vmlinux BTF, index in obj->fd_array for module
+             * BTF
+             */
+            __s16 btf_fd_idx;
+        } ksym;
+    };
+};
+
+struct module_btf
+{
+    struct btf *btf;
+    char *name;
+    __u32 id;
+    int fd;
+    int fd_array_idx;
+};
+
+enum sec_type
+{
+    SEC_UNUSED = 0,
+    SEC_RELO,
+    SEC_BSS,
+    SEC_DATA,
+    SEC_RODATA,
+};
+
+struct elf_sec_desc
+{
+    enum sec_type sec_type;
+    Elf64_Shdr *shdr;
+    Elf_Data *data;
+};
+
+struct elf_state
+{
+    int fd;
+    const void *obj_buf;
+    size_t obj_buf_sz;
+    Elf *elf;
+    Elf64_Ehdr *ehdr;
+    Elf_Data *symbols;
+    Elf_Data *st_ops_data;
+    Elf_Data *st_ops_link_data;
+    size_t shstrndx; /* section index for section name strings */
+    size_t strtabidx;
+    struct elf_sec_desc *secs;
+    size_t sec_cnt;
+    int btf_maps_shndx;
+    __u32 btf_maps_sec_btf_id;
+    int text_shndx;
+    int symbols_shndx;
+    int st_ops_shndx;
+    int st_ops_link_shndx;
+};
