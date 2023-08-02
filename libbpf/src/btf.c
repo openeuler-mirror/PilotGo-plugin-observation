@@ -100,3 +100,35 @@ void *libbpf_add_mem(void **data, size_t *cap_cnt, size_t elem_sz,
 	*cap_cnt = new_cnt;
 	return new_data + cur_cnt * elem_sz;
 }
+
+int libbpf_ensure_mem(void **data, size_t *cap_cnt, size_t elem_sz, size_t need_cnt)
+{
+	void *p;
+
+	if (need_cnt <= *cap_cnt)
+		return 0;
+
+	p = libbpf_add_mem(data, cap_cnt, elem_sz, *cap_cnt, SIZE_MAX, need_cnt - *cap_cnt);
+	if (!p)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void *btf_add_type_offs_mem(struct btf *btf, size_t add_cnt)
+{
+	return libbpf_add_mem((void **)&btf->type_offs, &btf->type_offs_cap, sizeof(__u32),
+			      btf->nr_types, BTF_MAX_NR_TYPES, add_cnt);
+}
+
+static int btf_add_type_idx_entry(struct btf *btf, __u32 type_off)
+{
+	__u32 *p;
+
+	p = btf_add_type_offs_mem(btf, 1);
+	if (!p)
+		return -ENOMEM;
+
+	*p = type_off;
+	return 0;
+}
