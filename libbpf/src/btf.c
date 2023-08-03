@@ -191,3 +191,22 @@ static int btf_parse_hdr(struct btf *btf)
 
 	return 0;
 }
+
+static int btf_parse_str_sec(struct btf *btf)
+{
+	const struct btf_header *hdr = btf->hdr;
+	const char *start = btf->strs_data;
+	const char *end = start + btf->hdr->str_len;
+
+	if (btf->base_btf && hdr->str_len == 0)
+		return 0;
+	if (!hdr->str_len || hdr->str_len - 1 > BTF_MAX_STR_OFFSET || end[-1]) {
+		pr_debug("Invalid BTF string section\n");
+		return -EINVAL;
+	}
+	if (!btf->base_btf && start[0]) {
+		pr_debug("Invalid BTF string section\n");
+		return -EINVAL;
+	}
+	return 0;
+}
