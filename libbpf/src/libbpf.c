@@ -1222,3 +1222,116 @@ static struct bpf_object *bpf_object__new(const char *path,
 
     return obj;
 }
+
+static void bpf_object__elf_finish(struct bpf_object *obj)
+{
+    if (!obj->efile.elf)
+        return;
+
+    elf_end(obj->efile.elf);
+    obj->efile.elf = NULL;
+    obj->efile.symbols = NULL;
+    obj->efile.st_ops_data = NULL;
+    obj->efile.st_ops_link_data = NULL;
+
+    zfree(&obj->efile.secs);
+    obj->efile.sec_cnt = 0;
+    zclose(obj->efile.fd);
+    obj->efile.obj_buf = NULL;
+    obj->efile.obj_buf_sz = 0;
+}
+
+static int bpf_object__elf_init(struct bpf_object *obj)
+{
+    Elf64_Ehdr *ehdr;
+    int err = 0;
+    Elf *elf;
+
+    if (obj->efile.elf)
+    {
+        pr_warn("elf: init internal error\n");
+        return -LIBBPF_ERRNO__LIBELF;
+    }
+
+    if (obj->efile.obj_buf_sz > 0)
+    {
+        /* obj_buf should have been validated by bpf_object__open_mem(). */
+        elf = elf_memory((char *)obj->efile.obj_buf, obj->efile.obj_buf_sz);
+    }
+    else
+    {
+        obj->efile.fd = open(obj->path, O_RDONLY | O_CLOEXEC);
+        if (obj->efile.fd < 0)
+        {
+            char errmsg[STRERR_BUFSIZE], *cp;
+
+            err = -errno;
+            cp = libbpf_strerror_r(err, errmsg, sizeof(errmsg));
+            pr_warn("elf: failed to open %s: %s\n", obj->path, cp);
+            return err;
+        }
+
+        elf = elf_begin(obj->efile.fd, ELF_C_READ_MMAP, NULL);
+    }
+
+    if (!elf)
+    {
+        pr_warn("elf: failed to open %s as ELF file: %s\n", obj->path, elf_errmsg(-1));
+        err = -LIBBPF_ERRNO__LIBELF;
+        goto errout;
+    }
+
+    obj->efile.elf = elf;
+
+    if (elf_kind(elf) != ELF_K_ELF)
+    {
+        err = -LIBBPF_ERRNO__FORMAT;
+        pr_warn("elf: '%s' is not a proper ELF object\n", obj->path);
+        goto errout;
+    }
+
+    if (gelf_getclass(elf) != ELFCLASS64)
+    {
+        err = -LIBBPF_ERRNO__FORMAT;
+        pr_warn("elf: '%s' is not a 64-bit ELF object\n", obj->path);
+        goto errout;
+    }
+
+    obj->efile.ehdr = ehdr = elf64_getehdr(elf);
+    if (!obj->efile.ehdr)
+    {
+        pr_warn("elf: failed to get ELF header from %s: %s\n", obj->path, elf_errmsg(-1));
+        err = -LIBBPF_ERRNO__FORMAT;
+        goto errout;
+    }
+
+    if (elf_getshdrstrndx(elf, &obj->efile.shstrndx))
+    {
+        pr_warn("elf: failed to get section names section index for %s: %s\n",
+                obj->path, elf_errmsg(-1));
+        err = -LIBBPF_ERRNO__FORMAT;
+        goto errout;
+    }
+
+    /* Elf is corrupted/truncated, avoid calling elf_strptr. */
+    if (!elf_rawdata(elf_getscn(elf, obj->efile.shstrndx), NULL))
+    {
+        pr_warn("elf: failed to get section names strings from %s: %s\n",
+                obj->path, elf_errmsg(-1));
+        err = -LIBBPF_ERRNO__FORMAT;
+        goto errout;
+    }
+
+    /* Old LLVM set e_machine to EM_NONE */
+    if (ehdr->e_type != ET_REL || (ehdr->e_machine && ehdr->e_machine != EM_BPF))
+    {
+        pr_warn("elf: %s is not a valid eBPF object file\n", obj->path);
+        err = -LIBBPF_ERRNO__FORMAT;
+        goto errout;
+    }
+
+    return 0;
+errout:
+    bpf_object__elf_finish(obj);
+    return err;
+}
