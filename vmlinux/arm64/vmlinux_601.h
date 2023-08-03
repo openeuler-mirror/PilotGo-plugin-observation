@@ -1520,3 +1520,27 @@ struct mm_struct {
 	};
 	long unsigned int cpu_bitmap[0];
 };
+
+struct swait_queue_head {
+	raw_spinlock_t lock;
+	struct list_head task_list;
+};
+
+struct completion {
+	unsigned int done;
+	struct swait_queue_head wait;
+};
+
+typedef unsigned int __kernel_gid32_t;
+
+typedef __kernel_gid32_t gid_t;
+
+typedef struct {
+	gid_t val;
+} kgid_t;
+
+struct kernel_cap_struct {
+	__u32 cap[2];
+};
+
+typedef struct kernel_cap_struct kernel_cap_t;
