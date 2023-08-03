@@ -1382,3 +1382,38 @@ struct rseq {
 enum {
 	TASK_COMM_LEN = 16,
 };
+
+struct rq;
+
+struct rq_flags;
+
+struct affinity_context;
+
+struct sched_class {
+	void (*enqueue_task)(struct rq *, struct task_struct *, int);
+	void (*dequeue_task)(struct rq *, struct task_struct *, int);
+	void (*yield_task)(struct rq *);
+	bool (*yield_to_task)(struct rq *, struct task_struct *);
+	void (*check_preempt_curr)(struct rq *, struct task_struct *, int);
+	struct task_struct * (*pick_next_task)(struct rq *);
+	void (*put_prev_task)(struct rq *, struct task_struct *);
+	void (*set_next_task)(struct rq *, struct task_struct *, bool);
+	int (*balance)(struct rq *, struct task_struct *, struct rq_flags *);
+	int (*select_task_rq)(struct task_struct *, int, int);
+	struct task_struct * (*pick_task)(struct rq *);
+	void (*migrate_task_rq)(struct task_struct *, int);
+	void (*task_woken)(struct rq *, struct task_struct *);
+	void (*set_cpus_allowed)(struct task_struct *, struct affinity_context *);
+	void (*rq_online)(struct rq *);
+	void (*rq_offline)(struct rq *);
+	struct rq * (*find_lock_rq)(struct task_struct *, struct rq *);
+	void (*task_tick)(struct rq *, struct task_struct *, int);
+	void (*task_fork)(struct task_struct *);
+	void (*task_dead)(struct task_struct *);
+	void (*switched_from)(struct rq *, struct task_struct *);
+	void (*switched_to)(struct rq *, struct task_struct *);
+	void (*prio_changed)(struct rq *, struct task_struct *, int);
+	unsigned int (*get_rr_interval)(struct rq *, struct task_struct *);
+	void (*update_curr)(struct rq *);
+	void (*task_change_group)(struct task_struct *);
+};
