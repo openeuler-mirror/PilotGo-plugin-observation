@@ -400,3 +400,47 @@ const struct btf_type *btf__type_by_id(const struct btf *btf, __u32 type_id)
 		return errno = EINVAL, NULL;
 	return btf_type_by_id((struct btf *)btf, type_id);
 }
+
+static int determine_ptr_size(const struct btf *btf)
+{
+	static const char * const long_aliases[] = {
+		"long",
+		"long int",
+		"int long",
+		"unsigned long",
+		"long unsigned",
+		"unsigned long int",
+		"unsigned int long",
+		"long unsigned int",
+		"long int unsigned",
+		"int unsigned long",
+		"int long unsigned",
+	};
+	const struct btf_type *t;
+	const char *name;
+	int i, j, n;
+
+	if (btf->base_btf && btf->base_btf->ptr_sz > 0)
+		return btf->base_btf->ptr_sz;
+
+	n = btf__type_cnt(btf);
+	for (i = 1; i < n; i++) {
+		t = btf__type_by_id(btf, i);
+		if (!btf_is_int(t))
+			continue;
+
+		if (t->size != 4 && t->size != 8)
+			continue;
+
+		name = btf__name_by_offset(btf, t->name_off);
+		if (!name)
+			continue;
+
+		for (j = 0; j < ARRAY_SIZE(long_aliases); j++) {
+			if (strcmp(name, long_aliases[j]) == 0)
+				return t->size;
+		}
+	}
+
+	return -1;
+}
