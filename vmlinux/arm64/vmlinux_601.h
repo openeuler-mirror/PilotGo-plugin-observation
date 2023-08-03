@@ -1417,3 +1417,24 @@ struct sched_class {
 	void (*update_curr)(struct rq *);
 	void (*task_change_group)(struct task_struct *);
 };
+
+typedef struct lockdep_map *lockdep_map_p;
+
+struct maple_tree {
+	union {
+		spinlock_t ma_lock;
+		lockdep_map_p ma_external_lock;
+	};
+	void *ma_root;
+	unsigned int ma_flags;
+};
+
+struct rw_semaphore {
+	atomic_long_t count;
+	atomic_long_t owner;
+	struct optimistic_spin_queue osq;
+	raw_spinlock_t wait_lock;
+	struct list_head wait_list;
+	void *magic;
+	struct lockdep_map dep_map;
+};
