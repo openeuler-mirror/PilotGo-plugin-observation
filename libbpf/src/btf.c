@@ -251,3 +251,87 @@ static int btf_type_size(const struct btf_type *t)
 		return -EINVAL;
 	}
 }
+
+static void btf_bswap_type_base(struct btf_type *t)
+{
+	t->name_off = bswap_32(t->name_off);
+	t->info = bswap_32(t->info);
+	t->type = bswap_32(t->type);
+}
+
+static int btf_bswap_type_rest(struct btf_type *t)
+{
+	struct btf_var_secinfo *v;
+	struct btf_enum64 *e64;
+	struct btf_member *m;
+	struct btf_array *a;
+	struct btf_param *p;
+	struct btf_enum *e;
+	__u16 vlen = btf_vlen(t);
+	int i;
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_FWD:
+	case BTF_KIND_CONST:
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_PTR:
+	case BTF_KIND_TYPEDEF:
+	case BTF_KIND_FUNC:
+	case BTF_KIND_FLOAT:
+	case BTF_KIND_TYPE_TAG:
+		return 0;
+	case BTF_KIND_INT:
+		*(__u32 *)(t + 1) = bswap_32(*(__u32 *)(t + 1));
+		return 0;
+	case BTF_KIND_ENUM:
+		for (i = 0, e = btf_enum(t); i < vlen; i++, e++) {
+			e->name_off = bswap_32(e->name_off);
+			e->val = bswap_32(e->val);
+		}
+		return 0;
+	case BTF_KIND_ENUM64:
+		for (i = 0, e64 = btf_enum64(t); i < vlen; i++, e64++) {
+			e64->name_off = bswap_32(e64->name_off);
+			e64->val_lo32 = bswap_32(e64->val_lo32);
+			e64->val_hi32 = bswap_32(e64->val_hi32);
+		}
+		return 0;
+	case BTF_KIND_ARRAY:
+		a = btf_array(t);
+		a->type = bswap_32(a->type);
+		a->index_type = bswap_32(a->index_type);
+		a->nelems = bswap_32(a->nelems);
+		return 0;
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+		for (i = 0, m = btf_members(t); i < vlen; i++, m++) {
+			m->name_off = bswap_32(m->name_off);
+			m->type = bswap_32(m->type);
+			m->offset = bswap_32(m->offset);
+		}
+		return 0;
+	case BTF_KIND_FUNC_PROTO:
+		for (i = 0, p = btf_params(t); i < vlen; i++, p++) {
+			p->name_off = bswap_32(p->name_off);
+			p->type = bswap_32(p->type);
+		}
+		return 0;
+	case BTF_KIND_VAR:
+		btf_var(t)->linkage = bswap_32(btf_var(t)->linkage);
+		return 0;
+	case BTF_KIND_DATASEC:
+		for (i = 0, v = btf_var_secinfos(t); i < vlen; i++, v++) {
+			v->type = bswap_32(v->type);
+			v->offset = bswap_32(v->offset);
+			v->size = bswap_32(v->size);
+		}
+		return 0;
+	case BTF_KIND_DECL_TAG:
+		btf_decl_tag(t)->component_idx = bswap_32(btf_decl_tag(t)->component_idx);
+		return 0;
+	default:
+		pr_debug("Unsupported BTF_KIND:%u\n", btf_kind(t));
+		return -EINVAL;
+	}
+}
