@@ -1438,3 +1438,24 @@ struct rw_semaphore {
 	void *magic;
 	struct lockdep_map dep_map;
 };
+
+typedef struct {
+	atomic64_t id;
+	refcount_t pinned;
+	void *vdso;
+	long unsigned int flags;
+} mm_context_t;
+
+struct xol_area;
+
+struct uprobes_state {
+	struct xol_area *xol_area;
+};
+
+struct file;
+
+struct linux_binfmt;
+
+struct kioctx_table;
+
+struct user_namespace;
