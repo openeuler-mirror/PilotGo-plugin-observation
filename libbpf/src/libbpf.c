@@ -1169,3 +1169,56 @@ static int init_struct_ops_maps(struct bpf_object *obj, const char *sec_name,
 
     return 0;
 }
+
+static int bpf_object_init_struct_ops(struct bpf_object *obj)
+{
+    int err;
+
+    err = init_struct_ops_maps(obj, STRUCT_OPS_SEC, obj->efile.st_ops_shndx,
+                               obj->efile.st_ops_data, 0);
+    err = err ?: init_struct_ops_maps(obj, STRUCT_OPS_LINK_SEC, obj->efile.st_ops_link_shndx, obj->efile.st_ops_link_data, BPF_F_LINK);
+    return err;
+}
+
+static struct bpf_object *bpf_object__new(const char *path,
+                                          const void *obj_buf,
+                                          size_t obj_buf_sz,
+                                          const char *obj_name)
+{
+    struct bpf_object *obj;
+    char *end;
+
+    obj = calloc(1, sizeof(struct bpf_object) + strlen(path) + 1);
+    if (!obj)
+    {
+        pr_warn("alloc memory failed for %s\n", path);
+        return ERR_PTR(-ENOMEM);
+    }
+
+    strcpy(obj->path, path);
+    if (obj_name)
+    {
+        libbpf_strlcpy(obj->name, obj_name, sizeof(obj->name));
+    }
+    else
+    {
+        /* Using basename() GNU version which doesn't modify arg. */
+        libbpf_strlcpy(obj->name, basename((void *)path), sizeof(obj->name));
+        end = strchr(obj->name, '.');
+        if (end)
+            *end = 0;
+    }
+
+    obj->efile.fd = -1;
+    obj->efile.obj_buf = obj_buf;
+    obj->efile.obj_buf_sz = obj_buf_sz;
+    obj->efile.btf_maps_shndx = -1;
+    obj->efile.st_ops_shndx = -1;
+    obj->efile.st_ops_link_shndx = -1;
+    obj->kconfig_map_idx = -1;
+
+    obj->kern_version = get_kernel_version();
+    obj->loaded = false;
+
+    return obj;
+}
