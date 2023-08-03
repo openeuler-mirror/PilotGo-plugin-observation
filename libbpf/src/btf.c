@@ -474,3 +474,45 @@ int btf__set_pointer_size(struct btf *btf, size_t ptr_sz)
 	btf->ptr_sz = ptr_sz;
 	return 0;
 }
+
+static bool is_host_big_endian(void)
+{
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	return false;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	return true;
+#else
+# error "Unrecognized __BYTE_ORDER__"
+#endif
+}
+
+enum btf_endianness btf__endianness(const struct btf *btf)
+{
+	if (is_host_big_endian())
+		return btf->swapped_endian ? BTF_LITTLE_ENDIAN : BTF_BIG_ENDIAN;
+	else
+		return btf->swapped_endian ? BTF_BIG_ENDIAN : BTF_LITTLE_ENDIAN;
+}
+
+int btf__set_endianness(struct btf *btf, enum btf_endianness endian)
+{
+	if (endian != BTF_LITTLE_ENDIAN && endian != BTF_BIG_ENDIAN)
+		return libbpf_err(-EINVAL);
+
+	btf->swapped_endian = is_host_big_endian() != (endian == BTF_BIG_ENDIAN);
+	if (!btf->swapped_endian) {
+		free(btf->raw_data_swapped);
+		btf->raw_data_swapped = NULL;
+	}
+	return 0;
+}
+
+static bool btf_type_is_void(const struct btf_type *t)
+{
+	return t == &btf_void || btf_is_fwd(t);
+}
+
+static bool btf_type_is_void_or_null(const struct btf_type *t)
+{
+	return !t || btf_type_is_void(t);
+}
