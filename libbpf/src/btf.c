@@ -373,3 +373,30 @@ static int btf_parse_type_sec(struct btf *btf)
 
 	return 0;
 }
+
+__u32 btf__type_cnt(const struct btf *btf)
+{
+	return btf->start_id + btf->nr_types;
+}
+
+const struct btf *btf__base_btf(const struct btf *btf)
+{
+	return btf->base_btf;
+}
+
+/* internal helper returning non-const pointer to a type */
+struct btf_type *btf_type_by_id(const struct btf *btf, __u32 type_id)
+{
+	if (type_id == 0)
+		return &btf_void;
+	if (type_id < btf->start_id)
+		return btf_type_by_id(btf->base_btf, type_id);
+	return btf->types_data + btf->type_offs[type_id - btf->start_id];
+}
+
+const struct btf_type *btf__type_by_id(const struct btf *btf, __u32 type_id)
+{
+	if (type_id >= btf->start_id + btf->nr_types)
+		return errno = EINVAL, NULL;
+	return btf_type_by_id((struct btf *)btf, type_id);
+}
