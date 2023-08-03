@@ -1388,3 +1388,71 @@ static bool bpf_map_type__is_map_in_map(enum bpf_map_type type)
         return true;
     return false;
 }
+
+static int find_elf_sec_sz(const struct bpf_object *obj, const char *name, __u32 *size)
+{
+    Elf_Data *data;
+    Elf_Scn *scn;
+
+    if (!name)
+        return -EINVAL;
+
+    scn = elf_sec_by_name(obj, name);
+    data = elf_sec_data(obj, scn);
+    if (data)
+    {
+        *size = data->d_size;
+        return 0; /* found it */
+    }
+
+    return -ENOENT;
+}
+
+static Elf64_Sym *find_elf_var_sym(const struct bpf_object *obj, const char *name)
+{
+    Elf_Data *symbols = obj->efile.symbols;
+    const char *sname;
+    size_t si;
+
+    for (si = 0; si < symbols->d_size / sizeof(Elf64_Sym); si++)
+    {
+        Elf64_Sym *sym = elf_sym_by_idx(obj, si);
+
+        if (ELF64_ST_TYPE(sym->st_info) != STT_OBJECT)
+            continue;
+
+        if (ELF64_ST_BIND(sym->st_info) != STB_GLOBAL &&
+            ELF64_ST_BIND(sym->st_info) != STB_WEAK)
+            continue;
+
+        sname = elf_sym_str(obj, sym->st_name);
+        if (!sname)
+        {
+            pr_warn("failed to get sym name string for var %s\n", name);
+            return ERR_PTR(-EIO);
+        }
+        if (strcmp(name, sname) == 0)
+            return sym;
+    }
+
+    return ERR_PTR(-ENOENT);
+}
+
+static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
+{
+    struct bpf_map *map;
+    int err;
+
+    err = libbpf_ensure_mem((void **)&obj->maps, &obj->maps_cap,
+                            sizeof(*obj->maps), obj->nr_maps + 1);
+    if (err)
+        return ERR_PTR(err);
+
+    map = &obj->maps[obj->nr_maps++];
+    map->obj = obj;
+    map->fd = -1;
+    map->inner_map_fd = -1;
+    map->autocreate = true;
+
+    return map;
+}
