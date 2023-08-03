@@ -516,3 +516,115 @@ static bool btf_type_is_void_or_null(const struct btf_type *t)
 {
 	return !t || btf_type_is_void(t);
 }
+
+#define MAX_RESOLVE_DEPTH 32
+
+__s64 btf__resolve_size(const struct btf *btf, __u32 type_id)
+{
+	const struct btf_array *array;
+	const struct btf_type *t;
+	__u32 nelems = 1;
+	__s64 size = -1;
+	int i;
+
+	t = btf__type_by_id(btf, type_id);
+	for (i = 0; i < MAX_RESOLVE_DEPTH && !btf_type_is_void_or_null(t); i++) {
+		switch (btf_kind(t)) {
+		case BTF_KIND_INT:
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+		case BTF_KIND_ENUM:
+		case BTF_KIND_ENUM64:
+		case BTF_KIND_DATASEC:
+		case BTF_KIND_FLOAT:
+			size = t->size;
+			goto done;
+		case BTF_KIND_PTR:
+			size = btf_ptr_sz(btf);
+			goto done;
+		case BTF_KIND_TYPEDEF:
+		case BTF_KIND_VOLATILE:
+		case BTF_KIND_CONST:
+		case BTF_KIND_RESTRICT:
+		case BTF_KIND_VAR:
+		case BTF_KIND_DECL_TAG:
+		case BTF_KIND_TYPE_TAG:
+			type_id = t->type;
+			break;
+		case BTF_KIND_ARRAY:
+			array = btf_array(t);
+			if (nelems && array->nelems > UINT32_MAX / nelems)
+				return libbpf_err(-E2BIG);
+			nelems *= array->nelems;
+			type_id = array->type;
+			break;
+		default:
+			return libbpf_err(-EINVAL);
+		}
+
+		t = btf__type_by_id(btf, type_id);
+	}
+
+done:
+	if (size < 0)
+		return libbpf_err(-EINVAL);
+	if (nelems && size > UINT32_MAX / nelems)
+		return libbpf_err(-E2BIG);
+
+	return nelems * size;
+}#define MAX_RESOLVE_DEPTH 32
+
+__s64 btf__resolve_size(const struct btf *btf, __u32 type_id)
+{
+	const struct btf_array *array;
+	const struct btf_type *t;
+	__u32 nelems = 1;
+	__s64 size = -1;
+	int i;
+
+	t = btf__type_by_id(btf, type_id);
+	for (i = 0; i < MAX_RESOLVE_DEPTH && !btf_type_is_void_or_null(t); i++) {
+		switch (btf_kind(t)) {
+		case BTF_KIND_INT:
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+		case BTF_KIND_ENUM:
+		case BTF_KIND_ENUM64:
+		case BTF_KIND_DATASEC:
+		case BTF_KIND_FLOAT:
+			size = t->size;
+			goto done;
+		case BTF_KIND_PTR:
+			size = btf_ptr_sz(btf);
+			goto done;
+		case BTF_KIND_TYPEDEF:
+		case BTF_KIND_VOLATILE:
+		case BTF_KIND_CONST:
+		case BTF_KIND_RESTRICT:
+		case BTF_KIND_VAR:
+		case BTF_KIND_DECL_TAG:
+		case BTF_KIND_TYPE_TAG:
+			type_id = t->type;
+			break;
+		case BTF_KIND_ARRAY:
+			array = btf_array(t);
+			if (nelems && array->nelems > UINT32_MAX / nelems)
+				return libbpf_err(-E2BIG);
+			nelems *= array->nelems;
+			type_id = array->type;
+			break;
+		default:
+			return libbpf_err(-EINVAL);
+		}
+
+		t = btf__type_by_id(btf, type_id);
+	}
+
+done:
+	if (size < 0)
+		return libbpf_err(-EINVAL);
+	if (nelems && size > UINT32_MAX / nelems)
+		return libbpf_err(-E2BIG);
+
+	return nelems * size;
+}
