@@ -210,3 +210,44 @@ static int btf_parse_str_sec(struct btf *btf)
 	}
 	return 0;
 }
+
+static int btf_type_size(const struct btf_type *t)
+{
+	const int base_size = sizeof(struct btf_type);
+	__u16 vlen = btf_vlen(t);
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_FWD:
+	case BTF_KIND_CONST:
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_PTR:
+	case BTF_KIND_TYPEDEF:
+	case BTF_KIND_FUNC:
+	case BTF_KIND_FLOAT:
+	case BTF_KIND_TYPE_TAG:
+		return base_size;
+	case BTF_KIND_INT:
+		return base_size + sizeof(__u32);
+	case BTF_KIND_ENUM:
+		return base_size + vlen * sizeof(struct btf_enum);
+	case BTF_KIND_ENUM64:
+		return base_size + vlen * sizeof(struct btf_enum64);
+	case BTF_KIND_ARRAY:
+		return base_size + sizeof(struct btf_array);
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+		return base_size + vlen * sizeof(struct btf_member);
+	case BTF_KIND_FUNC_PROTO:
+		return base_size + vlen * sizeof(struct btf_param);
+	case BTF_KIND_VAR:
+		return base_size + sizeof(struct btf_var);
+	case BTF_KIND_DATASEC:
+		return base_size + vlen * sizeof(struct btf_var_secinfo);
+	case BTF_KIND_DECL_TAG:
+		return base_size + sizeof(struct btf_decl_tag);
+	default:
+		pr_debug("Unsupported BTF_KIND:%u\n", btf_kind(t));
+		return -EINVAL;
+	}
+}
