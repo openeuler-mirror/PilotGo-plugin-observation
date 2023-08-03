@@ -335,3 +335,41 @@ static int btf_bswap_type_rest(struct btf_type *t)
 		return -EINVAL;
 	}
 }
+
+static int btf_parse_type_sec(struct btf *btf)
+{
+	struct btf_header *hdr = btf->hdr;
+	void *next_type = btf->types_data;
+	void *end_type = next_type + hdr->type_len;
+	int err, type_size;
+
+	while (next_type + sizeof(struct btf_type) <= end_type) {
+		if (btf->swapped_endian)
+			btf_bswap_type_base(next_type);
+
+		type_size = btf_type_size(next_type);
+		if (type_size < 0)
+			return type_size;
+		if (next_type + type_size > end_type) {
+			pr_warn("BTF type [%d] is malformed\n", btf->start_id + btf->nr_types);
+			return -EINVAL;
+		}
+
+		if (btf->swapped_endian && btf_bswap_type_rest(next_type))
+			return -EINVAL;
+
+		err = btf_add_type_idx_entry(btf, next_type - btf->types_data);
+		if (err)
+			return err;
+
+		next_type += type_size;
+		btf->nr_types++;
+	}
+
+	if (next_type != end_type) {
+		pr_warn("BTF types data is malformed\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
