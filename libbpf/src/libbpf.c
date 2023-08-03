@@ -1335,3 +1335,56 @@ errout:
     bpf_object__elf_finish(obj);
     return err;
 }
+
+static int bpf_object__check_endianness(struct bpf_object *obj)
+{
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    if (obj->efile.ehdr->e_ident[EI_DATA] == ELFDATA2LSB)
+        return 0;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    if (obj->efile.ehdr->e_ident[EI_DATA] == ELFDATA2MSB)
+        return 0;
+#else
+#error "Unrecognized __BYTE_ORDER__"
+#endif
+    pr_warn("elf: endianness mismatch in %s.\n", obj->path);
+    return -LIBBPF_ERRNO__ENDIAN;
+}
+
+static int bpf_object__init_license(struct bpf_object *obj, void *data, size_t size)
+{
+    if (!data)
+    {
+        pr_warn("invalid license section in %s\n", obj->path);
+        return -LIBBPF_ERRNO__FORMAT;
+    }
+    /* libbpf_strlcpy() only copies first N - 1 bytes, so size + 1 won't
+     * go over allowed ELF data section buffer
+     */
+    libbpf_strlcpy(obj->license, data, min(size + 1, sizeof(obj->license)));
+    pr_debug("license of %s is %s\n", obj->path, obj->license);
+    return 0;
+}
+
+static int bpf_object__init_kversion(struct bpf_object *obj, void *data, size_t size)
+{
+    __u32 kver;
+
+    if (!data || size != sizeof(kver))
+    {
+        pr_warn("invalid kver section in %s\n", obj->path);
+        return -LIBBPF_ERRNO__FORMAT;
+    }
+    memcpy(&kver, data, sizeof(kver));
+    obj->kern_version = kver;
+    pr_debug("kernel version of %s is %x\n", obj->path, obj->kern_version);
+    return 0;
+}
+
+static bool bpf_map_type__is_map_in_map(enum bpf_map_type type)
+{
+    if (type == BPF_MAP_TYPE_ARRAY_OF_MAPS ||
+        type == BPF_MAP_TYPE_HASH_OF_MAPS)
+        return true;
+    return false;
+}
