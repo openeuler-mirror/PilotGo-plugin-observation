@@ -444,3 +444,33 @@ static int determine_ptr_size(const struct btf *btf)
 
 	return -1;
 }
+
+static size_t btf_ptr_sz(const struct btf *btf)
+{
+	if (!btf->ptr_sz)
+		((struct btf *)btf)->ptr_sz = determine_ptr_size(btf);
+	return btf->ptr_sz < 0 ? sizeof(void *) : btf->ptr_sz;
+}
+
+size_t btf__pointer_size(const struct btf *btf)
+{
+	if (!btf->ptr_sz)
+		((struct btf *)btf)->ptr_sz = determine_ptr_size(btf);
+
+	if (btf->ptr_sz < 0)
+		/* not enough BTF type info to guess */
+		return 0;
+
+	return btf->ptr_sz;
+}
+
+/* Override or set pointer size in bytes. Only values of 4 and 8 are
+ * supported.
+ */
+int btf__set_pointer_size(struct btf *btf, size_t ptr_sz)
+{
+	if (ptr_sz != 4 && ptr_sz != 8)
+		return libbpf_err(-EINVAL);
+	btf->ptr_sz = ptr_sz;
+	return 0;
+}
