@@ -973,5 +973,47 @@ static struct btf *btf_parse_elf(const char *path, struct btf *base_btf,
 		}
 	}
 
+	if (!btf_data) {
+		pr_warn("failed to find '%s' ELF section in %s\n", BTF_ELF_SEC, path);
+		err = -ENODATA;
+		goto done;
+	}
+	btf = btf_new(btf_data->d_buf, btf_data->d_size, base_btf);
+	err = libbpf_get_error(btf);
+	if (err)
+		goto done;
+
+	switch (gelf_getclass(elf)) {
+	case ELFCLASS32:
+		btf__set_pointer_size(btf, 4);
+		break;
+	case ELFCLASS64:
+		btf__set_pointer_size(btf, 8);
+		break;
+	default:
+		pr_warn("failed to get ELF class (bitness) for %s\n", path);
+		break;
+	}
+
+	if (btf_ext && btf_ext_data) {
+		*btf_ext = btf_ext__new(btf_ext_data->d_buf, btf_ext_data->d_size);
+		err = libbpf_get_error(*btf_ext);
+		if (err)
+			goto done;
+	} else if (btf_ext) {
+		*btf_ext = NULL;
+	}
+done:
+	if (elf)
+		elf_end(elf);
+	close(fd);
+
+	if (!err)
+		return btf;
+
+	if (btf_ext)
+		btf_ext__free(*btf_ext);
+	btf__free(btf);
+
 	return ERR_PTR(err);
 }
