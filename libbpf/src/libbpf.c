@@ -1682,3 +1682,58 @@ static int set_kcfg_value_tri(struct extern_desc *ext, void *ext_val,
     ext->is_set = true;
     return 0;
 }
+
+static int set_kcfg_value_str(struct extern_desc *ext, char *ext_val,
+                              const char *value)
+{
+    size_t len;
+
+    if (ext->kcfg.type != KCFG_CHAR_ARR)
+    {
+        pr_warn("extern (kcfg) '%s': value '%s' implies char array type\n",
+                ext->name, value);
+        return -EINVAL;
+    }
+
+    len = strlen(value);
+    if (value[len - 1] != '"')
+    {
+        pr_warn("extern (kcfg) '%s': invalid string config '%s'\n",
+                ext->name, value);
+        return -EINVAL;
+    }
+
+    /* strip quotes */
+    len -= 2;
+    if (len >= ext->kcfg.sz)
+    {
+        pr_warn("extern (kcfg) '%s': long string '%s' of (%zu bytes) truncated to %d bytes\n",
+                ext->name, value, len, ext->kcfg.sz - 1);
+        len = ext->kcfg.sz - 1;
+    }
+    memcpy(ext_val, value + 1, len);
+    ext_val[len] = '\0';
+    ext->is_set = true;
+    return 0;
+}
+
+static int parse_u64(const char *value, __u64 *res)
+{
+    char *value_end;
+    int err;
+
+    errno = 0;
+    *res = strtoull(value, &value_end, 0);
+    if (errno)
+    {
+        err = -errno;
+        pr_warn("failed to parse '%s' as integer: %d\n", value, err);
+        return err;
+    }
+    if (*value_end)
+    {
+        pr_warn("failed to parse '%s' as integer completely\n", value);
+        return -EINVAL;
+    }
+    return 0;
+}
