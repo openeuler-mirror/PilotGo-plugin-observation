@@ -1581,3 +1581,54 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
     pr_debug("map %td is \"%s\"\n", map - obj->maps, map->name);
     return 0;
 }
+
+static int bpf_object__init_global_data_maps(struct bpf_object *obj)
+{
+    struct elf_sec_desc *sec_desc;
+    const char *sec_name;
+    int err = 0, sec_idx;
+
+    /*
+     * Populate obj->maps with libbpf internal maps.
+     */
+    for (sec_idx = 1; sec_idx < obj->efile.sec_cnt; sec_idx++)
+    {
+        sec_desc = &obj->efile.secs[sec_idx];
+
+        /* Skip recognized sections with size 0. */
+        if (!sec_desc->data || sec_desc->data->d_size == 0)
+            continue;
+
+        switch (sec_desc->sec_type)
+        {
+        case SEC_DATA:
+            sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, sec_idx));
+            err = bpf_object__init_internal_map(obj, LIBBPF_MAP_DATA,
+                                                sec_name, sec_idx,
+                                                sec_desc->data->d_buf,
+                                                sec_desc->data->d_size);
+            break;
+        case SEC_RODATA:
+            obj->has_rodata = true;
+            sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, sec_idx));
+            err = bpf_object__init_internal_map(obj, LIBBPF_MAP_RODATA,
+                                                sec_name, sec_idx,
+                                                sec_desc->data->d_buf,
+                                                sec_desc->data->d_size);
+            break;
+        case SEC_BSS:
+            sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, sec_idx));
+            err = bpf_object__init_internal_map(obj, LIBBPF_MAP_BSS,
+                                                sec_name, sec_idx,
+                                                NULL,
+                                                sec_desc->data->d_size);
+            break;
+        default:
+            /* skip */
+            break;
+        }
+        if (err)
+            return err;
+    }
+    return 0;
+}
