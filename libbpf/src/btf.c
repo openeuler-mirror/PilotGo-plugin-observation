@@ -1090,3 +1090,30 @@ err_out:
 		fclose(f);
 	return err ? ERR_PTR(err) : btf;
 }
+
+struct btf *btf__parse_raw(const char *path)
+{
+	return libbpf_ptr(btf_parse_raw(path, NULL));
+}
+
+struct btf *btf__parse_raw_split(const char *path, struct btf *base_btf)
+{
+	return libbpf_ptr(btf_parse_raw(path, base_btf));
+}
+
+static struct btf *btf_parse(const char *path, struct btf *base_btf, struct btf_ext **btf_ext)
+{
+	struct btf *btf;
+	int err;
+
+	if (btf_ext)
+		*btf_ext = NULL;
+
+	btf = btf_parse_raw(path, base_btf);
+	err = libbpf_get_error(btf);
+	if (!err)
+		return btf;
+	if (err != -EPROTO)
+		return ERR_PTR(err);
+	return btf_parse_elf(path, base_btf, btf_ext);
+}
