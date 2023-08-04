@@ -1017,3 +1017,76 @@ done:
 
 	return ERR_PTR(err);
 }
+
+struct btf *btf__parse_elf(const char *path, struct btf_ext **btf_ext)
+{
+	return libbpf_ptr(btf_parse_elf(path, NULL, btf_ext));
+}
+
+struct btf *btf__parse_elf_split(const char *path, struct btf *base_btf)
+{
+	return libbpf_ptr(btf_parse_elf(path, base_btf, NULL));
+}
+
+static struct btf *btf_parse_raw(const char *path, struct btf *base_btf)
+{
+	struct btf *btf = NULL;
+	void *data = NULL;
+	FILE *f = NULL;
+	__u16 magic;
+	int err = 0;
+	long sz;
+
+	f = fopen(path, "rb");
+	if (!f) {
+		err = -errno;
+		goto err_out;
+	}
+
+	/* check BTF magic */
+	if (fread(&magic, 1, sizeof(magic), f) < sizeof(magic)) {
+		err = -EIO;
+		goto err_out;
+	}
+	if (magic != BTF_MAGIC && magic != bswap_16(BTF_MAGIC)) {
+		/* definitely not a raw BTF */
+		err = -EPROTO;
+		goto err_out;
+	}
+
+	/* get file size */
+	if (fseek(f, 0, SEEK_END)) {
+		err = -errno;
+		goto err_out;
+	}
+	sz = ftell(f);
+	if (sz < 0) {
+		err = -errno;
+		goto err_out;
+	}
+	/* rewind to the start */
+	if (fseek(f, 0, SEEK_SET)) {
+		err = -errno;
+		goto err_out;
+	}
+
+	/* pre-alloc memory and read all of BTF data */
+	data = malloc(sz);
+	if (!data) {
+		err = -ENOMEM;
+		goto err_out;
+	}
+	if (fread(data, 1, sz, f) < sz) {
+		err = -EIO;
+		goto err_out;
+	}
+
+	/* finally parse BTF data */
+	btf = btf_new(data, sz, base_btf);
+
+err_out:
+	free(data);
+	if (f)
+		fclose(f);
+	return err ? ERR_PTR(err) : btf;
+}
