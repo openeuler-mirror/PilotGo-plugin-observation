@@ -1585,3 +1585,34 @@ struct cred {
 		struct callback_head rcu;
 	};
 };
+
+enum uprobe_task_state {
+	UTASK_RUNNING = 0,
+	UTASK_SSTEP = 1,
+	UTASK_SSTEP_ACK = 2,
+	UTASK_SSTEP_TRAPPED = 3,
+};
+
+struct arch_uprobe_task {};
+
+struct uprobe;
+
+struct return_instance;
+
+struct uprobe_task {
+	enum uprobe_task_state state;
+	union {
+		struct {
+			struct arch_uprobe_task autask;
+			long unsigned int vaddr;
+		};
+		struct {
+			struct callback_head dup_xol_work;
+			long unsigned int dup_xol_addr;
+		};
+	};
+	struct uprobe *active_uprobe;
+	long unsigned int xol_vaddr;
+	struct return_instance *return_instances;
+	unsigned int depth;
+};
