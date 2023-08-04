@@ -315,3 +315,35 @@ enum {
 	IFLA_BRPORT_MCAST_EHT_HOSTS_CNT,
 	__IFLA_BRPORT_MAX
 };
+#define IFLA_BRPORT_MAX (__IFLA_BRPORT_MAX - 1)
+
+struct ifla_cacheinfo {
+	__u32	max_reasm_len;
+	__u32	tstamp;		/* ipv6InterfaceTable updated timestamp */
+	__u32	reachable_time;
+	__u32	retrans_time;
+};
+
+enum {
+	IFLA_INFO_UNSPEC,
+	IFLA_INFO_KIND,
+	IFLA_INFO_DATA,
+	IFLA_INFO_XSTATS,
+	IFLA_INFO_SLAVE_KIND,
+	IFLA_INFO_SLAVE_DATA,
+	__IFLA_INFO_MAX,
+};
+
+#define IFLA_INFO_MAX	(__IFLA_INFO_MAX - 1)
+
+/* VLAN section */
+
+enum {
+	IFLA_VLAN_UNSPEC,
+	IFLA_VLAN_ID,
+	IFLA_VLAN_FLAGS,
+	IFLA_VLAN_EGRESS_QOS,
+	IFLA_VLAN_INGRESS_QOS,
+	IFLA_VLAN_PROTOCOL,
+	__IFLA_VLAN_MAX,
+};
