@@ -1634,3 +1634,25 @@ enum rseq_event_mask_bits {
 	RSEQ_EVENT_SIGNAL_BIT = 1,
 	RSEQ_EVENT_MIGRATE_BIT = 2,
 };
+
+struct return_instance {
+	struct uprobe *uprobe;
+	long unsigned int func;
+	long unsigned int stack;
+	long unsigned int orig_ret_vaddr;
+	bool chained;
+	struct return_instance *next;
+};
+
+typedef unsigned int vm_fault_t;
+
+enum migratetype {
+	MIGRATE_UNMOVABLE = 0,
+	MIGRATE_MOVABLE = 1,
+	MIGRATE_RECLAIMABLE = 2,
+	MIGRATE_PCPTYPES = 3,
+	MIGRATE_HIGHATOMIC = 3,
+	MIGRATE_CMA = 4,
+	MIGRATE_ISOLATE = 5,
+	MIGRATE_TYPES = 6,
+};
