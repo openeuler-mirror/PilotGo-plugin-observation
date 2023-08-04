@@ -1864,3 +1864,74 @@ static int bpf_object__process_kconfig_line(struct bpf_object *obj,
     pr_debug("extern (kcfg) '%s': set to %s\n", ext->name, value);
     return 0;
 }
+
+static int bpf_object__read_kconfig_file(struct bpf_object *obj, void *data)
+{
+    char buf[PATH_MAX];
+    struct utsname uts;
+    int len, err = 0;
+    gzFile file;
+
+    uname(&uts);
+    len = snprintf(buf, PATH_MAX, "/boot/config-%s", uts.release);
+    if (len < 0)
+        return -EINVAL;
+    else if (len >= PATH_MAX)
+        return -ENAMETOOLONG;
+
+    /* gzopen also accepts uncompressed files. */
+    file = gzopen(buf, "r");
+    if (!file)
+        file = gzopen("/proc/config.gz", "r");
+
+    if (!file)
+    {
+        pr_warn("failed to open system Kconfig\n");
+        return -ENOENT;
+    }
+
+    while (gzgets(file, buf, sizeof(buf)))
+    {
+        err = bpf_object__process_kconfig_line(obj, buf, data);
+        if (err)
+        {
+            pr_warn("error parsing system Kconfig line '%s': %d\n",
+                    buf, err);
+            goto out;
+        }
+    }
+
+out:
+    gzclose(file);
+    return err;
+}
+
+static int bpf_object__read_kconfig_mem(struct bpf_object *obj,
+                                        const char *config, void *data)
+{
+    char buf[PATH_MAX];
+    int err = 0;
+    FILE *file;
+
+    file = fmemopen((void *)config, strlen(config), "r");
+    if (!file)
+    {
+        err = -errno;
+        pr_warn("failed to open in-memory Kconfig: %d\n", err);
+        return err;
+    }
+
+    while (fgets(buf, sizeof(buf), file))
+    {
+        err = bpf_object__process_kconfig_line(obj, buf, data);
+        if (err)
+        {
+            pr_warn("error parsing in-memory Kconfig line '%s': %d\n",
+                    buf, err);
+            break;
+        }
+    }
+
+    fclose(file);
+    return err;
+}
