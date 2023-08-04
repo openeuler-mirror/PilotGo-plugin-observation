@@ -1793,3 +1793,74 @@ static int set_kcfg_value_num(struct extern_desc *ext, void *ext_val,
     ext->is_set = true;
     return 0;
 }
+
+static int bpf_object__process_kconfig_line(struct bpf_object *obj,
+                                            char *buf, void *data)
+{
+    struct extern_desc *ext;
+    char *sep, *value;
+    int len, err = 0;
+    void *ext_val;
+    __u64 num;
+
+    if (!str_has_pfx(buf, "CONFIG_"))
+        return 0;
+
+    sep = strchr(buf, '=');
+    if (!sep)
+    {
+        pr_warn("failed to parse '%s': no separator\n", buf);
+        return -EINVAL;
+    }
+
+    /* Trim ending '\n' */
+    len = strlen(buf);
+    if (buf[len - 1] == '\n')
+        buf[len - 1] = '\0';
+    /* Split on '=' and ensure that a value is present. */
+    *sep = '\0';
+    if (!sep[1])
+    {
+        *sep = '=';
+        pr_warn("failed to parse '%s': no value\n", buf);
+        return -EINVAL;
+    }
+
+    ext = find_extern_by_name(obj, buf);
+    if (!ext || ext->is_set)
+        return 0;
+
+    ext_val = data + ext->kcfg.data_off;
+    value = sep + 1;
+
+    switch (*value)
+    {
+    case 'y':
+    case 'n':
+    case 'm':
+        err = set_kcfg_value_tri(ext, ext_val, *value);
+        break;
+    case '"':
+        err = set_kcfg_value_str(ext, ext_val, value);
+        break;
+    default:
+        /* assume integer */
+        err = parse_u64(value, &num);
+        if (err)
+        {
+            pr_warn("extern (kcfg) '%s': value '%s' isn't a valid integer\n", ext->name, value);
+            return err;
+        }
+        if (ext->kcfg.type != KCFG_INT && ext->kcfg.type != KCFG_CHAR)
+        {
+            pr_warn("extern (kcfg) '%s': value '%s' implies integer type\n", ext->name, value);
+            return -EINVAL;
+        }
+        err = set_kcfg_value_num(ext, ext_val, num);
+        break;
+    }
+    if (err)
+        return err;
+    pr_debug("extern (kcfg) '%s': set to %s\n", ext->name, value);
+    return 0;
+}
