@@ -1737,3 +1737,59 @@ static int parse_u64(const char *value, __u64 *res)
     }
     return 0;
 }
+
+static bool is_kcfg_value_in_range(const struct extern_desc *ext, __u64 v)
+{
+    int bit_sz = ext->kcfg.sz * 8;
+
+    if (ext->kcfg.sz == 8)
+        return true;
+
+    if (ext->kcfg.is_signed)
+        return v + (1ULL << (bit_sz - 1)) < (1ULL << bit_sz);
+    else
+        return (v >> bit_sz) == 0;
+}
+
+static int set_kcfg_value_num(struct extern_desc *ext, void *ext_val,
+                              __u64 value)
+{
+    if (ext->kcfg.type != KCFG_INT && ext->kcfg.type != KCFG_CHAR &&
+        ext->kcfg.type != KCFG_BOOL)
+    {
+        pr_warn("extern (kcfg) '%s': value '%llu' implies integer, char, or boolean type\n",
+                ext->name, (unsigned long long)value);
+        return -EINVAL;
+    }
+    if (ext->kcfg.type == KCFG_BOOL && value > 1)
+    {
+        pr_warn("extern (kcfg) '%s': value '%llu' isn't boolean compatible\n",
+                ext->name, (unsigned long long)value);
+        return -EINVAL;
+    }
+    if (!is_kcfg_value_in_range(ext, value))
+    {
+        pr_warn("extern (kcfg) '%s': value '%llu' doesn't fit in %d bytes\n",
+                ext->name, (unsigned long long)value, ext->kcfg.sz);
+        return -ERANGE;
+    }
+    switch (ext->kcfg.sz)
+    {
+    case 1:
+        *(__u8 *)ext_val = value;
+        break;
+    case 2:
+        *(__u16 *)ext_val = value;
+        break;
+    case 4:
+        *(__u32 *)ext_val = value;
+        break;
+    case 8:
+        *(__u64 *)ext_val = value;
+        break;
+    default:
+        return -EINVAL;
+    }
+    ext->is_set = true;
+    return 0;
+}
