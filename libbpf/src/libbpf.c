@@ -1632,3 +1632,53 @@ static int bpf_object__init_global_data_maps(struct bpf_object *obj)
     }
     return 0;
 }
+
+static struct extern_desc *find_extern_by_name(const struct bpf_object *obj,
+                                               const void *name)
+{
+    int i;
+
+    for (i = 0; i < obj->nr_extern; i++)
+    {
+        if (strcmp(obj->externs[i].name, name) == 0)
+            return &obj->externs[i];
+    }
+    return NULL;
+}
+
+static int set_kcfg_value_tri(struct extern_desc *ext, void *ext_val,
+                              char value)
+{
+    switch (ext->kcfg.type)
+    {
+    case KCFG_BOOL:
+        if (value == 'm')
+        {
+            pr_warn("extern (kcfg) '%s': value '%c' implies tristate or char type\n",
+                    ext->name, value);
+            return -EINVAL;
+        }
+        *(bool *)ext_val = value == 'y' ? true : false;
+        break;
+    case KCFG_TRISTATE:
+        if (value == 'y')
+            *(enum libbpf_tristate *)ext_val = TRI_YES;
+        else if (value == 'm')
+            *(enum libbpf_tristate *)ext_val = TRI_MODULE;
+        else /* value == 'n' */
+            *(enum libbpf_tristate *)ext_val = TRI_NO;
+        break;
+    case KCFG_CHAR:
+        *(char *)ext_val = value;
+        break;
+    case KCFG_UNKNOWN:
+    case KCFG_INT:
+    case KCFG_CHAR_ARR:
+    default:
+        pr_warn("extern (kcfg) '%s': value '%c' implies bool, tristate, or char type\n",
+                ext->name, value);
+        return -EINVAL;
+    }
+    ext->is_set = true;
+    return 0;
+}
