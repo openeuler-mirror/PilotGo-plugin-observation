@@ -1456,3 +1456,66 @@ static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
 
     return map;
 }
+
+static size_t bpf_map_mmap_sz(const struct bpf_map *map)
+{
+    long page_sz = sysconf(_SC_PAGE_SIZE);
+    size_t map_sz;
+
+    map_sz = (size_t)roundup(map->def.value_size, 8) * map->def.max_entries;
+    map_sz = roundup(map_sz, page_sz);
+    return map_sz;
+}
+
+static char *internal_map_name(struct bpf_object *obj, const char *real_name)
+{
+    char map_name[BPF_OBJ_NAME_LEN], *p;
+    int pfx_len, sfx_len = max((size_t)7, strlen(real_name));
+    if (sfx_len >= BPF_OBJ_NAME_LEN)
+        sfx_len = BPF_OBJ_NAME_LEN - 1;
+
+    /* if there are two or more dots in map name, it's a custom dot map */
+    if (strchr(real_name + 1, '.') != NULL)
+        pfx_len = 0;
+    else
+        pfx_len = min((size_t)BPF_OBJ_NAME_LEN - sfx_len - 1, strlen(obj->name));
+
+    snprintf(map_name, sizeof(map_name), "%.*s%.*s", pfx_len, obj->name,
+             sfx_len, real_name);
+
+    /* sanitise map name to characters allowed by kernel */
+    for (p = map_name; *p && p < map_name + sizeof(map_name); p++)
+        if (!isalnum(*p) && *p != '_' && *p != '.')
+            *p = '_';
+
+    return strdup(map_name);
+}
+
+static int map_fill_btf_type_info(struct bpf_object *obj, struct bpf_map *map);
+
+static bool map_is_mmapable(struct bpf_object *obj, struct bpf_map *map)
+{
+    const struct btf_type *t, *vt;
+    struct btf_var_secinfo *vsi;
+    int i, n;
+
+    if (!map->btf_value_type_id)
+        return false;
+
+    t = btf__type_by_id(obj->btf, map->btf_value_type_id);
+    if (!btf_is_datasec(t))
+        return false;
+
+    vsi = btf_var_secinfos(t);
+    for (i = 0, n = btf_vlen(t); i < n; i++, vsi++)
+    {
+        vt = btf__type_by_id(obj->btf, vsi->type);
+        if (!btf_is_var(vt))
+            continue;
+
+        if (btf_var(vt)->linkage != BTF_VAR_STATIC)
+            return true;
+    }
+
+    return false;
+}
