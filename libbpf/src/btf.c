@@ -755,3 +755,33 @@ __s32 btf__find_by_name_kind(const struct btf *btf, const char *type_name,
 {
 	return btf_find_by_name_kind(btf, 1, type_name, kind);
 }
+
+static bool btf_is_modifiable(const struct btf *btf)
+{
+	return (void *)btf->hdr != btf->raw_data;
+}
+
+void btf__free(struct btf *btf)
+{
+	if (IS_ERR_OR_NULL(btf))
+		return;
+
+	if (btf->fd >= 0)
+		close(btf->fd);
+
+	if (btf_is_modifiable(btf)) {
+		/* if BTF was modified after loading, it will have a split
+		 * in-memory representation for header, types, and strings
+		 * sections, so we need to free all of them individually. It
+		 * might still have a cached contiguous raw data present,
+		 * which will be unconditionally freed below.
+		 */
+		free(btf->hdr);
+		free(btf->types_data);
+		strset__free(btf->strs_set);
+	}
+	free(btf->raw_data);
+	free(btf->raw_data_swapped);
+	free(btf->type_offs);
+	free(btf);
+}
