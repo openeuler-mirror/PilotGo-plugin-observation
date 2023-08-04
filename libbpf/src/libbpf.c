@@ -1519,3 +1519,65 @@ static bool map_is_mmapable(struct bpf_object *obj, struct bpf_map *map)
 
     return false;
 }
+
+static int
+bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
+                              const char *real_name, int sec_idx, void *data, size_t data_sz)
+{
+    struct bpf_map_def *def;
+    struct bpf_map *map;
+    int err;
+
+    map = bpf_object__add_map(obj);
+    if (IS_ERR(map))
+        return PTR_ERR(map);
+
+    map->libbpf_type = type;
+    map->sec_idx = sec_idx;
+    map->sec_offset = 0;
+    map->real_name = strdup(real_name);
+    map->name = internal_map_name(obj, real_name);
+    if (!map->real_name || !map->name)
+    {
+        zfree(&map->real_name);
+        zfree(&map->name);
+        return -ENOMEM;
+    }
+
+    def = &map->def;
+    def->type = BPF_MAP_TYPE_ARRAY;
+    def->key_size = sizeof(int);
+    def->value_size = data_sz;
+    def->max_entries = 1;
+    def->map_flags = type == LIBBPF_MAP_RODATA || type == LIBBPF_MAP_KCONFIG
+                         ? BPF_F_RDONLY_PROG
+                         : 0;
+
+    /* failures are fine because of maps like .rodata.str1.1 */
+    (void)map_fill_btf_type_info(obj, map);
+
+    if (map_is_mmapable(obj, map))
+        def->map_flags |= BPF_F_MMAPABLE;
+
+    pr_debug("map '%s' (global data): at sec_idx %d, offset %zu, flags %x.\n",
+             map->name, map->sec_idx, map->sec_offset, def->map_flags);
+
+    map->mmaped = mmap(NULL, bpf_map_mmap_sz(map), PROT_READ | PROT_WRITE,
+                       MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (map->mmaped == MAP_FAILED)
+    {
+        err = -errno;
+        map->mmaped = NULL;
+        pr_warn("failed to alloc map '%s' content buffer: %d\n",
+                map->name, err);
+        zfree(&map->real_name);
+        zfree(&map->name);
+        return err;
+    }
+
+    if (data)
+        memcpy(map->mmaped, data, data_sz);
+
+    pr_debug("map %td is \"%s\"\n", map - obj->maps, map->name);
+    return 0;
+}
