@@ -1117,3 +1117,38 @@ static struct btf *btf_parse(const char *path, struct btf *base_btf, struct btf_
 		return ERR_PTR(err);
 	return btf_parse_elf(path, base_btf, btf_ext);
 }
+
+struct btf *btf__parse(const char *path, struct btf_ext **btf_ext)
+{
+	return libbpf_ptr(btf_parse(path, NULL, btf_ext));
+}
+
+struct btf *btf__parse_split(const char *path, struct btf *base_btf)
+{
+	return libbpf_ptr(btf_parse(path, base_btf, NULL));
+}
+
+static void *btf_get_raw_data(const struct btf *btf, __u32 *size, bool swap_endian);
+
+int btf_load_into_kernel(struct btf *btf, char *log_buf, size_t log_sz, __u32 log_level)
+{
+	LIBBPF_OPTS(bpf_btf_load_opts, opts);
+	__u32 buf_sz = 0, raw_size;
+	char *buf = NULL, *tmp;
+	void *raw_data;
+	int err = 0;
+
+	if (btf->fd >= 0)
+		return libbpf_err(-EEXIST);
+	if (log_sz && !log_buf)
+		return libbpf_err(-EINVAL);
+
+	/* cache native raw data representation */
+	raw_data = btf_get_raw_data(btf, &raw_size, false);
+	if (!raw_data) {
+		err = -ENOMEM;
+		goto done;
+	}
+	btf->raw_size = raw_size;
+	btf->raw_data = raw_data;
+
