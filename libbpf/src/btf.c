@@ -826,3 +826,63 @@ static struct btf *btf_new_empty(struct btf *base_btf)
 
 	return btf;
 }
+
+struct btf *btf__new_empty(void)
+{
+	return libbpf_ptr(btf_new_empty(NULL));
+}
+
+struct btf *btf__new_empty_split(struct btf *base_btf)
+{
+	return libbpf_ptr(btf_new_empty(base_btf));
+}
+
+static struct btf *btf_new(const void *data, __u32 size, struct btf *base_btf)
+{
+	struct btf *btf;
+	int err;
+
+	btf = calloc(1, sizeof(struct btf));
+	if (!btf)
+		return ERR_PTR(-ENOMEM);
+
+	btf->nr_types = 0;
+	btf->start_id = 1;
+	btf->start_str_off = 0;
+	btf->fd = -1;
+
+	if (base_btf) {
+		btf->base_btf = base_btf;
+		btf->start_id = btf__type_cnt(base_btf);
+		btf->start_str_off = base_btf->hdr->str_len;
+	}
+
+	btf->raw_data = malloc(size);
+	if (!btf->raw_data) {
+		err = -ENOMEM;
+		goto done;
+	}
+	memcpy(btf->raw_data, data, size);
+	btf->raw_size = size;
+
+	btf->hdr = btf->raw_data;
+	err = btf_parse_hdr(btf);
+	if (err)
+		goto done;
+
+	btf->strs_data = btf->raw_data + btf->hdr->hdr_len + btf->hdr->str_off;
+	btf->types_data = btf->raw_data + btf->hdr->hdr_len + btf->hdr->type_off;
+
+	err = btf_parse_str_sec(btf);
+	err = err ?: btf_parse_type_sec(btf);
+	if (err)
+		goto done;
+
+done:
+	if (err) {
+		btf__free(btf);
+		return ERR_PTR(err);
+	}
+
+	return btf;
+}
