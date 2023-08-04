@@ -721,3 +721,37 @@ __s32 btf__find_by_name(const struct btf *btf, const char *type_name)
 
 	return libbpf_err(-ENOENT);
 }
+
+static __s32 btf_find_by_name_kind(const struct btf *btf, int start_id,
+				   const char *type_name, __u32 kind)
+{
+	__u32 i, nr_types = btf__type_cnt(btf);
+
+	if (kind == BTF_KIND_UNKN || !strcmp(type_name, "void"))
+		return 0;
+
+	for (i = start_id; i < nr_types; i++) {
+		const struct btf_type *t = btf__type_by_id(btf, i);
+		const char *name;
+
+		if (btf_kind(t) != kind)
+			continue;
+		name = btf__name_by_offset(btf, t->name_off);
+		if (name && !strcmp(type_name, name))
+			return i;
+	}
+
+	return libbpf_err(-ENOENT);
+}
+
+__s32 btf__find_by_name_kind_own(const struct btf *btf, const char *type_name,
+				 __u32 kind)
+{
+	return btf_find_by_name_kind(btf, btf->start_id, type_name, kind);
+}
+
+__s32 btf__find_by_name_kind(const struct btf *btf, const char *type_name,
+			     __u32 kind)
+{
+	return btf_find_by_name_kind(btf, 1, type_name, kind);
+}
