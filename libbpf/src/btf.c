@@ -1152,3 +1152,49 @@ int btf_load_into_kernel(struct btf *btf, char *log_buf, size_t log_sz, __u32 lo
 	btf->raw_size = raw_size;
 	btf->raw_data = raw_data;
 
+retry_load:
+	if (log_level) {
+		/* if caller didn't provide custom log_buf, we'll keep
+		 * allocating our own progressively bigger buffers for BTF
+		 * verification log
+		 */
+		if (!log_buf) {
+			buf_sz = max((__u32)BPF_LOG_BUF_SIZE, buf_sz * 2);
+			tmp = realloc(buf, buf_sz);
+			if (!tmp) {
+				err = -ENOMEM;
+				goto done;
+			}
+			buf = tmp;
+			buf[0] = '\0';
+		}
+
+		opts.log_buf = log_buf ? log_buf : buf;
+		opts.log_size = log_buf ? log_sz : buf_sz;
+		opts.log_level = log_level;
+	}
+
+	btf->fd = bpf_btf_load(raw_data, raw_size, &opts);
+	if (btf->fd < 0) {
+		/* time to turn on verbose mode and try again */
+		if (log_level == 0) {
+			log_level = 1;
+			goto retry_load;
+		}
+		/* only retry if caller didn't provide custom log_buf, but
+		 * make sure we can never overflow buf_sz
+		 */
+		if (!log_buf && errno == ENOSPC && buf_sz <= UINT_MAX / 2)
+			goto retry_load;
+
+		err = -errno;
+		pr_warn("BTF loading error: %d\n", err);
+		/* don't print out contents of custom log_buf */
+		if (!log_buf && buf[0])
+			pr_warn("-- BEGIN BTF LOAD LOG ---\n%s\n-- END BTF LOAD LOG --\n", buf);
+	}
+
+done:
+	free(buf);
+	return libbpf_err(err);
+}
