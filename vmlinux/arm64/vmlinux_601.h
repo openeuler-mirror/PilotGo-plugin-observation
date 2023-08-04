@@ -1616,3 +1616,21 @@ struct uprobe_task {
 	struct return_instance *return_instances;
 	unsigned int depth;
 };
+
+struct vm_struct {
+	struct vm_struct *next;
+	void *addr;
+	long unsigned int size;
+	long unsigned int flags;
+	struct page **pages;
+	unsigned int page_order;
+	unsigned int nr_pages;
+	phys_addr_t phys_addr;
+	const void *caller;
+};
+
+enum rseq_event_mask_bits {
+	RSEQ_EVENT_PREEMPT_BIT = 0,
+	RSEQ_EVENT_SIGNAL_BIT = 1,
+	RSEQ_EVENT_MIGRATE_BIT = 2,
+};
