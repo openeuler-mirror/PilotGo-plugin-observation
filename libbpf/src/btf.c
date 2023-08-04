@@ -938,5 +938,40 @@ static struct btf *btf_parse_elf(const char *path, struct btf *base_btf,
 		goto done;
 	}
 
+	while ((scn = elf_nextscn(elf, scn)) != NULL) {
+		GElf_Shdr sh;
+		char *name;
+
+		idx++;
+		if (gelf_getshdr(scn, &sh) != &sh) {
+			pr_warn("failed to get section(%d) header from %s\n",
+				idx, path);
+			goto done;
+		}
+		name = elf_strptr(elf, shstrndx, sh.sh_name);
+		if (!name) {
+			pr_warn("failed to get section(%d) name from %s\n",
+				idx, path);
+			goto done;
+		}
+		if (strcmp(name, BTF_ELF_SEC) == 0) {
+			btf_data = elf_getdata(scn, 0);
+			if (!btf_data) {
+				pr_warn("failed to get section(%d, %s) data from %s\n",
+					idx, name, path);
+				goto done;
+			}
+			continue;
+		} else if (btf_ext && strcmp(name, BTF_EXT_ELF_SEC) == 0) {
+			btf_ext_data = elf_getdata(scn, 0);
+			if (!btf_ext_data) {
+				pr_warn("failed to get section(%d, %s) data from %s\n",
+					idx, name, path);
+				goto done;
+			}
+			continue;
+		}
+	}
+
 	return ERR_PTR(err);
 }
