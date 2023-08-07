@@ -1300,3 +1300,58 @@ const char *btf__str_by_offset(const struct btf *btf, __u32 offset)
 	else
 		return errno = EINVAL, NULL;
 }
+
+const char *btf__name_by_offset(const struct btf *btf, __u32 offset)
+{
+	return btf__str_by_offset(btf, offset);
+}
+
+struct btf *btf_get_from_fd(int btf_fd, struct btf *base_btf)
+{
+	struct bpf_btf_info btf_info;
+	__u32 len = sizeof(btf_info);
+	__u32 last_size;
+	struct btf *btf;
+	void *ptr;
+	int err;
+
+	last_size = 4096;
+	ptr = malloc(last_size);
+	if (!ptr)
+		return ERR_PTR(-ENOMEM);
+
+	memset(&btf_info, 0, sizeof(btf_info));
+	btf_info.btf = ptr_to_u64(ptr);
+	btf_info.btf_size = last_size;
+	err = bpf_btf_get_info_by_fd(btf_fd, &btf_info, &len);
+
+	if (!err && btf_info.btf_size > last_size) {
+		void *temp_ptr;
+
+		last_size = btf_info.btf_size;
+		temp_ptr = realloc(ptr, last_size);
+		if (!temp_ptr) {
+			btf = ERR_PTR(-ENOMEM);
+			goto exit_free;
+		}
+		ptr = temp_ptr;
+
+		len = sizeof(btf_info);
+		memset(&btf_info, 0, sizeof(btf_info));
+		btf_info.btf = ptr_to_u64(ptr);
+		btf_info.btf_size = last_size;
+
+		err = bpf_btf_get_info_by_fd(btf_fd, &btf_info, &len);
+	}
+
+	if (err || btf_info.btf_size > last_size) {
+		btf = err ? ERR_PTR(-errno) : ERR_PTR(-E2BIG);
+		goto exit_free;
+	}
+
+	btf = btf_new(ptr, btf_info.btf_size, base_btf);
+
+exit_free:
+	free(ptr);
+	return btf;
+}
