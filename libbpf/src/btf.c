@@ -1268,3 +1268,35 @@ err_out:
 	free(data);
 	return NULL;
 }
+
+const void *btf__raw_data(const struct btf *btf_ro, __u32 *size)
+{
+	struct btf *btf = (struct btf *)btf_ro;
+	__u32 data_sz;
+	void *data;
+
+	data = btf_get_raw_data(btf, &data_sz, btf->swapped_endian);
+	if (!data)
+		return errno = ENOMEM, NULL;
+
+	btf->raw_size = data_sz;
+	if (btf->swapped_endian)
+		btf->raw_data_swapped = data;
+	else
+		btf->raw_data = data;
+	*size = data_sz;
+	return data;
+}
+
+__attribute__((alias("btf__raw_data")))
+const void *btf__get_raw_data(const struct btf *btf, __u32 *size);
+
+const char *btf__str_by_offset(const struct btf *btf, __u32 offset)
+{
+	if (offset < btf->start_str_off)
+		return btf__str_by_offset(btf->base_btf, offset);
+	else if (offset - btf->start_str_off < btf->hdr->str_len)
+		return btf_strs_data(btf) + (offset - btf->start_str_off);
+	else
+		return errno = EINVAL, NULL;
+}
