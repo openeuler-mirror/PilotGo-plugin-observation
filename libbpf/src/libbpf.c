@@ -2424,3 +2424,66 @@ static bool map_is_ringbuf(const struct bpf_map *map)
     return map->def.type == BPF_MAP_TYPE_RINGBUF ||
            map->def.type == BPF_MAP_TYPE_USER_RINGBUF;
 }
+
+static void fill_map_from_def(struct bpf_map *map, const struct btf_map_def *def)
+{
+    map->def.type = def->map_type;
+    map->def.key_size = def->key_size;
+    map->def.value_size = def->value_size;
+    map->def.max_entries = def->max_entries;
+    map->def.map_flags = def->map_flags;
+    map->map_extra = def->map_extra;
+
+    map->numa_node = def->numa_node;
+    map->btf_key_type_id = def->key_type_id;
+    map->btf_value_type_id = def->value_type_id;
+
+    /* auto-adjust BPF ringbuf map max_entries to be a multiple of page size */
+    if (map_is_ringbuf(map))
+        map->def.max_entries = adjust_ringbuf_sz(map->def.max_entries);
+
+    if (def->parts & MAP_DEF_MAP_TYPE)
+        pr_debug("map '%s': found type = %u.\n", map->name, def->map_type);
+
+    if (def->parts & MAP_DEF_KEY_TYPE)
+        pr_debug("map '%s': found key [%u], sz = %u.\n",
+                 map->name, def->key_type_id, def->key_size);
+    else if (def->parts & MAP_DEF_KEY_SIZE)
+        pr_debug("map '%s': found key_size = %u.\n", map->name, def->key_size);
+
+    if (def->parts & MAP_DEF_VALUE_TYPE)
+        pr_debug("map '%s': found value [%u], sz = %u.\n",
+                 map->name, def->value_type_id, def->value_size);
+    else if (def->parts & MAP_DEF_VALUE_SIZE)
+        pr_debug("map '%s': found value_size = %u.\n", map->name, def->value_size);
+
+    if (def->parts & MAP_DEF_MAX_ENTRIES)
+        pr_debug("map '%s': found max_entries = %u.\n", map->name, def->max_entries);
+    if (def->parts & MAP_DEF_MAP_FLAGS)
+        pr_debug("map '%s': found map_flags = 0x%x.\n", map->name, def->map_flags);
+    if (def->parts & MAP_DEF_MAP_EXTRA)
+        pr_debug("map '%s': found map_extra = 0x%llx.\n", map->name,
+                 (unsigned long long)def->map_extra);
+    if (def->parts & MAP_DEF_PINNING)
+        pr_debug("map '%s': found pinning = %u.\n", map->name, def->pinning);
+    if (def->parts & MAP_DEF_NUMA_NODE)
+        pr_debug("map '%s': found numa_node = %u.\n", map->name, def->numa_node);
+
+    if (def->parts & MAP_DEF_INNER_MAP)
+        pr_debug("map '%s': found inner map definition.\n", map->name);
+}
+
+static const char *btf_var_linkage_str(__u32 linkage)
+{
+    switch (linkage)
+    {
+    case BTF_VAR_STATIC:
+        return "static";
+    case BTF_VAR_GLOBAL_ALLOCATED:
+        return "global";
+    case BTF_VAR_GLOBAL_EXTERN:
+        return "extern";
+    default:
+        return "unknown";
+    }
+}
