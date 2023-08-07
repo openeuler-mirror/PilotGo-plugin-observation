@@ -1515,3 +1515,35 @@ struct btf_pipe {
 	struct btf *dst;
 	struct hashmap *str_off_map; /* map string offsets from src to dst */
 };
+
+static int btf_rewrite_str(__u32 *str_off, void *ctx)
+{
+	struct btf_pipe *p = ctx;
+	long mapped_off;
+	int off, err;
+
+	if (!*str_off) /* nothing to do for empty strings */
+		return 0;
+
+	if (p->str_off_map &&
+	    hashmap__find(p->str_off_map, *str_off, &mapped_off)) {
+		*str_off = mapped_off;
+		return 0;
+	}
+
+	off = btf__add_str(p->dst, btf__str_by_offset(p->src, *str_off));
+	if (off < 0)
+		return off;
+
+	/* Remember string mapping from src to dst.  It avoids
+	 * performing expensive string comparisons.
+	 */
+	if (p->str_off_map) {
+		err = hashmap__append(p->str_off_map, *str_off, off);
+		if (err)
+			return err;
+	}
+
+	*str_off = off;
+	return 0;
+}
