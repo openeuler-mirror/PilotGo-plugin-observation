@@ -1441,3 +1441,46 @@ err_out:
 	free(types);
 	return err;
 }
+
+int btf__find_str(struct btf *btf, const char *s)
+{
+	int off;
+
+	if (btf->base_btf) {
+		off = btf__find_str(btf->base_btf, s);
+		if (off != -ENOENT)
+			return off;
+	}
+
+	/* BTF needs to be in a modifiable state to build string lookup index */
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	off = strset__find_str(btf->strs_set, s);
+	if (off < 0)
+		return libbpf_err(off);
+
+	return btf->start_str_off + off;
+}
+
+int btf__add_str(struct btf *btf, const char *s)
+{
+	int off;
+
+	if (btf->base_btf) {
+		off = btf__find_str(btf->base_btf, s);
+		if (off != -ENOENT)
+			return off;
+	}
+
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	off = strset__add_str(btf->strs_set, s);
+	if (off < 0)
+		return libbpf_err(off);
+
+	btf->hdr->str_len = strset__data_size(btf->strs_set);
+
+	return btf->start_str_off + off;
+}
