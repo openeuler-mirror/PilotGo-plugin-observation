@@ -1387,3 +1387,57 @@ static void btf_invalidate_raw_data(struct btf *btf)
 		btf->raw_data_swapped = NULL;
 	}
 }
+
+static int btf_ensure_modifiable(struct btf *btf)
+{
+	void *hdr, *types;
+	struct strset *set = NULL;
+	int err = -ENOMEM;
+
+	if (btf_is_modifiable(btf)) {
+		/* any BTF modification invalidates raw_data */
+		btf_invalidate_raw_data(btf);
+		return 0;
+	}
+
+	/* split raw data into three memory regions */
+	hdr = malloc(btf->hdr->hdr_len);
+	types = malloc(btf->hdr->type_len);
+	if (!hdr || !types)
+		goto err_out;
+
+	memcpy(hdr, btf->hdr, btf->hdr->hdr_len);
+	memcpy(types, btf->types_data, btf->hdr->type_len);
+
+	/* build lookup index for all strings */
+	set = strset__new(BTF_MAX_STR_OFFSET, btf->strs_data, btf->hdr->str_len);
+	if (IS_ERR(set)) {
+		err = PTR_ERR(set);
+		goto err_out;
+	}
+
+	/* only when everything was successful, update internal state */
+	btf->hdr = hdr;
+	btf->types_data = types;
+	btf->types_data_cap = btf->hdr->type_len;
+	btf->strs_data = NULL;
+	btf->strs_set = set;
+	/* if BTF was created from scratch, all strings are guaranteed to be
+	 * unique and deduplicated
+	 */
+	if (btf->hdr->str_len == 0)
+		btf->strs_deduped = true;
+	if (!btf->base_btf && btf->hdr->str_len == 1)
+		btf->strs_deduped = true;
+
+	/* invalidate raw_data representation */
+	btf_invalidate_raw_data(btf);
+
+	return 0;
+
+err_out:
+	strset__free(set);
+	free(hdr);
+	free(types);
+	return err;
+}
