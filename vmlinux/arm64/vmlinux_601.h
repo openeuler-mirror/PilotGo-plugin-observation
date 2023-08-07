@@ -1749,3 +1749,25 @@ enum vmscan_throttle_state {
 	VMSCAN_THROTTLE_CONGESTED = 3,
 	NR_VMSCAN_THROTTLE = 4,
 };
+
+enum zone_watermarks {
+	WMARK_MIN = 0,
+	WMARK_LOW = 1,
+	WMARK_HIGH = 2,
+	WMARK_PROMO = 3,
+	NR_WMARK = 4,
+};
+
+enum {
+	ZONELIST_FALLBACK = 0,
+	ZONELIST_NOFALLBACK = 1,
+	MAX_ZONELISTS = 2,
+};
+
+enum kmalloc_cache_type {
+	KMALLOC_NORMAL = 0,
+	KMALLOC_RECLAIM = 1,
+	KMALLOC_DMA = 2,
+	KMALLOC_CGROUP = 3,
+	NR_KMALLOC_TYPES = 4,
+};
