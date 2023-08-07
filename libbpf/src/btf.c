@@ -1218,3 +1218,53 @@ static const void *btf_strs_data(const struct btf *btf)
 {
 	return btf->strs_data ? btf->strs_data : strset__data(btf->strs_set);
 }
+
+static void *btf_get_raw_data(const struct btf *btf, __u32 *size, bool swap_endian)
+{
+	struct btf_header *hdr = btf->hdr;
+	struct btf_type *t;
+	void *data, *p;
+	__u32 data_sz;
+	int i;
+
+	data = swap_endian ? btf->raw_data_swapped : btf->raw_data;
+	if (data) {
+		*size = btf->raw_size;
+		return data;
+	}
+
+	data_sz = hdr->hdr_len + hdr->type_len + hdr->str_len;
+	data = calloc(1, data_sz);
+	if (!data)
+		return NULL;
+	p = data;
+
+	memcpy(p, hdr, hdr->hdr_len);
+	if (swap_endian)
+		btf_bswap_hdr(p);
+	p += hdr->hdr_len;
+
+	memcpy(p, btf->types_data, hdr->type_len);
+	if (swap_endian) {
+		for (i = 0; i < btf->nr_types; i++) {
+			t = p + btf->type_offs[i];
+			/* btf_bswap_type_rest() relies on native t->info, so
+			 * we swap base type info after we swapped all the
+			 * additional information
+			 */
+			if (btf_bswap_type_rest(t))
+				goto err_out;
+			btf_bswap_type_base(t);
+		}
+	}
+	p += hdr->type_len;
+
+	memcpy(p, btf_strs_data(btf), hdr->str_len);
+	p += hdr->str_len;
+
+	*size = data_sz;
+	return data;
+err_out:
+	free(data);
+	return NULL;
+}
