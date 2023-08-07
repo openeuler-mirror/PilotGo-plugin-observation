@@ -1198,3 +1198,23 @@ done:
 	free(buf);
 	return libbpf_err(err);
 }
+
+int btf__load_into_kernel(struct btf *btf)
+{
+	return btf_load_into_kernel(btf, NULL, 0, 0);
+}
+
+int btf__fd(const struct btf *btf)
+{
+	return btf->fd;
+}
+
+void btf__set_fd(struct btf *btf, int fd)
+{
+	btf->fd = fd;
+}
+
+static const void *btf_strs_data(const struct btf *btf)
+{
+	return btf->strs_data ? btf->strs_data : strset__data(btf->strs_set);
+}
