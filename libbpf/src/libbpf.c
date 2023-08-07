@@ -1995,3 +1995,57 @@ resolve_func_ptr(const struct btf *btf, __u32 id, __u32 *res_id)
 
     return btf_is_func_proto(t) ? t : NULL;
 }
+
+static const char *__btf_kind_str(__u16 kind)
+{
+    switch (kind)
+    {
+    case BTF_KIND_UNKN:
+        return "void";
+    case BTF_KIND_INT:
+        return "int";
+    case BTF_KIND_PTR:
+        return "ptr";
+    case BTF_KIND_ARRAY:
+        return "array";
+    case BTF_KIND_STRUCT:
+        return "struct";
+    case BTF_KIND_UNION:
+        return "union";
+    case BTF_KIND_ENUM:
+        return "enum";
+    case BTF_KIND_FWD:
+        return "fwd";
+    case BTF_KIND_TYPEDEF:
+        return "typedef";
+    case BTF_KIND_VOLATILE:
+        return "volatile";
+    case BTF_KIND_CONST:
+        return "const";
+    case BTF_KIND_RESTRICT:
+        return "restrict";
+    case BTF_KIND_FUNC:
+        return "func";
+    case BTF_KIND_FUNC_PROTO:
+        return "func_proto";
+    case BTF_KIND_VAR:
+        return "var";
+    case BTF_KIND_DATASEC:
+        return "datasec";
+    case BTF_KIND_FLOAT:
+        return "float";
+    case BTF_KIND_DECL_TAG:
+        return "decl_tag";
+    case BTF_KIND_TYPE_TAG:
+        return "type_tag";
+    case BTF_KIND_ENUM64:
+        return "enum64";
+    default:
+        return "unknown";
+    }
+}
+
+const char *btf_kind_str(const struct btf_type *t)
+{
+    return __btf_kind_str(btf_kind(t));
+}
