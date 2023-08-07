@@ -1935,3 +1935,63 @@ static int bpf_object__read_kconfig_mem(struct bpf_object *obj,
     fclose(file);
     return err;
 }
+
+static int bpf_object__init_kconfig_map(struct bpf_object *obj)
+{
+    struct extern_desc *last_ext = NULL, *ext;
+    size_t map_sz;
+    int i, err;
+
+    for (i = 0; i < obj->nr_extern; i++)
+    {
+        ext = &obj->externs[i];
+        if (ext->type == EXT_KCFG)
+            last_ext = ext;
+    }
+
+    if (!last_ext)
+        return 0;
+
+    map_sz = last_ext->kcfg.data_off + last_ext->kcfg.sz;
+    err = bpf_object__init_internal_map(obj, LIBBPF_MAP_KCONFIG,
+                                        ".kconfig", obj->efile.symbols_shndx,
+                                        NULL, map_sz);
+    if (err)
+        return err;
+
+    obj->kconfig_map_idx = obj->nr_maps - 1;
+
+    return 0;
+}
+
+const struct btf_type *
+skip_mods_and_typedefs(const struct btf *btf, __u32 id, __u32 *res_id)
+{
+    const struct btf_type *t = btf__type_by_id(btf, id);
+
+    if (res_id)
+        *res_id = id;
+
+    while (btf_is_mod(t) || btf_is_typedef(t))
+    {
+        if (res_id)
+            *res_id = t->type;
+        t = btf__type_by_id(btf, t->type);
+    }
+
+    return t;
+}
+
+static const struct btf_type *
+resolve_func_ptr(const struct btf *btf, __u32 id, __u32 *res_id)
+{
+    const struct btf_type *t;
+
+    t = skip_mods_and_typedefs(btf, id, NULL);
+    if (!btf_is_ptr(t))
+        return NULL;
+
+    t = skip_mods_and_typedefs(btf, t->type, res_id);
+
+    return btf_is_func_proto(t) ? t : NULL;
+}
