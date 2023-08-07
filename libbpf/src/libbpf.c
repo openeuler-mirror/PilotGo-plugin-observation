@@ -2110,3 +2110,279 @@ static int build_map_pin_path(struct bpf_map *map, const char *path)
 
     return bpf_map__set_pin_path(map, buf);
 }
+
+enum libbpf_pin_type
+{
+    LIBBPF_PIN_NONE,
+    /* PIN_BY_NAME: pin maps by name (in /sys/fs/bpf by default) */
+    LIBBPF_PIN_BY_NAME,
+};
+
+int parse_btf_map_def(const char *map_name, struct btf *btf,
+                      const struct btf_type *def_t, bool strict,
+                      struct btf_map_def *map_def, struct btf_map_def *inner_def)
+{
+    const struct btf_type *t;
+    const struct btf_member *m;
+    bool is_inner = inner_def == NULL;
+    int vlen, i;
+
+    vlen = btf_vlen(def_t);
+    m = btf_members(def_t);
+    for (i = 0; i < vlen; i++, m++)
+    {
+        const char *name = btf__name_by_offset(btf, m->name_off);
+
+        if (!name)
+        {
+            pr_warn("map '%s': invalid field #%d.\n", map_name, i);
+            return -EINVAL;
+        }
+        if (strcmp(name, "type") == 0)
+        {
+            if (!get_map_field_int(map_name, btf, m, &map_def->map_type))
+                return -EINVAL;
+            map_def->parts |= MAP_DEF_MAP_TYPE;
+        }
+        else if (strcmp(name, "max_entries") == 0)
+        {
+            if (!get_map_field_int(map_name, btf, m, &map_def->max_entries))
+                return -EINVAL;
+            map_def->parts |= MAP_DEF_MAX_ENTRIES;
+        }
+        else if (strcmp(name, "map_flags") == 0)
+        {
+            if (!get_map_field_int(map_name, btf, m, &map_def->map_flags))
+                return -EINVAL;
+            map_def->parts |= MAP_DEF_MAP_FLAGS;
+        }
+        else if (strcmp(name, "numa_node") == 0)
+        {
+            if (!get_map_field_int(map_name, btf, m, &map_def->numa_node))
+                return -EINVAL;
+            map_def->parts |= MAP_DEF_NUMA_NODE;
+        }
+        else if (strcmp(name, "key_size") == 0)
+        {
+            __u32 sz;
+
+            if (!get_map_field_int(map_name, btf, m, &sz))
+                return -EINVAL;
+            if (map_def->key_size && map_def->key_size != sz)
+            {
+                pr_warn("map '%s': conflicting key size %u != %u.\n",
+                        map_name, map_def->key_size, sz);
+                return -EINVAL;
+            }
+            map_def->key_size = sz;
+            map_def->parts |= MAP_DEF_KEY_SIZE;
+        }
+        else if (strcmp(name, "key") == 0)
+        {
+            __s64 sz;
+
+            t = btf__type_by_id(btf, m->type);
+            if (!t)
+            {
+                pr_warn("map '%s': key type [%d] not found.\n",
+                        map_name, m->type);
+                return -EINVAL;
+            }
+            if (!btf_is_ptr(t))
+            {
+                pr_warn("map '%s': key spec is not PTR: %s.\n",
+                        map_name, btf_kind_str(t));
+                return -EINVAL;
+            }
+            sz = btf__resolve_size(btf, t->type);
+            if (sz < 0)
+            {
+                pr_warn("map '%s': can't determine key size for type [%u]: %zd.\n",
+                        map_name, t->type, (ssize_t)sz);
+                return sz;
+            }
+            if (map_def->key_size && map_def->key_size != sz)
+            {
+                pr_warn("map '%s': conflicting key size %u != %zd.\n",
+                        map_name, map_def->key_size, (ssize_t)sz);
+                return -EINVAL;
+            }
+            map_def->key_size = sz;
+            map_def->key_type_id = t->type;
+            map_def->parts |= MAP_DEF_KEY_SIZE | MAP_DEF_KEY_TYPE;
+        }
+        else if (strcmp(name, "value_size") == 0)
+        {
+            __u32 sz;
+
+            if (!get_map_field_int(map_name, btf, m, &sz))
+                return -EINVAL;
+            if (map_def->value_size && map_def->value_size != sz)
+            {
+                pr_warn("map '%s': conflicting value size %u != %u.\n",
+                        map_name, map_def->value_size, sz);
+                return -EINVAL;
+            }
+            map_def->value_size = sz;
+            map_def->parts |= MAP_DEF_VALUE_SIZE;
+        }
+        else if (strcmp(name, "value") == 0)
+        {
+            __s64 sz;
+
+            t = btf__type_by_id(btf, m->type);
+            if (!t)
+            {
+                pr_warn("map '%s': value type [%d] not found.\n",
+                        map_name, m->type);
+                return -EINVAL;
+            }
+            if (!btf_is_ptr(t))
+            {
+                pr_warn("map '%s': value spec is not PTR: %s.\n",
+                        map_name, btf_kind_str(t));
+                return -EINVAL;
+            }
+            sz = btf__resolve_size(btf, t->type);
+            if (sz < 0)
+            {
+                pr_warn("map '%s': can't determine value size for type [%u]: %zd.\n",
+                        map_name, t->type, (ssize_t)sz);
+                return sz;
+            }
+            if (map_def->value_size && map_def->value_size != sz)
+            {
+                pr_warn("map '%s': conflicting value size %u != %zd.\n",
+                        map_name, map_def->value_size, (ssize_t)sz);
+                return -EINVAL;
+            }
+            map_def->value_size = sz;
+            map_def->value_type_id = t->type;
+            map_def->parts |= MAP_DEF_VALUE_SIZE | MAP_DEF_VALUE_TYPE;
+        }
+        else if (strcmp(name, "values") == 0)
+        {
+            bool is_map_in_map = bpf_map_type__is_map_in_map(map_def->map_type);
+            bool is_prog_array = map_def->map_type == BPF_MAP_TYPE_PROG_ARRAY;
+            const char *desc = is_map_in_map ? "map-in-map inner" : "prog-array value";
+            char inner_map_name[128];
+            int err;
+
+            if (is_inner)
+            {
+                pr_warn("map '%s': multi-level inner maps not supported.\n",
+                        map_name);
+                return -ENOTSUP;
+            }
+            if (i != vlen - 1)
+            {
+                pr_warn("map '%s': '%s' member should be last.\n",
+                        map_name, name);
+                return -EINVAL;
+            }
+            if (!is_map_in_map && !is_prog_array)
+            {
+                pr_warn("map '%s': should be map-in-map or prog-array.\n",
+                        map_name);
+                return -ENOTSUP;
+            }
+            if (map_def->value_size && map_def->value_size != 4)
+            {
+                pr_warn("map '%s': conflicting value size %u != 4.\n",
+                        map_name, map_def->value_size);
+                return -EINVAL;
+            }
+            map_def->value_size = 4;
+            t = btf__type_by_id(btf, m->type);
+            if (!t)
+            {
+                pr_warn("map '%s': %s type [%d] not found.\n",
+                        map_name, desc, m->type);
+                return -EINVAL;
+            }
+            if (!btf_is_array(t) || btf_array(t)->nelems)
+            {
+                pr_warn("map '%s': %s spec is not a zero-sized array.\n",
+                        map_name, desc);
+                return -EINVAL;
+            }
+            t = skip_mods_and_typedefs(btf, btf_array(t)->type, NULL);
+            if (!btf_is_ptr(t))
+            {
+                pr_warn("map '%s': %s def is of unexpected kind %s.\n",
+                        map_name, desc, btf_kind_str(t));
+                return -EINVAL;
+            }
+            t = skip_mods_and_typedefs(btf, t->type, NULL);
+            if (is_prog_array)
+            {
+                if (!btf_is_func_proto(t))
+                {
+                    pr_warn("map '%s': prog-array value def is of unexpected kind %s.\n",
+                            map_name, btf_kind_str(t));
+                    return -EINVAL;
+                }
+                continue;
+            }
+            if (!btf_is_struct(t))
+            {
+                pr_warn("map '%s': map-in-map inner def is of unexpected kind %s.\n",
+                        map_name, btf_kind_str(t));
+                return -EINVAL;
+            }
+
+            snprintf(inner_map_name, sizeof(inner_map_name), "%s.inner", map_name);
+            err = parse_btf_map_def(inner_map_name, btf, t, strict, inner_def, NULL);
+            if (err)
+                return err;
+
+            map_def->parts |= MAP_DEF_INNER_MAP;
+        }
+        else if (strcmp(name, "pinning") == 0)
+        {
+            __u32 val;
+
+            if (is_inner)
+            {
+                pr_warn("map '%s': inner def can't be pinned.\n", map_name);
+                return -EINVAL;
+            }
+            if (!get_map_field_int(map_name, btf, m, &val))
+                return -EINVAL;
+            if (val != LIBBPF_PIN_NONE && val != LIBBPF_PIN_BY_NAME)
+            {
+                pr_warn("map '%s': invalid pinning value %u.\n",
+                        map_name, val);
+                return -EINVAL;
+            }
+            map_def->pinning = val;
+            map_def->parts |= MAP_DEF_PINNING;
+        }
+        else if (strcmp(name, "map_extra") == 0)
+        {
+            __u32 map_extra;
+
+            if (!get_map_field_int(map_name, btf, m, &map_extra))
+                return -EINVAL;
+            map_def->map_extra = map_extra;
+            map_def->parts |= MAP_DEF_MAP_EXTRA;
+        }
+        else
+        {
+            if (strict)
+            {
+                pr_warn("map '%s': unknown field '%s'.\n", map_name, name);
+                return -ENOTSUP;
+            }
+            pr_debug("map '%s': ignoring unknown field '%s'.\n", map_name, name);
+        }
+    }
+
+    if (map_def->map_type == BPF_MAP_TYPE_UNSPEC)
+    {
+        pr_warn("map '%s': map type isn't specified.\n", map_name);
+        return -EINVAL;
+    }
+
+    return 0;
+}
