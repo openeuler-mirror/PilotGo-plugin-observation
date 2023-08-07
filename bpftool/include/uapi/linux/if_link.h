@@ -717,3 +717,63 @@ enum {
 	IFLA_VF_VLAN_INFO,	/* VLAN ID, QoS and VLAN protocol */
 	__IFLA_VF_VLAN_INFO_MAX,
 };
+#define IFLA_VF_VLAN_INFO_MAX (__IFLA_VF_VLAN_INFO_MAX - 1)
+#define MAX_VLAN_LIST_LEN 1
+
+struct ifla_vf_vlan_info {
+	__u32 vf;
+	__u32 vlan; /* 0 - 4095, 0 disables VLAN filter */
+	__u32 qos;
+	__be16 vlan_proto; /* VLAN protocol either 802.1Q or 802.1ad */
+};
+
+struct ifla_vf_tx_rate {
+	__u32 vf;
+	__u32 rate; /* Max TX bandwidth in Mbps, 0 disables throttling */
+};
+
+struct ifla_vf_rate {
+	__u32 vf;
+	__u32 min_tx_rate; /* Min Bandwidth in Mbps */
+	__u32 max_tx_rate; /* Max Bandwidth in Mbps */
+};
+
+struct ifla_vf_spoofchk {
+	__u32 vf;
+	__u32 setting;
+};
+
+struct ifla_vf_guid {
+	__u32 vf;
+	__u64 guid;
+};
+
+enum {
+	IFLA_VF_LINK_STATE_AUTO,	/* link state of the uplink */
+	IFLA_VF_LINK_STATE_ENABLE,	/* link always up */
+	IFLA_VF_LINK_STATE_DISABLE,	/* link always down */
+	__IFLA_VF_LINK_STATE_MAX,
+};
+
+struct ifla_vf_link_state {
+	__u32 vf;
+	__u32 link_state;
+};
+
+struct ifla_vf_rss_query_en {
+	__u32 vf;
+	__u32 setting;
+};
+
+enum {
+	IFLA_VF_STATS_RX_PACKETS,
+	IFLA_VF_STATS_TX_PACKETS,
+	IFLA_VF_STATS_RX_BYTES,
+	IFLA_VF_STATS_TX_BYTES,
+	IFLA_VF_STATS_BROADCAST,
+	IFLA_VF_STATS_MULTICAST,
+	IFLA_VF_STATS_PAD,
+	IFLA_VF_STATS_RX_DROPPED,
+	IFLA_VF_STATS_TX_DROPPED,
+	__IFLA_VF_STATS_MAX,
+};
