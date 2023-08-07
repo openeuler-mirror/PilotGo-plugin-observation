@@ -1794,3 +1794,41 @@ struct optimistic_spin_node {
 	int locked;
 	int cpu;
 };
+
+typedef signed char __s8;
+
+typedef __s8 s8;
+
+typedef __kernel_long_t __kernel_ssize_t;
+
+typedef long long int __kernel_loff_t;
+
+typedef __u32 __le32;
+
+typedef unsigned int __poll_t;
+
+typedef u32 __kernel_dev_t;
+
+typedef __kernel_dev_t dev_t;
+
+typedef short unsigned int umode_t;
+
+typedef __kernel_loff_t loff_t;
+
+typedef __kernel_ssize_t ssize_t;
+
+typedef s32 int32_t;
+
+typedef u32 uint32_t;
+
+typedef u64 sector_t;
+
+typedef u64 blkcnt_t;
+
+typedef unsigned int fmode_t;
+
+struct kernel_symbol {
+	int value_offset;
+	int name_offset;
+	int namespace_offset;
+};
