@@ -2049,3 +2049,64 @@ const char *btf_kind_str(const struct btf_type *t)
 {
     return __btf_kind_str(btf_kind(t));
 }
+
+static bool get_map_field_int(const char *map_name, const struct btf *btf,
+                              const struct btf_member *m, __u32 *res)
+{
+    const struct btf_type *t = skip_mods_and_typedefs(btf, m->type, NULL);
+    const char *name = btf__name_by_offset(btf, m->name_off);
+    const struct btf_array *arr_info;
+    const struct btf_type *arr_t;
+
+    if (!btf_is_ptr(t))
+    {
+        pr_warn("map '%s': attr '%s': expected PTR, got %s.\n",
+                map_name, name, btf_kind_str(t));
+        return false;
+    }
+
+    arr_t = btf__type_by_id(btf, t->type);
+    if (!arr_t)
+    {
+        pr_warn("map '%s': attr '%s': type [%u] not found.\n",
+                map_name, name, t->type);
+        return false;
+    }
+    if (!btf_is_array(arr_t))
+    {
+        pr_warn("map '%s': attr '%s': expected ARRAY, got %s.\n",
+                map_name, name, btf_kind_str(arr_t));
+        return false;
+    }
+    arr_info = btf_array(arr_t);
+    *res = arr_info->nelems;
+    return true;
+}
+
+static int pathname_concat(char *buf, size_t buf_sz, const char *path, const char *name)
+{
+    int len;
+
+    len = snprintf(buf, buf_sz, "%s/%s", path, name);
+    if (len < 0)
+        return -EINVAL;
+    if (len >= buf_sz)
+        return -ENAMETOOLONG;
+
+    return 0;
+}
+
+static int build_map_pin_path(struct bpf_map *map, const char *path)
+{
+    char buf[PATH_MAX];
+    int err;
+
+    if (!path)
+        path = "/sys/fs/bpf";
+
+    err = pathname_concat(buf, sizeof(buf), path, bpf_map__name(map));
+    if (err)
+        return err;
+
+    return bpf_map__set_pin_path(map, buf);
+}
