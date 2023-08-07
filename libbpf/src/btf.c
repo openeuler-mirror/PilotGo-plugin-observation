@@ -1355,3 +1355,35 @@ exit_free:
 	free(ptr);
 	return btf;
 }
+
+struct btf *btf__load_from_kernel_by_id_split(__u32 id, struct btf *base_btf)
+{
+	struct btf *btf;
+	int btf_fd;
+
+	btf_fd = bpf_btf_get_fd_by_id(id);
+	if (btf_fd < 0)
+		return libbpf_err_ptr(-errno);
+
+	btf = btf_get_from_fd(btf_fd, base_btf);
+	close(btf_fd);
+
+	return libbpf_ptr(btf);
+}
+
+struct btf *btf__load_from_kernel_by_id(__u32 id)
+{
+	return btf__load_from_kernel_by_id_split(id, NULL);
+}
+
+static void btf_invalidate_raw_data(struct btf *btf)
+{
+	if (btf->raw_data) {
+		free(btf->raw_data);
+		btf->raw_data = NULL;
+	}
+	if (btf->raw_data_swapped) {
+		free(btf->raw_data_swapped);
+		btf->raw_data_swapped = NULL;
+	}
+}
