@@ -1862,3 +1862,35 @@ struct file_system_type {
 	struct lock_class_key invalidate_lock_key;
 	struct lock_class_key i_mutex_dir_key;
 };
+
+struct ratelimit_state {
+	raw_spinlock_t lock;
+	int interval;
+	int burst;
+	int printed;
+	int missed;
+	long unsigned int begin;
+	long unsigned int flags;
+};
+
+typedef void *fl_owner_t;
+
+struct kiocb;
+
+struct iov_iter;
+
+struct io_comp_batch;
+
+struct dir_context;
+
+struct poll_table_struct;
+
+struct vm_area_struct;
+
+struct inode;
+
+struct file_lock;
+
+struct seq_file;
+
+struct io_uring_cmd;
