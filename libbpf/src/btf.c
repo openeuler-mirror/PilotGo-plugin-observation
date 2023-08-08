@@ -1627,5 +1627,50 @@ int btf__add_btf(struct btf *btf, const struct btf *src_btf)
 	/* bulk copy types data for all types from src_btf */
 	memcpy(t, src_btf->types_data, data_sz);
 
+	for (i = 0; i < cnt; i++) {
+		sz = btf_type_size(t);
+		if (sz < 0) {
+			/* unlikely, has to be corrupted src_btf */
+			err = sz;
+			goto err_out;
+		}
+
+		/* fill out type ID to type offset mapping for lookups by type ID */
+		*off = t - btf->types_data;
+
+		/* add, dedup, and remap strings referenced by this BTF type */
+		err = btf_type_visit_str_offs(t, btf_rewrite_str, &p);
+		if (err)
+			goto err_out;
+
+		/* remap all type IDs referenced from this BTF type */
+		err = btf_type_visit_type_ids(t, btf_rewrite_type_ids, btf);
+		if (err)
+			goto err_out;
+
+		/* go to next type data and type offset index entry */
+		t += sz;
+		off++;
+	}
+
+	btf->hdr->type_len += data_sz;
+	btf->hdr->str_off += data_sz;
+	btf->nr_types += cnt;
+
+	hashmap__free(p.str_off_map);
+
+	/* return type ID of the first added BTF type */
+	return btf->start_id + btf->nr_types - cnt;
+err_out:
+	/* zero out preallocated memory as if it was just allocated with
+	 * libbpf_add_mem()
+	 */
+	memset(btf->types_data + btf->hdr->type_len, 0, data_sz);
+	memset(btf->strs_data + old_strs_len, 0, btf->hdr->str_len - old_strs_len);
+
+	btf->hdr->str_len = old_strs_len;
+
+	hashmap__free(p.str_off_map)
+
 	return libbpf_err(err);
 }
