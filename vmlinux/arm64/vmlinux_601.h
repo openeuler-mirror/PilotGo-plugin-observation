@@ -1949,3 +1949,18 @@ struct timespec64 {
 	time64_t tv_sec;
 	long int tv_nsec;
 };
+
+typedef u64 pteval_t;
+
+typedef struct {
+	pteval_t pgprot;
+} pgprot_t;
+
+struct workqueue_struct;
+
+struct delayed_work {
+	struct work_struct work;
+	struct timer_list timer;
+	struct workqueue_struct *wq;
+	int cpu;
+};
