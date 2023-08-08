@@ -60,6 +60,201 @@ static void get_obj_name(char *name, const char *file)
 	sanitize_identifier(name);
 }
 
+static void get_header_guard(char *guard, const char *obj_name, const char *suffix)
+{
+	int i;
+
+	sprintf(guard, "__%s_%s__", obj_name, suffix);
+	for (i = 0; guard[i]; i++)
+		guard[i] = toupper(guard[i]);
+}
+
+static bool get_map_ident(const struct bpf_map *map, char *buf, size_t buf_sz)
+{
+	static const char *sfxs[] = { ".data", ".rodata", ".bss", ".kconfig" };
+	const char *name = bpf_map__name(map);
+	int i, n;
+
+	if (!bpf_map__is_internal(map)) {
+		snprintf(buf, buf_sz, "%s", name);
+		return true;
+	}
+
+	for  (i = 0, n = ARRAY_SIZE(sfxs); i < n; i++) {
+		const char *sfx = sfxs[i], *p;
+
+		p = strstr(name, sfx);
+		if (p) {
+			snprintf(buf, buf_sz, "%s", p + 1);
+			sanitize_identifier(buf);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool get_datasec_ident(const char *sec_name, char *buf, size_t buf_sz)
+{
+	static const char *pfxs[] = { ".data", ".rodata", ".bss", ".kconfig" };
+	int i, n;
+
+	for  (i = 0, n = ARRAY_SIZE(pfxs); i < n; i++) {
+		const char *pfx = pfxs[i];
+
+		if (str_has_prefix(sec_name, pfx)) {
+			snprintf(buf, buf_sz, "%s", sec_name + 1);
+			sanitize_identifier(buf);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void codegen_btf_dump_printf(void *ctx, const char *fmt, va_list args)
+{
+	vprintf(fmt, args);
+}
+
+static int codegen_datasec_def(struct bpf_object *obj,
+			       struct btf *btf,
+			       struct btf_dump *d,
+			       const struct btf_type *sec,
+			       const char *obj_name)
+{
+	const char *sec_name = btf__name_by_offset(btf, sec->name_off);
+	const struct btf_var_secinfo *sec_var = btf_var_secinfos(sec);
+	int i, err, off = 0, pad_cnt = 0, vlen = btf_vlen(sec);
+	char var_ident[256], sec_ident[256];
+	bool strip_mods = false;
+
+	if (!get_datasec_ident(sec_name, sec_ident, sizeof(sec_ident)))
+		return 0;
+
+	if (strcmp(sec_name, ".kconfig") != 0)
+		strip_mods = true;
+
+	printf("	struct %s__%s {\n", obj_name, sec_ident);
+	for (i = 0; i < vlen; i++, sec_var++) {
+		const struct btf_type *var = btf__type_by_id(btf, sec_var->type);
+		const char *var_name = btf__name_by_offset(btf, var->name_off);
+		DECLARE_LIBBPF_OPTS(btf_dump_emit_type_decl_opts, opts,
+			.field_name = var_ident,
+			.indent_level = 2,
+			.strip_mods = strip_mods,
+		);
+		int need_off = sec_var->offset, align_off, align;
+		__u32 var_type_id = var->type;
+
+		if (btf_var(var)->linkage == BTF_VAR_STATIC)
+			continue;
+
+		if (off > need_off) {
+			p_err("Something is wrong for %s's variable #%d: need offset %d, already at %d.\n",
+			      sec_name, i, need_off, off);
+			return -EINVAL;
+		}
+
+		align = btf__align_of(btf, var->type);
+		if (align <= 0) {
+			p_err("Failed to determine alignment of variable '%s': %d",
+			      var_name, align);
+			return -EINVAL;
+		}
+		if (align > 4)
+			align = 4;
+
+		align_off = (off + align - 1) / align * align;
+		if (align_off != need_off) {
+			printf("\t\tchar __pad%d[%d];\n",
+			       pad_cnt, need_off - off);
+			pad_cnt++;
+		}
+		var_ident[0] = '\0';
+		strncat(var_ident, var_name, sizeof(var_ident) - 1);
+		sanitize_identifier(var_ident);
+
+		printf("\t\t");
+		err = btf_dump__emit_type_decl(d, var_type_id, &opts);
+		if (err)
+			return err;
+		printf(";\n");
+
+		off = sec_var->offset + sec_var->size;
+	}
+	printf("	} *%s;\n", sec_ident);
+	return 0;
+}
+
+static const struct btf_type *find_type_for_map(struct btf *btf, const char *map_ident)
+{
+	int n = btf__type_cnt(btf), i;
+	char sec_ident[256];
+
+	for (i = 1; i < n; i++) {
+		const struct btf_type *t = btf__type_by_id(btf, i);
+		const char *name;
+
+		if (!btf_is_datasec(t))
+			continue;
+
+		name = btf__str_by_offset(btf, t->name_off);
+		if (!get_datasec_ident(name, sec_ident, sizeof(sec_ident)))
+			continue;
+
+		if (strcmp(sec_ident, map_ident) == 0)
+			return t;
+	}
+	return NULL;
+}
+
+static bool is_internal_mmapable_map(const struct bpf_map *map, char *buf, size_t sz)
+{
+	if (!bpf_map__is_internal(map) || !(bpf_map__map_flags(map) & BPF_F_MMAPABLE))
+		return false;
+
+	if (!get_map_ident(map, buf, sz))
+		return false;
+
+	return true;
+}
+
+static int codegen_datasecs(struct bpf_object *obj, const char *obj_name)
+{
+	struct btf *btf = bpf_object__btf(obj);
+	struct btf_dump *d;
+	struct bpf_map *map;
+	const struct btf_type *sec;
+	char map_ident[256];
+	int err = 0;
+
+	d = btf_dump__new(btf, codegen_btf_dump_printf, NULL, NULL);
+	if (!d)
+		return -errno;
+
+	bpf_object__for_each_map(map, obj) {
+		/* only generate definitions for memory-mapped internal maps */
+		if (!is_internal_mmapable_map(map, map_ident, sizeof(map_ident)))
+			continue;
+
+		sec = find_type_for_map(btf, map_ident);
+		if (!sec) {
+			printf("	struct %s__%s {\n", obj_name, map_ident);
+			printf("	} *%s;\n", map_ident);
+		} else {
+			err = codegen_datasec_def(obj, btf, d, sec, obj_name);
+			if (err)
+				goto out;
+		}
+	}
+
+
+out:
+	btf_dump__free(d);
+	return err;
+}
+
 static int do_skeleton(int argc, char **argv)
 {
 	char header_guard[MAX_OBJ_NAME_LEN + sizeof("__SKEL_H__")];
