@@ -2597,3 +2597,60 @@ static int bpf_object__init_user_btf_map(struct bpf_object *obj,
 
     return 0;
 }
+
+static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict,
+                                          const char *pin_root_path)
+{
+    const struct btf_type *sec = NULL;
+    int nr_types, i, vlen, err;
+    const struct btf_type *t;
+    const char *name;
+    Elf_Data *data;
+    Elf_Scn *scn;
+
+    if (obj->efile.btf_maps_shndx < 0)
+        return 0;
+
+    scn = elf_sec_by_idx(obj, obj->efile.btf_maps_shndx);
+    data = elf_sec_data(obj, scn);
+    if (!scn || !data)
+    {
+        pr_warn("elf: failed to get %s map definitions for %s\n",
+                MAPS_ELF_SEC, obj->path);
+        return -EINVAL;
+    }
+
+    nr_types = btf__type_cnt(obj->btf);
+    for (i = 1; i < nr_types; i++)
+    {
+        t = btf__type_by_id(obj->btf, i);
+        if (!btf_is_datasec(t))
+            continue;
+        name = btf__name_by_offset(obj->btf, t->name_off);
+        if (strcmp(name, MAPS_ELF_SEC) == 0)
+        {
+            sec = t;
+            obj->efile.btf_maps_sec_btf_id = i;
+            break;
+        }
+    }
+
+    if (!sec)
+    {
+        pr_warn("DATASEC '%s' not found.\n", MAPS_ELF_SEC);
+        return -ENOENT;
+    }
+
+    vlen = btf_vlen(sec);
+    for (i = 0; i < vlen; i++)
+    {
+        err = bpf_object__init_user_btf_map(obj, sec, i,
+                                            obj->efile.btf_maps_shndx,
+                                            data, strict,
+                                            pin_root_path);
+        if (err)
+            return err;
+    }
+
+    return 0;
+}
