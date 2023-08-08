@@ -2654,3 +2654,46 @@ static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict,
 
     return 0;
 }
+
+static int bpf_object__init_maps(struct bpf_object *obj,
+                                 const struct bpf_object_open_opts *opts)
+{
+    const char *pin_root_path;
+    bool strict;
+    int err = 0;
+
+    strict = !OPTS_GET(opts, relaxed_maps, false);
+    pin_root_path = OPTS_GET(opts, pin_root_path, NULL);
+
+    err = bpf_object__init_user_btf_maps(obj, strict, pin_root_path);
+    err = err ?: bpf_object__init_global_data_maps(obj);
+    err = err ?: bpf_object__init_kconfig_map(obj);
+    err = err ?: bpf_object_init_struct_ops(obj);
+
+    return err;
+}
+
+static bool section_have_execinstr(struct bpf_object *obj, int idx)
+{
+    Elf64_Shdr *sh;
+
+    sh = elf_sec_hdr(obj, elf_sec_by_idx(obj, idx));
+    if (!sh)
+        return false;
+
+    return sh->sh_flags & SHF_EXECINSTR;
+}
+
+static bool btf_needs_sanitization(struct bpf_object *obj)
+{
+    bool has_func_global = kernel_supports(obj, FEAT_BTF_GLOBAL_FUNC);
+    bool has_datasec = kernel_supports(obj, FEAT_BTF_DATASEC);
+    bool has_float = kernel_supports(obj, FEAT_BTF_FLOAT);
+    bool has_func = kernel_supports(obj, FEAT_BTF_FUNC);
+    bool has_decl_tag = kernel_supports(obj, FEAT_BTF_DECL_TAG);
+    bool has_type_tag = kernel_supports(obj, FEAT_BTF_TYPE_TAG);
+    bool has_enum64 = kernel_supports(obj, FEAT_BTF_ENUM64);
+
+    return !has_func || !has_datasec || !has_func_global || !has_float ||
+           !has_decl_tag || !has_type_tag || !has_enum64;
+}
