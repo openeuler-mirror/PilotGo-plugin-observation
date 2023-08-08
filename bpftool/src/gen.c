@@ -277,7 +277,6 @@ static int codegen_subskel_datasecs(struct bpf_object *obj, const char *obj_name
 		return -errno;
 
 	bpf_object__for_each_map(map, obj) {
-		/* only generate definitions for memory-mapped internal maps */
 		if (!is_internal_mmapable_map(map, map_ident, sizeof(map_ident)))
 			continue;
 
@@ -298,7 +297,6 @@ static int codegen_subskel_datasecs(struct bpf_object *obj, const char *obj_name
 			DECLARE_LIBBPF_OPTS(btf_dump_emit_type_decl_opts, opts,
 				.indent_level = 2,
 				.strip_mods = strip_mods,
-				/* we'll print the name separately */
 				.field_name = "",
 			);
 
@@ -306,22 +304,11 @@ static int codegen_subskel_datasecs(struct bpf_object *obj, const char *obj_name
 			var_name = btf__name_by_offset(btf, var->name_off);
 			var_type_id = var->type;
 
-			/* static variables are not exposed through BPF skeleton */
 			if (btf_var(var)->linkage == BTF_VAR_STATIC)
 				continue;
-
-			/* The datasec member has KIND_VAR but we want the
-			 * underlying type of the variable (e.g. KIND_INT).
-			 */
 			var = skip_mods_and_typedefs(btf, var->type, NULL);
 
 			printf("\t\t");
-			/* Func and array members require special handling.
-			 * Instead of producing `typename *var`, they produce
-			 * `typeof(typename) *var`. This allows us to keep a
-			 * similar syntax where the identifier is just prefixed
-			 * by *, allowing us to ignore C declaration minutiae.
-			 */
 			needs_typeof = btf_is_array(var) || btf_is_ptr_to_func_proto(btf, var);
 			if (needs_typeof)
 				printf("typeof(");
@@ -341,6 +328,152 @@ static int codegen_subskel_datasecs(struct bpf_object *obj, const char *obj_name
 out:
 	btf_dump__free(d);
 	return err;
+}
+
+static void codegen(const char *template, ...)
+{
+	const char *src, *end;
+	int skip_tabs = 0, n;
+	char *s, *dst;
+	va_list args;
+	char c;
+
+	n = strlen(template);
+	s = malloc(n + 1);
+	if (!s)
+		exit(-1);
+	src = template;
+	dst = s;
+
+	while ((c = *src++)) {
+		if (c == '\t') {
+			skip_tabs++;
+		} else if (c == '\n') {
+			break;
+		} else {
+			p_err("unrecognized character at pos %td in template '%s': '%c'",
+			      src - template - 1, template, c);
+			free(s);
+			exit(-1);
+		}
+	}
+
+	while (*src) {
+		for (n = skip_tabs; n > 0; n--, src++) {
+			if (*src != '\t') {
+				p_err("not enough tabs at pos %td in template '%s'",
+				      src - template - 1, template);
+				free(s);
+				exit(-1);
+			}
+		}
+		end = strchrnul(src, '\n');
+		for (n = end - src; n > 0 && isspace(src[n - 1]); n--)
+			;
+		memcpy(dst, src, n);
+		dst += n;
+		if (*end)
+			*dst++ = '\n';
+		src = *end ? end + 1 : end;
+	}
+	*dst++ = '\0';
+	va_start(args, template);
+	n = vprintf(s, args);
+	va_end(args);
+
+	free(s);
+}
+
+static void print_hex(const char *data, int data_sz)
+{
+	int i, len;
+
+	for (i = 0, len = 0; i < data_sz; i++) {
+		int w = data[i] ? 4 : 2;
+
+		len += w;
+		if (len > 78) {
+			printf("\\\n");
+			len = w;
+		}
+		if (!data[i])
+			printf("\\0");
+		else
+			printf("\\x%02x", (unsigned char)data[i]);
+	}
+}
+
+static size_t bpf_map_mmap_sz(const struct bpf_map *map)
+{
+	long page_sz = sysconf(_SC_PAGE_SIZE);
+	size_t map_sz;
+
+	map_sz = (size_t)roundup(bpf_map__value_size(map), 8) * bpf_map__max_entries(map);
+	map_sz = roundup(map_sz, page_sz);
+	return map_sz;
+}
+
+static void codegen_asserts(struct bpf_object *obj, const char *obj_name)
+{
+	struct btf *btf = bpf_object__btf(obj);
+	struct bpf_map *map;
+	struct btf_var_secinfo *sec_var;
+	int i, vlen;
+	const struct btf_type *sec;
+	char map_ident[256], var_ident[256];
+
+	if (!btf)
+		return;
+
+	codegen("\
+		\n\
+		__attribute__((unused)) static void			    \n\
+		%1$s__assert(struct %1$s *s __attribute__((unused)))	    \n\
+		{							    \n\
+		#ifdef __cplusplus					    \n\
+		#define _Static_assert static_assert			    \n\
+		#endif							    \n\
+		", obj_name);
+
+	bpf_object__for_each_map(map, obj) {
+		if (!is_internal_mmapable_map(map, map_ident, sizeof(map_ident)))
+			continue;
+
+		sec = find_type_for_map(btf, map_ident);
+		if (!sec) {
+			continue;
+		}
+
+		sec_var = btf_var_secinfos(sec);
+		vlen =  btf_vlen(sec);
+
+		for (i = 0; i < vlen; i++, sec_var++) {
+			const struct btf_type *var = btf__type_by_id(btf, sec_var->type);
+			const char *var_name = btf__name_by_offset(btf, var->name_off);
+			long var_size;
+
+			if (btf_var(var)->linkage == BTF_VAR_STATIC)
+				continue;
+
+			var_size = btf__resolve_size(btf, var->type);
+			if (var_size < 0)
+				continue;
+
+			var_ident[0] = '\0';
+			strncat(var_ident, var_name, sizeof(var_ident) - 1);
+			sanitize_identifier(var_ident);
+
+			printf("\t_Static_assert(sizeof(s->%s->%s) == %ld, \"unexpected size of '%s'\");\n",
+			       map_ident, var_ident, var_size, var_ident);
+		}
+	}
+	codegen("\
+		\n\
+		#ifdef __cplusplus					    \n\
+		#undef _Static_assert					    \n\
+		#endif							    \n\
+		}							    \n\
+		");
 }
 
 static int do_skeleton(int argc, char **argv)
