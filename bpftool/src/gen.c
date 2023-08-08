@@ -460,6 +460,76 @@ out:
 	return err;
 }
 
+static int minimize_btf(const char *src_btf, const char *dst_btf, const char *objspaths[])
+{
+	struct btfgen_info *info;
+	struct btf *btf_new = NULL;
+	int err, i;
+
+	info = btfgen_new_info(src_btf);
+	if (!info) {
+		err = -errno;
+		p_err("failed to allocate info structure: %s", strerror(errno));
+		goto out;
+	}
+
+	for (i = 0; objspaths[i] != NULL; i++) {
+		err = btfgen_record_obj(info, objspaths[i]);
+		if (err) {
+			p_err("error recording relocations for %s: %s", objspaths[i],
+			      strerror(errno));
+			goto out;
+		}
+	}
+
+	btf_new = btfgen_get_btf(info);
+	if (!btf_new) {
+		err = -errno;
+		p_err("error generating BTF: %s", strerror(errno));
+		goto out;
+	}
+
+	err = btf_save_raw(btf_new, dst_btf);
+	if (err) {
+		p_err("error saving btf file: %s", strerror(errno));
+		goto out;
+	}
+
+out:
+	btf__free(btf_new);
+	btfgen_free_info(info);
+
+	return err;
+}
+
+static int do_min_core_btf(int argc, char **argv)
+{
+	const char *input, *output, **objs;
+	int i, err;
+
+	if (!REQ_ARGS(3)) {
+		usage();
+		return -1;
+	}
+
+	input = GET_ARG();
+	output = GET_ARG();
+
+	objs = (const char **) calloc(argc + 1, sizeof(*objs));
+	if (!objs) {
+		p_err("failed to allocate array for object names");
+		return -ENOMEM;
+	}
+
+	i = 0;
+	while (argc)
+		objs[i++] = GET_ARG();
+
+	err = minimize_btf(input, output, objs);
+	free(objs);
+	return err;
+}
+
 static const struct cmd cmds[] = {
 	{ "object",		do_object },
 	{ "skeleton",		do_skeleton },
