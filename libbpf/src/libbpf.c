@@ -2472,18 +2472,3 @@ static void fill_map_from_def(struct bpf_map *map, const struct btf_map_def *def
     if (def->parts & MAP_DEF_INNER_MAP)
         pr_debug("map '%s': found inner map definition.\n", map->name);
 }
-
-static const char *btf_var_linkage_str(__u32 linkage)
-{
-    switch (linkage)
-    {
-    case BTF_VAR_STATIC:
-        return "static";
-    case BTF_VAR_GLOBAL_ALLOCATED:
-        return "global";
-    case BTF_VAR_GLOBAL_EXTERN:
-        return "extern";
-    default:
-        return "unknown";
-    }
-}
