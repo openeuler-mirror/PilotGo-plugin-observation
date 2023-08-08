@@ -2472,3 +2472,128 @@ static void fill_map_from_def(struct bpf_map *map, const struct btf_map_def *def
     if (def->parts & MAP_DEF_INNER_MAP)
         pr_debug("map '%s': found inner map definition.\n", map->name);
 }
+
+static const char *btf_var_linkage_str(__u32 linkage)
+{
+    switch (linkage)
+    {
+    case BTF_VAR_STATIC:
+        return "static";
+    case BTF_VAR_GLOBAL_ALLOCATED:
+        return "global";
+    case BTF_VAR_GLOBAL_EXTERN:
+        return "extern";
+    default:
+        return "unknown";
+    }
+}
+
+static int bpf_object__init_user_btf_map(struct bpf_object *obj,
+                                         const struct btf_type *sec,
+                                         int var_idx, int sec_idx,
+                                         const Elf_Data *data, bool strict,
+                                         const char *pin_root_path)
+{
+    struct btf_map_def map_def = {}, inner_def = {};
+    const struct btf_type *var, *def;
+    const struct btf_var_secinfo *vi;
+    const struct btf_var *var_extra;
+    const char *map_name;
+    struct bpf_map *map;
+    int err;
+
+    vi = btf_var_secinfos(sec) + var_idx;
+    var = btf__type_by_id(obj->btf, vi->type);
+    var_extra = btf_var(var);
+    map_name = btf__name_by_offset(obj->btf, var->name_off);
+
+    if (map_name == NULL || map_name[0] == '\0')
+    {
+        pr_warn("map #%d: empty name.\n", var_idx);
+        return -EINVAL;
+    }
+    if ((__u64)vi->offset + vi->size > data->d_size)
+    {
+        pr_warn("map '%s' BTF data is corrupted.\n", map_name);
+        return -EINVAL;
+    }
+    if (!btf_is_var(var))
+    {
+        pr_warn("map '%s': unexpected var kind %s.\n",
+                map_name, btf_kind_str(var));
+        return -EINVAL;
+    }
+    if (var_extra->linkage != BTF_VAR_GLOBAL_ALLOCATED)
+    {
+        pr_warn("map '%s': unsupported map linkage %s.\n",
+                map_name, btf_var_linkage_str(var_extra->linkage));
+        return -EOPNOTSUPP;
+    }
+
+    def = skip_mods_and_typedefs(obj->btf, var->type, NULL);
+    if (!btf_is_struct(def))
+    {
+        pr_warn("map '%s': unexpected def kind %s.\n",
+                map_name, btf_kind_str(var));
+        return -EINVAL;
+    }
+    if (def->size > vi->size)
+    {
+        pr_warn("map '%s': invalid def size.\n", map_name);
+        return -EINVAL;
+    }
+
+    map = bpf_object__add_map(obj);
+    if (IS_ERR(map))
+        return PTR_ERR(map);
+    map->name = strdup(map_name);
+    if (!map->name)
+    {
+        pr_warn("map '%s': failed to alloc map name.\n", map_name);
+        return -ENOMEM;
+    }
+    map->libbpf_type = LIBBPF_MAP_UNSPEC;
+    map->def.type = BPF_MAP_TYPE_UNSPEC;
+    map->sec_idx = sec_idx;
+    map->sec_offset = vi->offset;
+    map->btf_var_idx = var_idx;
+    pr_debug("map '%s': at sec_idx %d, offset %zu.\n",
+             map_name, map->sec_idx, map->sec_offset);
+
+    err = parse_btf_map_def(map->name, obj->btf, def, strict, &map_def, &inner_def);
+    if (err)
+        return err;
+
+    fill_map_from_def(map, &map_def);
+
+    if (map_def.pinning == LIBBPF_PIN_BY_NAME)
+    {
+        err = build_map_pin_path(map, pin_root_path);
+        if (err)
+        {
+            pr_warn("map '%s': couldn't build pin path.\n", map->name);
+            return err;
+        }
+    }
+
+    if (map_def.parts & MAP_DEF_INNER_MAP)
+    {
+        map->inner_map = calloc(1, sizeof(*map->inner_map));
+        if (!map->inner_map)
+            return -ENOMEM;
+        map->inner_map->fd = -1;
+        map->inner_map->sec_idx = sec_idx;
+        map->inner_map->name = malloc(strlen(map_name) + sizeof(".inner") + 1);
+        if (!map->inner_map->name)
+            return -ENOMEM;
+        sprintf(map->inner_map->name, "%s.inner", map_name);
+
+        fill_map_from_def(map->inner_map, &inner_def);
+    }
+
+    err = map_fill_btf_type_info(obj, map);
+    if (err)
+        return err;
+
+    return 0;
+}
