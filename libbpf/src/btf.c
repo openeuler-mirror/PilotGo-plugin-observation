@@ -1743,3 +1743,40 @@ int btf__add_float(struct btf *btf, const char *name, size_t byte_sz)
 
 	return btf_commit_type(btf, sz);
 }
+
+static int validate_type_id(int id)
+{
+	if (id < 0 || id > BTF_MAX_NR_TYPES)
+		return -EINVAL;
+	return 0;
+}
+
+/* generic append function for PTR, TYPEDEF, CONST/VOLATILE/RESTRICT */
+static int btf_add_ref_kind(struct btf *btf, int kind, const char *name, int ref_type_id)
+{
+	struct btf_type *t;
+	int sz, name_off = 0;
+
+	if (validate_type_id(ref_type_id))
+		return libbpf_err(-EINVAL);
+
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	if (name && name[0]) {
+		name_off = btf__add_str(btf, name);
+		if (name_off < 0)
+			return name_off;
+	}
+
+	t->name_off = name_off;
+	t->info = btf_type_info(kind, 0, 0);
+	t->type = ref_type_id;
+
+	return btf_commit_type(btf, sz);
+}
