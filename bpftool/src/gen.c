@@ -234,7 +234,6 @@ static int codegen_datasecs(struct bpf_object *obj, const char *obj_name)
 		return -errno;
 
 	bpf_object__for_each_map(map, obj) {
-		/* only generate definitions for memory-mapped internal maps */
 		if (!is_internal_mmapable_map(map, map_ident, sizeof(map_ident)))
 			continue;
 
@@ -249,6 +248,95 @@ static int codegen_datasecs(struct bpf_object *obj, const char *obj_name)
 		}
 	}
 
+out:
+	btf_dump__free(d);
+	return err;
+}
+
+static bool btf_is_ptr_to_func_proto(const struct btf *btf,
+				     const struct btf_type *v)
+{
+	return btf_is_ptr(v) && btf_is_func_proto(btf__type_by_id(btf, v->type));
+}
+
+static int codegen_subskel_datasecs(struct bpf_object *obj, const char *obj_name)
+{
+	struct btf *btf = bpf_object__btf(obj);
+	struct btf_dump *d;
+	struct bpf_map *map;
+	const struct btf_type *sec, *var;
+	const struct btf_var_secinfo *sec_var;
+	int i, err = 0, vlen;
+	char map_ident[256], sec_ident[256];
+	bool strip_mods = false, needs_typeof = false;
+	const char *sec_name, *var_name;
+	__u32 var_type_id;
+
+	d = btf_dump__new(btf, codegen_btf_dump_printf, NULL, NULL);
+	if (!d)
+		return -errno;
+
+	bpf_object__for_each_map(map, obj) {
+		/* only generate definitions for memory-mapped internal maps */
+		if (!is_internal_mmapable_map(map, map_ident, sizeof(map_ident)))
+			continue;
+
+		sec = find_type_for_map(btf, map_ident);
+		if (!sec)
+			continue;
+
+		sec_name = btf__name_by_offset(btf, sec->name_off);
+		if (!get_datasec_ident(sec_name, sec_ident, sizeof(sec_ident)))
+			continue;
+
+		strip_mods = strcmp(sec_name, ".kconfig") != 0;
+		printf("	struct %s__%s {\n", obj_name, sec_ident);
+
+		sec_var = btf_var_secinfos(sec);
+		vlen = btf_vlen(sec);
+		for (i = 0; i < vlen; i++, sec_var++) {
+			DECLARE_LIBBPF_OPTS(btf_dump_emit_type_decl_opts, opts,
+				.indent_level = 2,
+				.strip_mods = strip_mods,
+				/* we'll print the name separately */
+				.field_name = "",
+			);
+
+			var = btf__type_by_id(btf, sec_var->type);
+			var_name = btf__name_by_offset(btf, var->name_off);
+			var_type_id = var->type;
+
+			/* static variables are not exposed through BPF skeleton */
+			if (btf_var(var)->linkage == BTF_VAR_STATIC)
+				continue;
+
+			/* The datasec member has KIND_VAR but we want the
+			 * underlying type of the variable (e.g. KIND_INT).
+			 */
+			var = skip_mods_and_typedefs(btf, var->type, NULL);
+
+			printf("\t\t");
+			/* Func and array members require special handling.
+			 * Instead of producing `typename *var`, they produce
+			 * `typeof(typename) *var`. This allows us to keep a
+			 * similar syntax where the identifier is just prefixed
+			 * by *, allowing us to ignore C declaration minutiae.
+			 */
+			needs_typeof = btf_is_array(var) || btf_is_ptr_to_func_proto(btf, var);
+			if (needs_typeof)
+				printf("typeof(");
+
+			err = btf_dump__emit_type_decl(d, var_type_id, &opts);
+			if (err)
+				goto out;
+
+			if (needs_typeof)
+				printf(")");
+
+			printf(" *%s;\n", var_name);
+		}
+		printf("	} %s;\n", sec_ident);
+	}
 
 out:
 	btf_dump__free(d);
