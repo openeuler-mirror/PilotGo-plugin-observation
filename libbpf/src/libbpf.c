@@ -2697,3 +2697,125 @@ static bool btf_needs_sanitization(struct bpf_object *obj)
     return !has_func || !has_datasec || !has_func_global || !has_float ||
            !has_decl_tag || !has_type_tag || !has_enum64;
 }
+
+static int bpf_object__sanitize_btf(struct bpf_object *obj, struct btf *btf)
+{
+    bool has_func_global = kernel_supports(obj, FEAT_BTF_GLOBAL_FUNC);
+    bool has_datasec = kernel_supports(obj, FEAT_BTF_DATASEC);
+    bool has_float = kernel_supports(obj, FEAT_BTF_FLOAT);
+    bool has_func = kernel_supports(obj, FEAT_BTF_FUNC);
+    bool has_decl_tag = kernel_supports(obj, FEAT_BTF_DECL_TAG);
+    bool has_type_tag = kernel_supports(obj, FEAT_BTF_TYPE_TAG);
+    bool has_enum64 = kernel_supports(obj, FEAT_BTF_ENUM64);
+    int enum64_placeholder_id = 0;
+    struct btf_type *t;
+    int i, j, vlen;
+
+    for (i = 1; i < btf__type_cnt(btf); i++)
+    {
+        t = (struct btf_type *)btf__type_by_id(btf, i);
+
+        if ((!has_datasec && btf_is_var(t)) || (!has_decl_tag && btf_is_decl_tag(t)))
+        {
+            /* replace VAR/DECL_TAG with INT */
+            t->info = BTF_INFO_ENC(BTF_KIND_INT, 0, 0);
+            /*
+             * using size = 1 is the safest choice, 4 will be too
+             * big and cause kernel BTF validation failure if
+             * original variable took less than 4 bytes
+             */
+            t->size = 1;
+            *(int *)(t + 1) = BTF_INT_ENC(0, 0, 8);
+        }
+        else if (!has_datasec && btf_is_datasec(t))
+        {
+            /* replace DATASEC with STRUCT */
+            const struct btf_var_secinfo *v = btf_var_secinfos(t);
+            struct btf_member *m = btf_members(t);
+            struct btf_type *vt;
+            char *name;
+
+            name = (char *)btf__name_by_offset(btf, t->name_off);
+            while (*name)
+            {
+                if (*name == '.')
+                    *name = '_';
+                name++;
+            }
+
+            vlen = btf_vlen(t);
+            t->info = BTF_INFO_ENC(BTF_KIND_STRUCT, 0, vlen);
+            for (j = 0; j < vlen; j++, v++, m++)
+            {
+                /* order of field assignments is important */
+                m->offset = v->offset * 8;
+                m->type = v->type;
+                /* preserve variable name as member name */
+                vt = (void *)btf__type_by_id(btf, v->type);
+                m->name_off = vt->name_off;
+            }
+        }
+        else if (!has_func && btf_is_func_proto(t))
+        {
+            /* replace FUNC_PROTO with ENUM */
+            vlen = btf_vlen(t);
+            t->info = BTF_INFO_ENC(BTF_KIND_ENUM, 0, vlen);
+            t->size = sizeof(__u32); /* kernel enforced */
+        }
+        else if (!has_func && btf_is_func(t))
+        {
+            /* replace FUNC with TYPEDEF */
+            t->info = BTF_INFO_ENC(BTF_KIND_TYPEDEF, 0, 0);
+        }
+        else if (!has_func_global && btf_is_func(t))
+        {
+            /* replace BTF_FUNC_GLOBAL with BTF_FUNC_STATIC */
+            t->info = BTF_INFO_ENC(BTF_KIND_FUNC, 0, 0);
+        }
+        else if (!has_float && btf_is_float(t))
+        {
+            /* replace FLOAT with an equally-sized empty STRUCT;
+             * since C compilers do not accept e.g. "float" as a
+             * valid struct name, make it anonymous
+             */
+            t->name_off = 0;
+            t->info = BTF_INFO_ENC(BTF_KIND_STRUCT, 0, 0);
+        }
+        else if (!has_type_tag && btf_is_type_tag(t))
+        {
+            /* replace TYPE_TAG with a CONST */
+            t->name_off = 0;
+            t->info = BTF_INFO_ENC(BTF_KIND_CONST, 0, 0);
+        }
+        else if (!has_enum64 && btf_is_enum(t))
+        {
+            /* clear the kflag */
+            t->info = btf_type_info(btf_kind(t), btf_vlen(t), false);
+        }
+        else if (!has_enum64 && btf_is_enum64(t))
+        {
+            /* replace ENUM64 with a union */
+            struct btf_member *m;
+
+            if (enum64_placeholder_id == 0)
+            {
+                enum64_placeholder_id = btf__add_int(btf, "enum64_placeholder", 1, 0);
+                if (enum64_placeholder_id < 0)
+                    return enum64_placeholder_id;
+
+                t = (struct btf_type *)btf__type_by_id(btf, i);
+            }
+
+            m = btf_members(t);
+            vlen = btf_vlen(t);
+            t->info = BTF_INFO_ENC(BTF_KIND_UNION, 0, vlen);
+            for (j = 0; j < vlen; j++, m++)
+            {
+                m->type = enum64_placeholder_id;
+                m->offset = 0;
+            }
+        }
+    }
+
+    return 0;
+}
