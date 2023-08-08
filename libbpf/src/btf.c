@@ -1674,3 +1674,39 @@ err_out:
 
 	return libbpf_err(err);
 }
+
+int btf__add_int(struct btf *btf, const char *name, size_t byte_sz, int encoding)
+{
+	struct btf_type *t;
+	int sz, name_off;
+
+	/* non-empty name */
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+	/* byte_sz must be power of 2 */
+	if (!byte_sz || (byte_sz & (byte_sz - 1)) || byte_sz > 16)
+		return libbpf_err(-EINVAL);
+	if (encoding & ~(BTF_INT_SIGNED | BTF_INT_CHAR | BTF_INT_BOOL))
+		return libbpf_err(-EINVAL);
+
+	/* deconstruct BTF, if necessary, and invalidate raw_data */
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type) + sizeof(int);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	name_off = btf__add_str(btf, name);
+	if (name_off < 0)
+		return name_off;
+
+	t->name_off = name_off;
+	t->info = btf_type_info(BTF_KIND_INT, 0, 0);
+	t->size = byte_sz;
+	/* set INT info, we don't allow setting legacy bit offset/size */
+	*(__u32 *)(t + 1) = (encoding << 24) | (byte_sz * 8);
+
+	return btf_commit_type(btf, sz);
+}
