@@ -1931,3 +1931,21 @@ struct file_operations {
 	int (*uring_cmd)(struct io_uring_cmd *, unsigned int);
 	int (*uring_cmd_iopoll)(struct io_uring_cmd *, struct io_comp_batch *, unsigned int);
 };
+
+struct static_call_key {
+	void *func;
+};
+
+struct bug_entry {
+	int bug_addr_disp;
+	int file_disp;
+	short unsigned int line;
+	short unsigned int flags;
+};
+
+typedef __s64 time64_t;
+
+struct timespec64 {
+	time64_t tv_sec;
+	long int tv_nsec;
+};
