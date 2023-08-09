@@ -1850,3 +1850,35 @@ int btf__add_field(struct btf *btf, const char *name, int type_id,
 	btf->hdr->str_off += sz;
 	return 0;
 }
+
+static int btf_add_enum_common(struct btf *btf, const char *name, __u32 byte_sz,
+			       bool is_signed, __u8 kind)
+{
+	struct btf_type *t;
+	int sz, name_off = 0;
+
+	/* byte_sz must be power of 2 */
+	if (!byte_sz || (byte_sz & (byte_sz - 1)) || byte_sz > 8)
+		return libbpf_err(-EINVAL);
+
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	if (name && name[0]) {
+		name_off = btf__add_str(btf, name);
+		if (name_off < 0)
+			return name_off;
+	}
+
+	/* start out with vlen=0; it will be adjusted when adding enum values */
+	t->name_off = name_off;
+	t->info = btf_type_info(kind, 0, is_signed);
+	t->size = byte_sz;
+
+	return btf_commit_type(btf, sz);
+}
