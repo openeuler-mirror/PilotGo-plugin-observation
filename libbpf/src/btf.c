@@ -1882,3 +1882,60 @@ static int btf_add_enum_common(struct btf *btf, const char *name, __u32 byte_sz,
 
 	return btf_commit_type(btf, sz);
 }
+
+int btf__add_enum(struct btf *btf, const char *name, __u32 byte_sz)
+{
+	/*
+	 * set the signedness to be unsigned, it will change to signed
+	 * if any later enumerator is negative.
+	 */
+	return btf_add_enum_common(btf, name, byte_sz, false, BTF_KIND_ENUM);
+}
+
+int btf__add_enum_value(struct btf *btf, const char *name, __s64 value)
+{
+	struct btf_type *t;
+	struct btf_enum *v;
+	int sz, name_off;
+
+	/* last type should be BTF_KIND_ENUM */
+	if (btf->nr_types == 0)
+		return libbpf_err(-EINVAL);
+	t = btf_last_type(btf);
+	if (!btf_is_enum(t))
+		return libbpf_err(-EINVAL);
+
+	/* non-empty name */
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+	if (value < INT_MIN || value > UINT_MAX)
+		return libbpf_err(-E2BIG);
+
+	/* decompose and invalidate raw data */
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_enum);
+	v = btf_add_type_mem(btf, sz);
+	if (!v)
+		return libbpf_err(-ENOMEM);
+
+	name_off = btf__add_str(btf, name);
+	if (name_off < 0)
+		return name_off;
+
+	v->name_off = name_off;
+	v->val = value;
+
+	/* update parent type's vlen */
+	t = btf_last_type(btf);
+	btf_type_inc_vlen(t);
+
+	/* if negative value, set signedness to signed */
+	if (value < 0)
+		t->info = btf_type_info(btf_kind(t), btf_vlen(t), true);
+
+	btf->hdr->type_len += sz;
+	btf->hdr->str_off += sz;
+	return 0;
+}
