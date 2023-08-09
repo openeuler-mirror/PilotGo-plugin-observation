@@ -1964,3 +1964,28 @@ struct delayed_work {
 	struct workqueue_struct *wq;
 	int cpu;
 };
+
+typedef struct {
+	seqcount_spinlock_t seqcount;
+	spinlock_t lock;
+} seqlock_t;
+
+struct rlimit {
+	__kernel_ulong_t rlim_cur;
+	__kernel_ulong_t rlim_max;
+};
+
+typedef void __signalfn_t(int);
+
+typedef __signalfn_t *__sighandler_t;
+
+typedef void __restorefn_t();
+
+typedef __restorefn_t *__sigrestore_t;
+
+struct sigaction {
+	__sighandler_t sa_handler;
+	long unsigned int sa_flags;
+	__sigrestore_t sa_restorer;
+	sigset_t sa_mask;
+};
