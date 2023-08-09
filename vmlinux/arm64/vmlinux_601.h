@@ -2092,3 +2092,25 @@ struct signal_struct {
 	struct mutex cred_guard_mutex;
 	struct rw_semaphore exec_update_lock;
 };
+
+typedef int32_t key_serial_t;
+
+typedef uint32_t key_perm_t;
+
+struct key_type;
+
+struct key_tag;
+
+struct keyring_index_key {
+	long unsigned int hash;
+	union {
+		struct {
+			u16 desc_len;
+			char desc[6];
+		};
+		long unsigned int x;
+	};
+	struct key_type *type;
+	struct key_tag *domain_tag;
+	const char *description;
+};
