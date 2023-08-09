@@ -2819,3 +2819,105 @@ static int bpf_object__sanitize_btf(struct bpf_object *obj, struct btf *btf)
 
     return 0;
 }
+
+static bool libbpf_needs_btf(const struct bpf_object *obj)
+{
+    return obj->efile.btf_maps_shndx >= 0 ||
+           obj->efile.st_ops_shndx >= 0 ||
+           obj->efile.st_ops_link_shndx >= 0 ||
+           obj->nr_extern > 0;
+}
+
+static bool kernel_needs_btf(const struct bpf_object *obj)
+{
+    return obj->efile.st_ops_shndx >= 0 || obj->efile.st_ops_link_shndx >= 0;
+}
+
+static int bpf_object__init_btf(struct bpf_object *obj,
+                                Elf_Data *btf_data,
+                                Elf_Data *btf_ext_data)
+{
+    int err = -ENOENT;
+
+    if (btf_data)
+    {
+        obj->btf = btf__new(btf_data->d_buf, btf_data->d_size);
+        err = libbpf_get_error(obj->btf);
+        if (err)
+        {
+            obj->btf = NULL;
+            pr_warn("Error loading ELF section %s: %d.\n", BTF_ELF_SEC, err);
+            goto out;
+        }
+        /* enforce 8-byte pointers for BPF-targeted BTFs */
+        btf__set_pointer_size(obj->btf, 8);
+    }
+    if (btf_ext_data)
+    {
+        struct btf_ext_info *ext_segs[3];
+        int seg_num, sec_num;
+
+        if (!obj->btf)
+        {
+            pr_debug("Ignore ELF section %s because its depending ELF section %s is not found.\n",
+                     BTF_EXT_ELF_SEC, BTF_ELF_SEC);
+            goto out;
+        }
+        obj->btf_ext = btf_ext__new(btf_ext_data->d_buf, btf_ext_data->d_size);
+        err = libbpf_get_error(obj->btf_ext);
+        if (err)
+        {
+            pr_warn("Error loading ELF section %s: %d. Ignored and continue.\n",
+                    BTF_EXT_ELF_SEC, err);
+            obj->btf_ext = NULL;
+            goto out;
+        }
+
+        /* setup .BTF.ext to ELF section mapping */
+        ext_segs[0] = &obj->btf_ext->func_info;
+        ext_segs[1] = &obj->btf_ext->line_info;
+        ext_segs[2] = &obj->btf_ext->core_relo_info;
+        for (seg_num = 0; seg_num < ARRAY_SIZE(ext_segs); seg_num++)
+        {
+            struct btf_ext_info *seg = ext_segs[seg_num];
+            const struct btf_ext_info_sec *sec;
+            const char *sec_name;
+            Elf_Scn *scn;
+
+            if (seg->sec_cnt == 0)
+                continue;
+
+            seg->sec_idxs = calloc(seg->sec_cnt, sizeof(*seg->sec_idxs));
+            if (!seg->sec_idxs)
+            {
+                err = -ENOMEM;
+                goto out;
+            }
+
+            sec_num = 0;
+            for_each_btf_ext_sec(seg, sec)
+            {
+                /* preventively increment index to avoid doing
+                 * this before every continue below
+                 */
+                sec_num++;
+
+                sec_name = btf__name_by_offset(obj->btf, sec->sec_name_off);
+                if (str_is_empty(sec_name))
+                    continue;
+                scn = elf_sec_by_name(obj, sec_name);
+                if (!scn)
+                    continue;
+
+                seg->sec_idxs[sec_num - 1] = elf_ndxscn(scn);
+            }
+        }
+    }
+out:
+    if (err && libbpf_needs_btf(obj))
+    {
+        pr_warn("BTF is required, but is missing or corrupted.\n");
+        return err;
+    }
+    return 0;
+}
