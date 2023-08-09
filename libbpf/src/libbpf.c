@@ -2921,3 +2921,89 @@ out:
     }
     return 0;
 }
+
+static int compare_vsi_off(const void *_a, const void *_b)
+{
+    const struct btf_var_secinfo *a = _a;
+    const struct btf_var_secinfo *b = _b;
+
+    return a->offset - b->offset;
+}
+
+static int btf_fixup_datasec(struct bpf_object *obj, struct btf *btf,
+                             struct btf_type *t)
+{
+    __u32 size = 0, i, vars = btf_vlen(t);
+    const char *sec_name = btf__name_by_offset(btf, t->name_off);
+    struct btf_var_secinfo *vsi;
+    bool fixup_offsets = false;
+    int err;
+
+    if (!sec_name)
+    {
+        pr_debug("No name found in string section for DATASEC kind.\n");
+        return -ENOENT;
+    }
+
+    if (strcmp(sec_name, KCONFIG_SEC) == 0 || strcmp(sec_name, KSYMS_SEC) == 0)
+        goto sort_vars;
+
+    if (t->size == 0)
+    {
+        err = find_elf_sec_sz(obj, sec_name, &size);
+        if (err || !size)
+        {
+            pr_debug("sec '%s': failed to determine size from ELF: size %u, err %d\n",
+                     sec_name, size, err);
+            return -ENOENT;
+        }
+
+        t->size = size;
+        fixup_offsets = true;
+    }
+
+    for (i = 0, vsi = btf_var_secinfos(t); i < vars; i++, vsi++)
+    {
+        const struct btf_type *t_var;
+        struct btf_var *var;
+        const char *var_name;
+        Elf64_Sym *sym;
+
+        t_var = btf__type_by_id(btf, vsi->type);
+        if (!t_var || !btf_is_var(t_var))
+        {
+            pr_debug("sec '%s': unexpected non-VAR type found\n", sec_name);
+            return -EINVAL;
+        }
+
+        var = btf_var(t_var);
+        if (var->linkage == BTF_VAR_STATIC || var->linkage == BTF_VAR_GLOBAL_EXTERN)
+            continue;
+
+        var_name = btf__name_by_offset(btf, t_var->name_off);
+        if (!var_name)
+        {
+            pr_debug("sec '%s': failed to find name of DATASEC's member #%d\n",
+                     sec_name, i);
+            return -ENOENT;
+        }
+
+        sym = find_elf_var_sym(obj, var_name);
+        if (IS_ERR(sym))
+        {
+            pr_debug("sec '%s': failed to find ELF symbol for VAR '%s'\n",
+                     sec_name, var_name);
+            return -ENOENT;
+        }
+
+        if (fixup_offsets)
+            vsi->offset = sym->st_value;
+
+        if (ELF64_ST_VISIBILITY(sym->st_other) == STV_HIDDEN || ELF64_ST_VISIBILITY(sym->st_other) == STV_INTERNAL)
+            var->linkage = BTF_VAR_STATIC;
+    }
+
+sort_vars:
+    qsort(btf_var_secinfos(t), vars, sizeof(*vsi), compare_vsi_off);
+    return 0;
+}
