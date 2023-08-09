@@ -1780,3 +1780,73 @@ static int btf_add_ref_kind(struct btf *btf, int kind, const char *name, int ref
 
 	return btf_commit_type(btf, sz);
 }
+
+int btf__add_struct(struct btf *btf, const char *name, __u32 byte_sz)
+{
+	return btf_add_composite(btf, BTF_KIND_STRUCT, name, byte_sz);
+}
+
+int btf__add_union(struct btf *btf, const char *name, __u32 byte_sz)
+{
+	return btf_add_composite(btf, BTF_KIND_UNION, name, byte_sz);
+}
+
+static struct btf_type *btf_last_type(struct btf *btf)
+{
+	return btf_type_by_id(btf, btf__type_cnt(btf) - 1);
+}
+
+int btf__add_field(struct btf *btf, const char *name, int type_id,
+		   __u32 bit_offset, __u32 bit_size)
+{
+	struct btf_type *t;
+	struct btf_member *m;
+	bool is_bitfield;
+	int sz, name_off = 0;
+
+	/* last type should be union/struct */
+	if (btf->nr_types == 0)
+		return libbpf_err(-EINVAL);
+	t = btf_last_type(btf);
+	if (!btf_is_composite(t))
+		return libbpf_err(-EINVAL);
+
+	if (validate_type_id(type_id))
+		return libbpf_err(-EINVAL);
+	/* best-effort bit field offset/size enforcement */
+	is_bitfield = bit_size || (bit_offset % 8 != 0);
+	if (is_bitfield && (bit_size == 0 || bit_size > 255 || bit_offset > 0xffffff))
+		return libbpf_err(-EINVAL);
+
+	/* only offset 0 is allowed for unions */
+	if (btf_is_union(t) && bit_offset)
+		return libbpf_err(-EINVAL);
+
+	/* decompose and invalidate raw data */
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_member);
+	m = btf_add_type_mem(btf, sz);
+	if (!m)
+		return libbpf_err(-ENOMEM);
+
+	if (name && name[0]) {
+		name_off = btf__add_str(btf, name);
+		if (name_off < 0)
+			return name_off;
+	}
+
+	m->name_off = name_off;
+	m->type = type_id;
+	m->offset = bit_offset | (bit_size << 24);
+
+	/* btf_add_type_mem can invalidate t pointer */
+	t = btf_last_type(btf);
+	/* update parent type's vlen and kflag */
+	t->info = btf_type_info(btf_kind(t), btf_vlen(t) + 1, is_bitfield || btf_kflag(t));
+
+	btf->hdr->type_len += sz;
+	btf->hdr->str_off += sz;
+	return 0;
+}
