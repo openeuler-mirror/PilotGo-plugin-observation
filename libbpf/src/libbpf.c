@@ -3007,3 +3007,66 @@ sort_vars:
     qsort(btf_var_secinfos(t), vars, sizeof(*vsi), compare_vsi_off);
     return 0;
 }
+
+static int bpf_object_fixup_btf(struct bpf_object *obj)
+{
+    int i, n, err = 0;
+
+    if (!obj->btf)
+        return 0;
+
+    n = btf__type_cnt(obj->btf);
+    for (i = 1; i < n; i++)
+    {
+        struct btf_type *t = btf_type_by_id(obj->btf, i);
+
+        if (btf_is_datasec(t))
+        {
+            err = btf_fixup_datasec(obj, obj->btf, t);
+            if (err)
+                return err;
+        }
+    }
+
+    return 0;
+}
+
+static bool prog_needs_vmlinux_btf(struct bpf_program *prog)
+{
+    if (prog->type == BPF_PROG_TYPE_STRUCT_OPS ||
+        prog->type == BPF_PROG_TYPE_LSM)
+        return true;
+
+    if (prog->type == BPF_PROG_TYPE_TRACING && !prog->attach_prog_fd)
+        return true;
+
+    return false;
+}
+
+static bool obj_needs_vmlinux_btf(const struct bpf_object *obj)
+{
+    struct bpf_program *prog;
+    int i;
+    if (obj->btf_ext && obj->btf_ext->core_relo_info.len && !obj->btf_custom_path)
+        return true;
+
+    /* Support for typed ksyms needs kernel BTF */
+    for (i = 0; i < obj->nr_extern; i++)
+    {
+        const struct extern_desc *ext;
+
+        ext = &obj->externs[i];
+        if (ext->type == EXT_KSYM && ext->ksym.type_id)
+            return true;
+    }
+
+    bpf_object__for_each_program(prog, obj)
+    {
+        if (!prog->autoload)
+            continue;
+        if (prog_needs_vmlinux_btf(prog))
+            return true;
+    }
+
+    return false;
+}
