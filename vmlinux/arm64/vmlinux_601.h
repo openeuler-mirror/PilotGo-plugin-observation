@@ -2018,3 +2018,77 @@ struct pacct_struct {
 	long unsigned int ac_minflt;
 	long unsigned int ac_majflt;
 };
+
+struct core_state;
+
+struct tty_struct;
+
+struct taskstats;
+
+struct tty_audit_buf;
+
+struct signal_struct {
+	refcount_t sigcnt;
+	atomic_t live;
+	int nr_threads;
+	int quick_threads;
+	struct list_head thread_head;
+	wait_queue_head_t wait_chldexit;
+	struct task_struct *curr_target;
+	struct sigpending shared_pending;
+	struct hlist_head multiprocess;
+	int group_exit_code;
+	int notify_count;
+	struct task_struct *group_exec_task;
+	int group_stop_count;
+	unsigned int flags;
+	struct core_state *core_state;
+	unsigned int is_child_subreaper: 1;
+	unsigned int has_child_subreaper: 1;
+	int posix_timer_id;
+	struct list_head posix_timers;
+	struct hrtimer real_timer;
+	ktime_t it_real_incr;
+	struct cpu_itimer it[2];
+	struct thread_group_cputimer cputimer;
+	struct posix_cputimers posix_cputimers;
+	struct pid *pids[4];
+	struct pid *tty_old_pgrp;
+	int leader;
+	struct tty_struct *tty;
+	seqlock_t stats_lock;
+	u64 utime;
+	u64 stime;
+	u64 cutime;
+	u64 cstime;
+	u64 gtime;
+	u64 cgtime;
+	struct prev_cputime prev_cputime;
+	long unsigned int nvcsw;
+	long unsigned int nivcsw;
+	long unsigned int cnvcsw;
+	long unsigned int cnivcsw;
+	long unsigned int min_flt;
+	long unsigned int maj_flt;
+	long unsigned int cmin_flt;
+	long unsigned int cmaj_flt;
+	long unsigned int inblock;
+	long unsigned int oublock;
+	long unsigned int cinblock;
+	long unsigned int coublock;
+	long unsigned int maxrss;
+	long unsigned int cmaxrss;
+	struct task_io_accounting ioac;
+	long long unsigned int sum_sched_runtime;
+	struct rlimit rlim[16];
+	struct pacct_struct pacct;
+	struct taskstats *stats;
+	unsigned int audit_tty;
+	struct tty_audit_buf *tty_audit_buf;
+	bool oom_flag_origin;
+	short int oom_score_adj;
+	short int oom_score_adj_min;
+	struct mm_struct *oom_mm;
+	struct mutex cred_guard_mutex;
+	struct rw_semaphore exec_update_lock;
+};
