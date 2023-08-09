@@ -1989,3 +1989,31 @@ int btf__add_enum64_value(struct btf *btf, const char *name, __u64 value)
 	btf->hdr->str_off += sz;
 	return 0;
 }
+
+int btf__add_fwd(struct btf *btf, const char *name, enum btf_fwd_kind fwd_kind)
+{
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+
+	switch (fwd_kind) {
+	case BTF_FWD_STRUCT:
+	case BTF_FWD_UNION: {
+		struct btf_type *t;
+		int id;
+
+		id = btf_add_ref_kind(btf, BTF_KIND_FWD, name, 0);
+		if (id <= 0)
+			return id;
+		t = btf_type_by_id(btf, id);
+		t->info = btf_type_info(BTF_KIND_FWD, 0, fwd_kind == BTF_FWD_UNION);
+		return id;
+	}
+	case BTF_FWD_ENUM:
+		/* enum forward in BTF currently is just an enum with no enum
+		 * values; we also assume a standard 4-byte size for it
+		 */
+		return btf__add_enum(btf, name, sizeof(int));
+	default:
+		return libbpf_err(-EINVAL);
+	}
+}
