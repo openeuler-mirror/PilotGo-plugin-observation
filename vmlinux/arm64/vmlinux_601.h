@@ -1989,3 +1989,18 @@ struct sigaction {
 	__sigrestore_t sa_restorer;
 	sigset_t sa_mask;
 };
+
+struct k_sigaction {
+	struct sigaction sa;
+};
+
+struct cpu_itimer {
+	u64 expires;
+	u64 incr;
+};
+
+struct task_cputime_atomic {
+	atomic64_t utime;
+	atomic64_t stime;
+	atomic64_t sum_exec_runtime;
+};
