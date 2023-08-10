@@ -2017,3 +2017,34 @@ int btf__add_fwd(struct btf *btf, const char *name, enum btf_fwd_kind fwd_kind)
 		return libbpf_err(-EINVAL);
 	}
 }
+
+int btf__add_typedef(struct btf *btf, const char *name, int ref_type_id)
+{
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+
+	return btf_add_ref_kind(btf, BTF_KIND_TYPEDEF, name, ref_type_id);
+}
+
+int btf__add_volatile(struct btf *btf, int ref_type_id)
+{
+	return btf_add_ref_kind(btf, BTF_KIND_VOLATILE, NULL, ref_type_id);
+}
+
+int btf__add_const(struct btf *btf, int ref_type_id)
+{
+	return btf_add_ref_kind(btf, BTF_KIND_CONST, NULL, ref_type_id);
+}
+
+int btf__add_restrict(struct btf *btf, int ref_type_id)
+{
+	return btf_add_ref_kind(btf, BTF_KIND_RESTRICT, NULL, ref_type_id);
+}
+
+int btf__add_type_tag(struct btf *btf, const char *value, int ref_type_id)
+{
+	if (!value || !value[0])
+		return libbpf_err(-EINVAL);
+
+	return btf_add_ref_kind(btf, BTF_KIND_TYPE_TAG, value, ref_type_id);
+}
