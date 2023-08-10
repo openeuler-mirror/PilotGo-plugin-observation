@@ -2094,3 +2094,46 @@ int btf__add_func_proto(struct btf *btf, int ret_type_id)
 
 	return btf_commit_type(btf, sz);
 }
+
+int btf__add_func_param(struct btf *btf, const char *name, int type_id)
+{
+	struct btf_type *t;
+	struct btf_param *p;
+	int sz, name_off = 0;
+
+	if (validate_type_id(type_id))
+		return libbpf_err(-EINVAL);
+
+	/* last type should be BTF_KIND_FUNC_PROTO */
+	if (btf->nr_types == 0)
+		return libbpf_err(-EINVAL);
+	t = btf_last_type(btf);
+	if (!btf_is_func_proto(t))
+		return libbpf_err(-EINVAL);
+
+	/* decompose and invalidate raw data */
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_param);
+	p = btf_add_type_mem(btf, sz);
+	if (!p)
+		return libbpf_err(-ENOMEM);
+
+	if (name && name[0]) {
+		name_off = btf__add_str(btf, name);
+		if (name_off < 0)
+			return name_off;
+	}
+
+	p->name_off = name_off;
+	p->type = type_id;
+
+	/* update parent type's vlen */
+	t = btf_last_type(btf);
+	btf_type_inc_vlen(t);
+
+	btf->hdr->type_len += sz;
+	btf->hdr->str_off += sz;
+	return 0;
+}
