@@ -2199,3 +2199,21 @@ struct xarray {
 typedef u32 errseq_t;
 
 struct address_space_operations;
+
+struct address_space {
+	struct inode *host;
+	struct xarray i_pages;
+	struct rw_semaphore invalidate_lock;
+	gfp_t gfp_mask;
+	atomic_t i_mmap_writable;
+	struct rb_root_cached i_mmap;
+	struct rw_semaphore i_mmap_rwsem;
+	long unsigned int nrpages;
+	long unsigned int writeback_index;
+	const struct address_space_operations *a_ops;
+	long unsigned int flags;
+	errseq_t wb_err;
+	spinlock_t private_lock;
+	struct list_head private_list;
+	void *private_data;
+};
