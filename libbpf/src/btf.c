@@ -2137,3 +2137,41 @@ int btf__add_func_param(struct btf *btf, const char *name, int type_id)
 	btf->hdr->str_off += sz;
 	return 0;
 }
+
+int btf__add_var(struct btf *btf, const char *name, int linkage, int type_id)
+{
+	struct btf_type *t;
+	struct btf_var *v;
+	int sz, name_off;
+
+	/* non-empty name */
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+	if (linkage != BTF_VAR_STATIC && linkage != BTF_VAR_GLOBAL_ALLOCATED &&
+	    linkage != BTF_VAR_GLOBAL_EXTERN)
+		return libbpf_err(-EINVAL);
+	if (validate_type_id(type_id))
+		return libbpf_err(-EINVAL);
+
+	/* deconstruct BTF, if necessary, and invalidate raw_data */
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type) + sizeof(struct btf_var);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	name_off = btf__add_str(btf, name);
+	if (name_off < 0)
+		return name_off;
+
+	t->name_off = name_off;
+	t->info = btf_type_info(BTF_KIND_VAR, 0, 0);
+	t->type = type_id;
+
+	v = btf_var(t);
+	v->linkage = linkage;
+
+	return btf_commit_type(btf, sz);
+}
