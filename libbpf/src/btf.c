@@ -2175,3 +2175,32 @@ int btf__add_var(struct btf *btf, const char *name, int linkage, int type_id)
 
 	return btf_commit_type(btf, sz);
 }
+
+int btf__add_datasec(struct btf *btf, const char *name, __u32 byte_sz)
+{
+	struct btf_type *t;
+	int sz, name_off;
+
+	/* non-empty name */
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	name_off = btf__add_str(btf, name);
+	if (name_off < 0)
+		return name_off;
+
+	/* start with vlen=0, which will be update as var_secinfos are added */
+	t->name_off = name_off;
+	t->info = btf_type_info(BTF_KIND_DATASEC, 0, 0);
+	t->size = byte_sz;
+
+	return btf_commit_type(btf, sz);
+}
