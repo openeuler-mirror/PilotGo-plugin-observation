@@ -2048,3 +2048,49 @@ int btf__add_type_tag(struct btf *btf, const char *value, int ref_type_id)
 
 	return btf_add_ref_kind(btf, BTF_KIND_TYPE_TAG, value, ref_type_id);
 }
+
+int btf__add_func(struct btf *btf, const char *name,
+		  enum btf_func_linkage linkage, int proto_type_id)
+{
+	int id;
+
+	if (!name || !name[0])
+		return libbpf_err(-EINVAL);
+	if (linkage != BTF_FUNC_STATIC && linkage != BTF_FUNC_GLOBAL &&
+	    linkage != BTF_FUNC_EXTERN)
+		return libbpf_err(-EINVAL);
+
+	id = btf_add_ref_kind(btf, BTF_KIND_FUNC, name, proto_type_id);
+	if (id > 0) {
+		struct btf_type *t = btf_type_by_id(btf, id);
+
+		t->info = btf_type_info(BTF_KIND_FUNC, linkage, 0);
+	}
+	return libbpf_err(id);
+}
+
+int btf__add_func_proto(struct btf *btf, int ret_type_id)
+{
+	struct btf_type *t;
+	int sz;
+
+	if (validate_type_id(ret_type_id))
+		return libbpf_err(-EINVAL);
+
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	/* start out with vlen=0; this will be adjusted when adding enum
+	 * values, if necessary
+	 */
+	t->name_off = 0;
+	t->info = btf_type_info(BTF_KIND_FUNC_PROTO, 0, 0);
+	t->type = ret_type_id;
+
+	return btf_commit_type(btf, sz);
+}
