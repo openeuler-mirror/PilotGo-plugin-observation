@@ -2172,3 +2172,16 @@ struct key {
 	};
 	struct key_restriction *restrict_link;
 };
+
+struct sighand_struct {
+	spinlock_t siglock;
+	refcount_t count;
+	wait_queue_head_t signalfd_wqh;
+	struct k_sigaction action[64];
+};
+
+struct io_context {
+	atomic_long_t refcount;
+	atomic_t active_ref;
+	short unsigned int ioprio;
+};
