@@ -2114,3 +2114,15 @@ struct keyring_index_key {
 	struct key_tag *domain_tag;
 	const char *description;
 };
+
+union key_payload {
+	void *rcu_data0;
+	void *data[4];
+};
+
+struct assoc_array_ptr;
+
+struct assoc_array {
+	struct assoc_array_ptr *root;
+	long unsigned int nr_leaves_on_tree;
+};
