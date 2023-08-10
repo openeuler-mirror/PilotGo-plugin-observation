@@ -2185,3 +2185,17 @@ struct io_context {
 	atomic_t active_ref;
 	short unsigned int ioprio;
 };
+
+struct kref {
+	refcount_t refcount;
+};
+
+struct xarray {
+	spinlock_t xa_lock;
+	gfp_t xa_flags;
+	void *xa_head;
+};
+
+typedef u32 errseq_t;
+
+struct address_space_operations;
