@@ -3070,3 +3070,133 @@ static bool obj_needs_vmlinux_btf(const struct bpf_object *obj)
 
     return false;
 }
+
+static int bpf_object__load_vmlinux_btf(struct bpf_object *obj, bool force)
+{
+    int err;
+
+    /* btf_vmlinux could be loaded earlier */
+    if (obj->btf_vmlinux || obj->gen_loader)
+        return 0;
+
+    if (!force && !obj_needs_vmlinux_btf(obj))
+        return 0;
+
+    obj->btf_vmlinux = btf__load_vmlinux_btf();
+    err = libbpf_get_error(obj->btf_vmlinux);
+    if (err)
+    {
+        pr_warn("Error loading vmlinux BTF: %d\n", err);
+        obj->btf_vmlinux = NULL;
+        return err;
+    }
+    return 0;
+}
+
+static int bpf_object__sanitize_and_load_btf(struct bpf_object *obj)
+{
+    struct btf *kern_btf = obj->btf;
+    bool btf_mandatory, sanitize;
+    int i, err = 0;
+
+    if (!obj->btf)
+        return 0;
+
+    if (!kernel_supports(obj, FEAT_BTF))
+    {
+        if (kernel_needs_btf(obj))
+        {
+            err = -EOPNOTSUPP;
+            goto report;
+        }
+        pr_debug("Kernel doesn't support BTF, skipping uploading it.\n");
+        return 0;
+    }
+
+    for (i = 0; i < obj->nr_programs; i++)
+    {
+        struct bpf_program *prog = &obj->programs[i];
+        struct btf_type *t;
+        const char *name;
+        int j, n;
+
+        if (!prog->mark_btf_static || !prog_is_subprog(obj, prog))
+            continue;
+
+        n = btf__type_cnt(obj->btf);
+        for (j = 1; j < n; j++)
+        {
+            t = btf_type_by_id(obj->btf, j);
+            if (!btf_is_func(t) || btf_func_linkage(t) != BTF_FUNC_GLOBAL)
+                continue;
+
+            name = btf__str_by_offset(obj->btf, t->name_off);
+            if (strcmp(name, prog->name) != 0)
+                continue;
+
+            t->info = btf_type_info(BTF_KIND_FUNC, BTF_FUNC_STATIC, 0);
+            break;
+        }
+    }
+
+    sanitize = btf_needs_sanitization(obj);
+    if (sanitize)
+    {
+        const void *raw_data;
+        __u32 sz;
+
+        /* clone BTF to sanitize a copy and leave the original intact */
+        raw_data = btf__raw_data(obj->btf, &sz);
+        kern_btf = btf__new(raw_data, sz);
+        err = libbpf_get_error(kern_btf);
+        if (err)
+            return err;
+
+        /* enforce 8-byte pointers for BPF-targeted BTFs */
+        btf__set_pointer_size(obj->btf, 8);
+        err = bpf_object__sanitize_btf(obj, kern_btf);
+        if (err)
+            return err;
+    }
+
+    if (obj->gen_loader)
+    {
+        __u32 raw_size = 0;
+        const void *raw_data = btf__raw_data(kern_btf, &raw_size);
+
+        if (!raw_data)
+            return -ENOMEM;
+        bpf_gen__load_btf(obj->gen_loader, raw_data, raw_size);
+        /* Pretend to have valid FD to pass various fd >= 0 checks.
+         * This fd == 0 will not be used with any syscall and will be reset to -1 eventually.
+         */
+        btf__set_fd(kern_btf, 0);
+    }
+    else
+    {
+        /* currently BPF_BTF_LOAD only supports log_level 1 */
+        err = btf_load_into_kernel(kern_btf, obj->log_buf, obj->log_size,
+                                   obj->log_level ? 1 : 0);
+    }
+    if (sanitize)
+    {
+        if (!err)
+        {
+            /* move fd to libbpf's BTF */
+            btf__set_fd(obj->btf, btf__fd(kern_btf));
+            btf__set_fd(kern_btf, -1);
+        }
+        btf__free(kern_btf);
+    }
+report:
+    if (err)
+    {
+        btf_mandatory = kernel_needs_btf(obj);
+        pr_warn("Error loading .BTF into kernel: %d. %s\n", err,
+                btf_mandatory ? "BTF is mandatory, can't proceed."
+                              : "BTF is optional, ignoring.");
+        if (!btf_mandatory)
+            err = 0;
+    }
+    return err;
+}
