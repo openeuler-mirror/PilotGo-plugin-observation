@@ -3613,3 +3613,63 @@ static int bpf_object__elf_collect(struct bpf_object *obj)
 
     return bpf_object__init_btf(obj, btf_data, btf_ext_data);
 }
+
+static bool sym_is_extern(const Elf64_Sym *sym)
+{
+    int bind = ELF64_ST_BIND(sym->st_info);
+    /* externs are symbols w/ type=NOTYPE, bind=GLOBAL|WEAK, section=UND */
+    return sym->st_shndx == SHN_UNDEF &&
+           (bind == STB_GLOBAL || bind == STB_WEAK) &&
+           ELF64_ST_TYPE(sym->st_info) == STT_NOTYPE;
+}
+
+static bool sym_is_subprog(const Elf64_Sym *sym, int text_shndx)
+{
+    int bind = ELF64_ST_BIND(sym->st_info);
+    int type = ELF64_ST_TYPE(sym->st_info);
+
+    /* in .text section */
+    if (sym->st_shndx != text_shndx)
+        return false;
+
+    /* local function */
+    if (bind == STB_LOCAL && type == STT_SECTION)
+        return true;
+
+    /* global function */
+    return bind == STB_GLOBAL && type == STT_FUNC;
+}
+
+static int find_extern_btf_id(const struct btf *btf, const char *ext_name)
+{
+    const struct btf_type *t;
+    const char *tname;
+    int i, n;
+
+    if (!btf)
+        return -ESRCH;
+
+    n = btf__type_cnt(btf);
+    for (i = 1; i < n; i++)
+    {
+        t = btf__type_by_id(btf, i);
+
+        if (!btf_is_var(t) && !btf_is_func(t))
+            continue;
+
+        tname = btf__name_by_offset(btf, t->name_off);
+        if (strcmp(tname, ext_name))
+            continue;
+
+        if (btf_is_var(t) &&
+            btf_var(t)->linkage != BTF_VAR_GLOBAL_EXTERN)
+            return -EINVAL;
+
+        if (btf_is_func(t) && btf_func_linkage(t) != BTF_FUNC_EXTERN)
+            return -EINVAL;
+
+        return i;
+    }
+
+    return -ENOENT;
+}
