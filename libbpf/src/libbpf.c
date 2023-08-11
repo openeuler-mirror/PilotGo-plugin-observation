@@ -3346,3 +3346,50 @@ static bool is_sec_name_dwarf(const char *name)
     /* approximation, but the actual list is too long */
     return str_has_pfx(name, ".debug_");
 }
+
+static bool ignore_elf_section(Elf64_Shdr *hdr, const char *name)
+{
+    /* no special handling of .strtab */
+    if (hdr->sh_type == SHT_STRTAB)
+        return true;
+
+    /* ignore .llvm_addrsig section as well */
+    if (hdr->sh_type == SHT_LLVM_ADDRSIG)
+        return true;
+
+    /* no subprograms will lead to an empty .text section, ignore it */
+    if (hdr->sh_type == SHT_PROGBITS && hdr->sh_size == 0 &&
+        strcmp(name, ".text") == 0)
+        return true;
+
+    /* DWARF sections */
+    if (is_sec_name_dwarf(name))
+        return true;
+
+    if (str_has_pfx(name, ".rel"))
+    {
+        name += sizeof(".rel") - 1;
+        /* DWARF section relocations */
+        if (is_sec_name_dwarf(name))
+            return true;
+
+        /* .BTF and .BTF.ext don't need relocations */
+        if (strcmp(name, BTF_ELF_SEC) == 0 ||
+            strcmp(name, BTF_EXT_ELF_SEC) == 0)
+            return true;
+    }
+
+    return false;
+}
+
+static int cmp_progs(const void *_a, const void *_b)
+{
+    const struct bpf_program *a = _a;
+    const struct bpf_program *b = _b;
+
+    if (a->sec_idx != b->sec_idx)
+        return a->sec_idx < b->sec_idx ? -1 : 1;
+
+    /* sec_insn_off can't be the same within the section */
+    return a->sec_insn_off < b->sec_insn_off ? -1 : 1;
+}
