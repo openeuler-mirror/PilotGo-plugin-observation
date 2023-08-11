@@ -291,6 +291,98 @@ static int do_show(int argc, char **argv)
 	return cmd_retval(&res, !!search_term);
 }
 
+static int __do_dump(int fd, const struct bpf_map_info *info, void *data,
+		     struct json_writer *wtr)
+{
+	struct btf_dumper *d = (struct btf_dumper *)data;
+	const struct btf_type *struct_ops_type;
+	const struct btf *kern_btf = d->btf;
+	const char *struct_ops_name;
+	int zero = 0;
+	void *value;
+
+	/* note: d->jw == wtr */
+
+	kern_btf = d->btf;
+
+	/* The kernel supporting BPF_MAP_TYPE_STRUCT_OPS must have
+	 * btf_vmlinux_value_type_id.
+	 */
+	struct_ops_type = btf__type_by_id(kern_btf,
+					  info->btf_vmlinux_value_type_id);
+	struct_ops_name = btf__name_by_offset(kern_btf,
+					      struct_ops_type->name_off);
+	value = calloc(1, info->value_size);
+	if (!value) {
+		p_err("mem alloc failed");
+		return -1;
+	}
+
+	if (bpf_map_lookup_elem(fd, &zero, value)) {
+		p_err("can't lookup struct_ops map %s id %u",
+		      info->name, info->id);
+		free(value);
+		return -1;
+	}
+
+	jsonw_start_object(wtr);
+	jsonw_name(wtr, "bpf_map_info");
+	btf_dumper_type(d, map_info_type_id, (void *)info);
+	jsonw_end_object(wtr);
+
+	jsonw_start_object(wtr);
+	jsonw_name(wtr, struct_ops_name);
+	btf_dumper_type(d, info->btf_vmlinux_value_type_id, value);
+	jsonw_end_object(wtr);
+
+	free(value);
+
+	return 0;
+}
+
+static int do_dump(int argc, char **argv)
+{
+	const char *search_type = NULL, *search_term = NULL;
+	json_writer_t *wtr = json_wtr;
+	const struct btf *kern_btf;
+	struct btf_dumper d = {};
+	struct res res;
+
+	if (argc && argc != 2)
+		usage();
+
+	if (argc == 2) {
+		search_type = GET_ARG();
+		search_term = GET_ARG();
+	}
+
+	kern_btf = get_btf_vmlinux();
+	if (!kern_btf)
+		return -1;
+
+	if (!json_output) {
+		wtr = jsonw_new(stdout);
+		if (!wtr) {
+			p_err("can't create json writer");
+			return -1;
+		}
+		jsonw_pretty(wtr, true);
+	}
+
+	d.btf = kern_btf;
+	d.jw = wtr;
+	d.is_plain_text = !json_output;
+	d.prog_id_as_func_ptr = true;
+
+	res = do_work_on_struct_ops(search_type, search_term, __do_dump, &d,
+				    wtr);
+
+	if (!json_output)
+		jsonw_destroy(&wtr);
+
+	return cmd_retval(&res, !!search_term);
+}
+
 static int do_help(int argc, char **argv)
 {
 	if (json_output) {
