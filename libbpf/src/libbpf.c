@@ -3244,3 +3244,105 @@ static Elf_Scn *elf_sec_by_idx(const struct bpf_object *obj, size_t idx)
     }
     return scn;
 }
+
+static Elf_Scn *elf_sec_by_name(const struct bpf_object *obj, const char *name)
+{
+    Elf_Scn *scn = NULL;
+    Elf *elf = obj->efile.elf;
+    const char *sec_name;
+
+    while ((scn = elf_nextscn(elf, scn)) != NULL)
+    {
+        sec_name = elf_sec_name(obj, scn);
+        if (!sec_name)
+            return NULL;
+
+        if (strcmp(sec_name, name) != 0)
+            continue;
+
+        return scn;
+    }
+    return NULL;
+}
+
+static Elf64_Shdr *elf_sec_hdr(const struct bpf_object *obj, Elf_Scn *scn)
+{
+    Elf64_Shdr *shdr;
+
+    if (!scn)
+        return NULL;
+
+    shdr = elf64_getshdr(scn);
+    if (!shdr)
+    {
+        pr_warn("elf: failed to get section(%zu) header from %s: %s\n",
+                elf_ndxscn(scn), obj->path, elf_errmsg(-1));
+        return NULL;
+    }
+
+    return shdr;
+}
+
+static const char *elf_sec_name(const struct bpf_object *obj, Elf_Scn *scn)
+{
+    const char *name;
+    Elf64_Shdr *sh;
+
+    if (!scn)
+        return NULL;
+
+    sh = elf_sec_hdr(obj, scn);
+    if (!sh)
+        return NULL;
+
+    name = elf_sec_str(obj, sh->sh_name);
+    if (!name)
+    {
+        pr_warn("elf: failed to get section(%zu) name from %s: %s\n",
+                elf_ndxscn(scn), obj->path, elf_errmsg(-1));
+        return NULL;
+    }
+
+    return name;
+}
+
+static Elf_Data *elf_sec_data(const struct bpf_object *obj, Elf_Scn *scn)
+{
+    Elf_Data *data;
+
+    if (!scn)
+        return NULL;
+
+    data = elf_getdata(scn, 0);
+    if (!data)
+    {
+        pr_warn("elf: failed to get section(%zu) %s data from %s: %s\n",
+                elf_ndxscn(scn), elf_sec_name(obj, scn) ?: "<?>",
+                obj->path, elf_errmsg(-1));
+        return NULL;
+    }
+
+    return data;
+}
+
+static Elf64_Sym *elf_sym_by_idx(const struct bpf_object *obj, size_t idx)
+{
+    if (idx >= obj->efile.symbols->d_size / sizeof(Elf64_Sym))
+        return NULL;
+
+    return (Elf64_Sym *)obj->efile.symbols->d_buf + idx;
+}
+
+static Elf64_Rel *elf_rel_by_idx(Elf_Data *data, size_t idx)
+{
+    if (idx >= data->d_size / sizeof(Elf64_Rel))
+        return NULL;
+
+    return (Elf64_Rel *)data->d_buf + idx;
+}
+
+static bool is_sec_name_dwarf(const char *name)
+{
+    /* approximation, but the actual list is too long */
+    return str_has_pfx(name, ".debug_");
+}
