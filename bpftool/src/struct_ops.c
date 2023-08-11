@@ -383,6 +383,115 @@ static int do_dump(int argc, char **argv)
 	return cmd_retval(&res, !!search_term);
 }
 
+static int __do_unregister(int fd, const struct bpf_map_info *info, void *data,
+			   struct json_writer *wtr)
+{
+	int zero = 0;
+
+	if (bpf_map_delete_elem(fd, &zero)) {
+		p_err("can't unload %s %s id %u: %s",
+		      get_kern_struct_ops_name(info), info->name,
+		      info->id, strerror(errno));
+		return -1;
+	}
+
+	p_info("Unregistered %s %s id %u",
+	       get_kern_struct_ops_name(info), info->name,
+	       info->id);
+
+	return 0;
+}
+
+static int do_unregister(int argc, char **argv)
+{
+	const char *search_type, *search_term;
+	struct res res;
+
+	if (argc != 2)
+		usage();
+
+	search_type = GET_ARG();
+	search_term = GET_ARG();
+
+	res = do_work_on_struct_ops(search_type, search_term,
+				    __do_unregister, NULL, NULL);
+
+	return cmd_retval(&res, true);
+}
+
+static int do_register(int argc, char **argv)
+{
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	struct bpf_map_info info = {};
+	__u32 info_len = sizeof(info);
+	int nr_errs = 0, nr_maps = 0;
+	struct bpf_object *obj;
+	struct bpf_link *link;
+	struct bpf_map *map;
+	const char *file;
+
+	if (argc != 1)
+		usage();
+
+	file = GET_ARG();
+
+	if (verifier_logs)
+		open_opts.kernel_log_level = 1 + 2 + 4;
+
+	obj = bpf_object__open_file(file, &open_opts);
+	if (!obj)
+		return -1;
+
+	set_max_rlimit();
+
+	if (bpf_object__load(obj)) {
+		bpf_object__close(obj);
+		return -1;
+	}
+
+	bpf_object__for_each_map(map, obj) {
+		if (bpf_map__type(map) != BPF_MAP_TYPE_STRUCT_OPS)
+			continue;
+
+		link = bpf_map__attach_struct_ops(map);
+		if (!link) {
+			p_err("can't register struct_ops %s: %s",
+			      bpf_map__name(map), strerror(errno));
+			nr_errs++;
+			continue;
+		}
+		nr_maps++;
+
+		bpf_link__disconnect(link);
+		bpf_link__destroy(link);
+
+		if (!bpf_map_get_info_by_fd(bpf_map__fd(map), &info,
+					    &info_len))
+			p_info("Registered %s %s id %u",
+			       get_kern_struct_ops_name(&info),
+			       bpf_map__name(map),
+			       info.id);
+		else
+			p_info("Registered %s but can't find id: %s",
+			       bpf_map__name(map), strerror(errno));
+	}
+
+	bpf_object__close(obj);
+
+	if (nr_errs)
+		return -1;
+
+	if (!nr_maps) {
+		p_err("no struct_ops found in %s", file);
+		return -1;
+	}
+
+	if (json_output)
+		jsonw_null(json_wtr);
+
+	return 0;
+}
+
 static int do_help(int argc, char **argv)
 {
 	if (json_output) {
