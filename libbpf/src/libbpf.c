@@ -3393,3 +3393,223 @@ static int cmp_progs(const void *_a, const void *_b)
     /* sec_insn_off can't be the same within the section */
     return a->sec_insn_off < b->sec_insn_off ? -1 : 1;
 }
+
+static int bpf_object__elf_collect(struct bpf_object *obj)
+{
+    struct elf_sec_desc *sec_desc;
+    Elf *elf = obj->efile.elf;
+    Elf_Data *btf_ext_data = NULL;
+    Elf_Data *btf_data = NULL;
+    int idx = 0, err = 0;
+    const char *name;
+    Elf_Data *data;
+    Elf_Scn *scn;
+    Elf64_Shdr *sh;
+
+    /* ELF section indices are 0-based, but sec #0 is special "invalid"
+     * section. Since section count retrieved by elf_getshdrnum() does
+     * include sec #0, it is already the necessary size of an array to keep
+     * all the sections.
+     */
+    if (elf_getshdrnum(obj->efile.elf, &obj->efile.sec_cnt))
+    {
+        pr_warn("elf: failed to get the number of sections for %s: %s\n",
+                obj->path, elf_errmsg(-1));
+        return -LIBBPF_ERRNO__FORMAT;
+    }
+    obj->efile.secs = calloc(obj->efile.sec_cnt, sizeof(*obj->efile.secs));
+    if (!obj->efile.secs)
+        return -ENOMEM;
+
+    /* a bunch of ELF parsing functionality depends on processing symbols,
+     * so do the first pass and find the symbol table
+     */
+    scn = NULL;
+    while ((scn = elf_nextscn(elf, scn)) != NULL)
+    {
+        sh = elf_sec_hdr(obj, scn);
+        if (!sh)
+            return -LIBBPF_ERRNO__FORMAT;
+
+        if (sh->sh_type == SHT_SYMTAB)
+        {
+            if (obj->efile.symbols)
+            {
+                pr_warn("elf: multiple symbol tables in %s\n", obj->path);
+                return -LIBBPF_ERRNO__FORMAT;
+            }
+
+            data = elf_sec_data(obj, scn);
+            if (!data)
+                return -LIBBPF_ERRNO__FORMAT;
+
+            idx = elf_ndxscn(scn);
+
+            obj->efile.symbols = data;
+            obj->efile.symbols_shndx = idx;
+            obj->efile.strtabidx = sh->sh_link;
+        }
+    }
+
+    if (!obj->efile.symbols)
+    {
+        pr_warn("elf: couldn't find symbol table in %s, stripped object file?\n",
+                obj->path);
+        return -ENOENT;
+    }
+
+    scn = NULL;
+    while ((scn = elf_nextscn(elf, scn)) != NULL)
+    {
+        idx = elf_ndxscn(scn);
+        sec_desc = &obj->efile.secs[idx];
+
+        sh = elf_sec_hdr(obj, scn);
+        if (!sh)
+            return -LIBBPF_ERRNO__FORMAT;
+
+        name = elf_sec_str(obj, sh->sh_name);
+        if (!name)
+            return -LIBBPF_ERRNO__FORMAT;
+
+        if (ignore_elf_section(sh, name))
+            continue;
+
+        data = elf_sec_data(obj, scn);
+        if (!data)
+            return -LIBBPF_ERRNO__FORMAT;
+
+        pr_debug("elf: section(%d) %s, size %ld, link %d, flags %lx, type=%d\n",
+                 idx, name, (unsigned long)data->d_size,
+                 (int)sh->sh_link, (unsigned long)sh->sh_flags,
+                 (int)sh->sh_type);
+
+        if (strcmp(name, "license") == 0)
+        {
+            err = bpf_object__init_license(obj, data->d_buf, data->d_size);
+            if (err)
+                return err;
+        }
+        else if (strcmp(name, "version") == 0)
+        {
+            err = bpf_object__init_kversion(obj, data->d_buf, data->d_size);
+            if (err)
+                return err;
+        }
+        else if (strcmp(name, "maps") == 0)
+        {
+            pr_warn("elf: legacy map definitions in 'maps' section are not supported by libbpf v1.0+\n");
+            return -ENOTSUP;
+        }
+        else if (strcmp(name, MAPS_ELF_SEC) == 0)
+        {
+            obj->efile.btf_maps_shndx = idx;
+        }
+        else if (strcmp(name, BTF_ELF_SEC) == 0)
+        {
+            if (sh->sh_type != SHT_PROGBITS)
+                return -LIBBPF_ERRNO__FORMAT;
+            btf_data = data;
+        }
+        else if (strcmp(name, BTF_EXT_ELF_SEC) == 0)
+        {
+            if (sh->sh_type != SHT_PROGBITS)
+                return -LIBBPF_ERRNO__FORMAT;
+            btf_ext_data = data;
+        }
+        else if (sh->sh_type == SHT_SYMTAB)
+        {
+            /* already processed during the first pass above */
+        }
+        else if (sh->sh_type == SHT_PROGBITS && data->d_size > 0)
+        {
+            if (sh->sh_flags & SHF_EXECINSTR)
+            {
+                if (strcmp(name, ".text") == 0)
+                    obj->efile.text_shndx = idx;
+                err = bpf_object__add_programs(obj, data, name, idx);
+                if (err)
+                    return err;
+            }
+            else if (strcmp(name, DATA_SEC) == 0 ||
+                     str_has_pfx(name, DATA_SEC "."))
+            {
+                sec_desc->sec_type = SEC_DATA;
+                sec_desc->shdr = sh;
+                sec_desc->data = data;
+            }
+            else if (strcmp(name, RODATA_SEC) == 0 ||
+                     str_has_pfx(name, RODATA_SEC "."))
+            {
+                sec_desc->sec_type = SEC_RODATA;
+                sec_desc->shdr = sh;
+                sec_desc->data = data;
+            }
+            else if (strcmp(name, STRUCT_OPS_SEC) == 0)
+            {
+                obj->efile.st_ops_data = data;
+                obj->efile.st_ops_shndx = idx;
+            }
+            else if (strcmp(name, STRUCT_OPS_LINK_SEC) == 0)
+            {
+                obj->efile.st_ops_link_data = data;
+                obj->efile.st_ops_link_shndx = idx;
+            }
+            else
+            {
+                pr_info("elf: skipping unrecognized data section(%d) %s\n",
+                        idx, name);
+            }
+        }
+        else if (sh->sh_type == SHT_REL)
+        {
+            int targ_sec_idx = sh->sh_info; /* points to other section */
+
+            if (sh->sh_entsize != sizeof(Elf64_Rel) ||
+                targ_sec_idx >= obj->efile.sec_cnt)
+                return -LIBBPF_ERRNO__FORMAT;
+
+            /* Only do relo for section with exec instructions */
+            if (!section_have_execinstr(obj, targ_sec_idx) &&
+                strcmp(name, ".rel" STRUCT_OPS_SEC) &&
+                strcmp(name, ".rel" STRUCT_OPS_LINK_SEC) &&
+                strcmp(name, ".rel" MAPS_ELF_SEC))
+            {
+                pr_info("elf: skipping relo section(%d) %s for section(%d) %s\n",
+                        idx, name, targ_sec_idx,
+                        elf_sec_name(obj, elf_sec_by_idx(obj, targ_sec_idx)) ?: "<?>");
+                continue;
+            }
+
+            sec_desc->sec_type = SEC_RELO;
+            sec_desc->shdr = sh;
+            sec_desc->data = data;
+        }
+        else if (sh->sh_type == SHT_NOBITS && (strcmp(name, BSS_SEC) == 0 ||
+                                               str_has_pfx(name, BSS_SEC ".")))
+        {
+            sec_desc->sec_type = SEC_BSS;
+            sec_desc->shdr = sh;
+            sec_desc->data = data;
+        }
+        else
+        {
+            pr_info("elf: skipping section(%d) %s (size %zu)\n", idx, name,
+                    (size_t)sh->sh_size);
+        }
+    }
+
+    if (!obj->efile.strtabidx || obj->efile.strtabidx > idx)
+    {
+        pr_warn("elf: symbol strings section missing or invalid in %s\n", obj->path);
+        return -LIBBPF_ERRNO__FORMAT;
+    }
+
+    /* sort BPF programs by section name and in-section instruction offset
+     * for faster search
+     */
+    if (obj->nr_programs)
+        qsort(obj->programs, obj->nr_programs, sizeof(*obj->programs), cmp_progs);
+
+    return bpf_object__init_btf(obj, btf_data, btf_ext_data);
+}
