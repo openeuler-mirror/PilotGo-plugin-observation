@@ -3200,3 +3200,47 @@ report:
     }
     return err;
 }
+
+static const char *elf_sym_str(const struct bpf_object *obj, size_t off)
+{
+    const char *name;
+
+    name = elf_strptr(obj->efile.elf, obj->efile.strtabidx, off);
+    if (!name)
+    {
+        pr_warn("elf: failed to get section name string at offset %zu from %s: %s\n",
+                off, obj->path, elf_errmsg(-1));
+        return NULL;
+    }
+
+    return name;
+}
+
+static const char *elf_sec_str(const struct bpf_object *obj, size_t off)
+{
+    const char *name;
+
+    name = elf_strptr(obj->efile.elf, obj->efile.shstrndx, off);
+    if (!name)
+    {
+        pr_warn("elf: failed to get section name string at offset %zu from %s: %s\n",
+                off, obj->path, elf_errmsg(-1));
+        return NULL;
+    }
+
+    return name;
+}
+
+static Elf_Scn *elf_sec_by_idx(const struct bpf_object *obj, size_t idx)
+{
+    Elf_Scn *scn;
+
+    scn = elf_getscn(obj->efile.elf, idx);
+    if (!scn)
+    {
+        pr_warn("elf: failed to get section(%zu) from %s: %s\n",
+                idx, obj->path, elf_errmsg(-1));
+        return NULL;
+    }
+    return scn;
+}
