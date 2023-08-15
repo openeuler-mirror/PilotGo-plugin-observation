@@ -2311,6 +2311,39 @@ static int btf_ext_setup_info(struct btf_ext *btf_ext,
 		return -EINVAL;
 	}
 
+	info = btf_ext->data + btf_ext->hdr->hdr_len + ext_sec->off;
+	info_left = ext_sec->len;
+
+	if (btf_ext->data + btf_ext->data_size < info + ext_sec->len) {
+		pr_debug("%s section (off:%u len:%u) is beyond the end of the ELF section .BTF.ext\n",
+			 ext_sec->desc, ext_sec->off, ext_sec->len);
+		return -EINVAL;
+	}
+
+	/* At least a record size */
+	if (info_left < sizeof(__u32)) {
+		pr_debug(".BTF.ext %s record size not found\n", ext_sec->desc);
+		return -EINVAL;
+	}
+
+	/* The record size needs to meet the minimum standard */
+	record_size = *(__u32 *)info;
+	if (record_size < ext_sec->min_rec_size ||
+	    record_size & 0x03) {
+		pr_debug("%s section in .BTF.ext has invalid record size %u\n",
+			 ext_sec->desc, record_size);
+		return -EINVAL;
+	}
+
+	sinfo = info + sizeof(__u32);
+	info_left -= sizeof(__u32);
+
+	/* If no records, return failure now so .BTF.ext won't be used. */
+	if (!info_left) {
+		pr_debug("%s section in .BTF.ext has no records", ext_sec->desc);
+		return -EINVAL;
+	}
+
 	ext_info = ext_sec->ext_info;
 	ext_info->len = ext_sec->len - sizeof(__u32);
 	ext_info->rec_size = record_size;
