@@ -2696,3 +2696,60 @@ static bool btf_dedup_equal_fn(long k1, long k2, void *ctx)
 {
 	return k1 == k2;
 }
+
+static struct btf_dedup *btf_dedup_new(struct btf *btf, const struct btf_dedup_opts *opts)
+{
+	struct btf_dedup *d = calloc(1, sizeof(struct btf_dedup));
+	hashmap_hash_fn hash_fn = btf_dedup_identity_hash_fn;
+	int i, err = 0, type_cnt;
+
+	if (!d)
+		return ERR_PTR(-ENOMEM);
+
+	if (OPTS_GET(opts, force_collisions, false))
+		hash_fn = btf_dedup_collision_hash_fn;
+
+	d->btf = btf;
+	d->btf_ext = OPTS_GET(opts, btf_ext, NULL);
+
+	d->dedup_table = hashmap__new(hash_fn, btf_dedup_equal_fn, NULL);
+	if (IS_ERR(d->dedup_table)) {
+		err = PTR_ERR(d->dedup_table);
+		d->dedup_table = NULL;
+		goto done;
+	}
+
+	type_cnt = btf__type_cnt(btf);
+	d->map = malloc(sizeof(__u32) * type_cnt);
+	if (!d->map) {
+		err = -ENOMEM;
+		goto done;
+	}
+	/* special BTF "void" type is made canonical immediately */
+	d->map[0] = 0;
+	for (i = 1; i < type_cnt; i++) {
+		struct btf_type *t = btf_type_by_id(d->btf, i);
+
+		/* VAR and DATASEC are never deduped and are self-canonical */
+		if (btf_is_var(t) || btf_is_datasec(t))
+			d->map[i] = i;
+		else
+			d->map[i] = BTF_UNPROCESSED_ID;
+	}
+
+	d->hypot_map = malloc(sizeof(__u32) * type_cnt);
+	if (!d->hypot_map) {
+		err = -ENOMEM;
+		goto done;
+	}
+	for (i = 0; i < type_cnt; i++)
+		d->hypot_map[i] = BTF_UNPROCESSED_ID;
+
+done:
+	if (err) {
+		btf_dedup_free(d);
+		return ERR_PTR(err);
+	}
+
+	return d;
+}
