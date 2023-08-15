@@ -2242,3 +2242,35 @@ int btf__add_datasec_var_info(struct btf *btf, int var_type_id, __u32 offset, __
 	btf->hdr->str_off += sz;
 	return 0;
 }
+
+int btf__add_decl_tag(struct btf *btf, const char *value, int ref_type_id,
+		 int component_idx)
+{
+	struct btf_type *t;
+	int sz, value_off;
+
+	if (!value || !value[0] || component_idx < -1)
+		return libbpf_err(-EINVAL);
+
+	if (validate_type_id(ref_type_id))
+		return libbpf_err(-EINVAL);
+
+	if (btf_ensure_modifiable(btf))
+		return libbpf_err(-ENOMEM);
+
+	sz = sizeof(struct btf_type) + sizeof(struct btf_decl_tag);
+	t = btf_add_type_mem(btf, sz);
+	if (!t)
+		return libbpf_err(-ENOMEM);
+
+	value_off = btf__add_str(btf, value);
+	if (value_off < 0)
+		return value_off;
+
+	t->name_off = value_off;
+	t->info = btf_type_info(BTF_KIND_DECL_TAG, 0, false);
+	t->type = ref_type_id;
+	btf_decl_tag(t)->component_idx = component_idx;
+
+	return btf_commit_type(btf, sz);
+}
