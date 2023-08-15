@@ -2382,3 +2382,42 @@ static int btf_ext_setup_info(struct btf_ext *btf_ext,
 
 	return 0;
 }
+
+static int btf_ext_setup_func_info(struct btf_ext *btf_ext)
+{
+	struct btf_ext_sec_setup_param param = {
+		.off = btf_ext->hdr->func_info_off,
+		.len = btf_ext->hdr->func_info_len,
+		.min_rec_size = sizeof(struct bpf_func_info_min),
+		.ext_info = &btf_ext->func_info,
+		.desc = "func_info"
+	};
+
+	return btf_ext_setup_info(btf_ext, &param);
+}
+
+static int btf_ext_setup_line_info(struct btf_ext *btf_ext)
+{
+	struct btf_ext_sec_setup_param param = {
+		.off = btf_ext->hdr->line_info_off,
+		.len = btf_ext->hdr->line_info_len,
+		.min_rec_size = sizeof(struct bpf_line_info_min),
+		.ext_info = &btf_ext->line_info,
+		.desc = "line_info",
+	};
+
+	return btf_ext_setup_info(btf_ext, &param);
+}
+
+static int btf_ext_setup_core_relos(struct btf_ext *btf_ext)
+{
+	struct btf_ext_sec_setup_param param = {
+		.off = btf_ext->hdr->core_relo_off,
+		.len = btf_ext->hdr->core_relo_len,
+		.min_rec_size = sizeof(struct bpf_core_relo),
+		.ext_info = &btf_ext->core_relo_info,
+		.desc = "core_relo",
+	};
+
+	return btf_ext_setup_info(btf_ext, &param);
+}
