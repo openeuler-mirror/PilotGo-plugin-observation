@@ -8653,3 +8653,92 @@ struct mem_cgroup_threshold_ary {
 	unsigned int size;
 	struct mem_cgroup_threshold entries[0];
 };
+
+struct obj_cgroup {
+	struct percpu_ref refcnt;
+	struct mem_cgroup *memcg;
+	atomic_t nr_charged_bytes;
+	union {
+		struct list_head list;
+		struct callback_head rcu;
+	};
+};
+
+typedef int filler_t(struct file *, struct folio *);
+
+union swap_header {
+	struct {
+		char reserved[4086];
+		char magic[10];
+	} magic;
+	struct {
+		char bootbits[1024];
+		__u32 version;
+		__u32 last_page;
+		__u32 nr_badpages;
+		unsigned char sws_uuid[16];
+		unsigned char sws_volume[16];
+		__u32 padding[117];
+		__u32 badpages[1];
+	} info;
+};
+
+struct swap_extent {
+	struct rb_node rb_node;
+	long unsigned int start_page;
+	long unsigned int nr_pages;
+	sector_t start_block;
+};
+
+enum {
+	SWP_USED = 1,
+	SWP_WRITEOK = 2,
+	SWP_DISCARDABLE = 4,
+	SWP_DISCARDING = 8,
+	SWP_SOLIDSTATE = 16,
+	SWP_CONTINUED = 32,
+	SWP_BLKDEV = 64,
+	SWP_ACTIVATED = 128,
+	SWP_FS_OPS = 256,
+	SWP_AREA_DISCARD = 512,
+	SWP_PAGE_DISCARD = 1024,
+	SWP_STABLE_WRITES = 2048,
+	SWP_SYNCHRONOUS_IO = 4096,
+	SWP_SCANNING = 16384,
+};
+
+struct percpu_cluster {
+	struct swap_cluster_info index;
+	unsigned int next;
+};
+
+enum fs_value_type {
+	fs_value_is_undefined = 0,
+	fs_value_is_flag = 1,
+	fs_value_is_string = 2,
+	fs_value_is_blob = 3,
+	fs_value_is_filename = 4,
+	fs_value_is_file = 5,
+};
+
+struct fs_parameter {
+	const char *key;
+	enum fs_value_type type: 8;
+	union {
+		char *string;
+		void *blob;
+		struct filename *name;
+		struct file *file;
+	};
+	size_t size;
+	int dirfd;
+};
+
+struct fc_log {
+	refcount_t usage;
+	u8 head;
+	u8 tail;
+	u8 need_free;
+	struct module *owner;
+	char *buffer[8];
+};
