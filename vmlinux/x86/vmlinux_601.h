@@ -8954,3 +8954,159 @@ struct shash_desc {
 	struct crypto_shash *tfm;
 	void *__ctx[0];
 };
+
+
+struct crypto_shash {
+	unsigned int descsize;
+	struct crypto_tfm base;
+};
+
+struct shash_alg {
+	int (*init)(struct shash_desc *);
+	int (*update)(struct shash_desc *, const u8 *, unsigned int);
+	int (*final)(struct shash_desc *, u8 *);
+	int (*finup)(struct shash_desc *, const u8 *, unsigned int, u8 *);
+	int (*digest)(struct shash_desc *, const u8 *, unsigned int, u8 *);
+	int (*export)(struct shash_desc *, void *);
+	int (*import)(struct shash_desc *, const void *);
+	int (*setkey)(struct crypto_shash *, const u8 *, unsigned int);
+	int (*init_tfm)(struct crypto_shash *);
+	void (*exit_tfm)(struct crypto_shash *);
+	unsigned int descsize;
+	long: 0;
+	unsigned int digestsize;
+	unsigned int statesize;
+	struct crypto_alg base;
+};
+
+typedef __u32 blk_mq_req_flags_t;
+
+struct blk_mq_queue_map {
+	unsigned int *mq_map;
+	unsigned int nr_queues;
+	unsigned int queue_offset;
+};
+
+enum hctx_type {
+	HCTX_TYPE_DEFAULT = 0,
+	HCTX_TYPE_READ = 1,
+	HCTX_TYPE_POLL = 2,
+	HCTX_MAX_TYPES = 3,
+};
+
+struct badblocks {
+	struct device *dev;
+	int count;
+	int unacked_exist;
+	int shift;
+	u64 *page;
+	int changed;
+	seqlock_t lock;
+	sector_t sector;
+	sector_t size;
+};
+
+struct io_ring_ctx;
+
+struct io_wq;
+
+struct io_uring_task {
+	int cached_refs;
+	const struct io_ring_ctx *last;
+	struct io_wq *io_wq;
+	struct file *registered_rings[16];
+	struct xarray xa;
+	struct wait_queue_head wait;
+	atomic_t in_idle;
+	atomic_t inflight_tracked;
+	struct percpu_counter inflight;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct {
+		struct llist_head task_list;
+		struct callback_head task_work;
+		long: 64;
+		long: 64;
+		long: 64;
+		long: 64;
+		long: 64;
+	};
+};
+
+typedef int __kernel_rwf_t;
+
+struct io_uring_cmd {
+	struct file *file;
+	const void *cmd;
+	union {
+		void (*task_work_cb)(struct io_uring_cmd *);
+		void *cookie;
+	};
+	u32 cmd_op;
+	u32 flags;
+	u8 pdu[32];
+};
+
+struct io_uring_sqe {
+	__u8 opcode;
+	__u8 flags;
+	__u16 ioprio;
+	__s32 fd;
+	union {
+		__u64 off;
+		__u64 addr2;
+		struct {
+			__u32 cmd_op;
+			__u32 __pad1;
+		};
+	};
+	union {
+		__u64 addr;
+		__u64 splice_off_in;
+	};
+	__u32 len;
+	union {
+		__kernel_rwf_t rw_flags;
+		__u32 fsync_flags;
+		__u16 poll_events;
+		__u32 poll32_events;
+		__u32 sync_range_flags;
+		__u32 msg_flags;
+		__u32 timeout_flags;
+		__u32 accept_flags;
+		__u32 cancel_flags;
+		__u32 open_flags;
+		__u32 statx_flags;
+		__u32 fadvise_advice;
+		__u32 splice_flags;
+		__u32 rename_flags;
+		__u32 unlink_flags;
+		__u32 hardlink_flags;
+		__u32 xattr_flags;
+		__u32 msg_ring_flags;
+		__u32 uring_cmd_flags;
+	};
+	__u64 user_data;
+	union {
+		__u16 buf_index;
+		__u16 buf_group;
+	};
+	__u16 personality;
+	union {
+		__s32 splice_fd_in;
+		__u32 file_index;
+		struct {
+			__u16 addr_len;
+			__u16 __pad3[1];
+		};
+	};
+	union {
+		struct {
+			__u64 addr3;
+			__u64 __pad2[1];
+		};
+		__u8 cmd[0];
+	};
+};
