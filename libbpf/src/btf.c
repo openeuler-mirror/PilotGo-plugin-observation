@@ -2637,3 +2637,30 @@ static int btf_dedup_table_add(struct btf_dedup *d, long hash, __u32 type_id)
 {
 	return hashmap__append(d->dedup_table, hash, type_id);
 }
+
+static int btf_dedup_hypot_map_add(struct btf_dedup *d,
+				   __u32 from_id, __u32 to_id)
+{
+	if (d->hypot_cnt == d->hypot_cap) {
+		__u32 *new_list;
+
+		d->hypot_cap += max((size_t)16, d->hypot_cap / 2);
+		new_list = libbpf_reallocarray(d->hypot_list, d->hypot_cap, sizeof(__u32));
+		if (!new_list)
+			return -ENOMEM;
+		d->hypot_list = new_list;
+	}
+	d->hypot_list[d->hypot_cnt++] = from_id;
+	d->hypot_map[from_id] = to_id;
+	return 0;
+}
+
+static void btf_dedup_clear_hypot_map(struct btf_dedup *d)
+{
+	int i;
+
+	for (i = 0; i < d->hypot_cnt; i++)
+		d->hypot_map[d->hypot_list[i]] = BTF_UNPROCESSED_ID;
+	d->hypot_cnt = 0;
+	d->hypot_adjust_canon = false;
+}
