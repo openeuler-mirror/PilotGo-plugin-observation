@@ -2976,3 +2976,35 @@ static long btf_hash_struct(struct btf_type *t)
 	}
 	return h;
 }
+
+static bool btf_shallow_equal_struct(struct btf_type *t1, struct btf_type *t2)
+{
+	const struct btf_member *m1, *m2;
+	__u16 vlen;
+	int i;
+
+	if (!btf_equal_common(t1, t2))
+		return false;
+
+	vlen = btf_vlen(t1);
+	m1 = btf_members(t1);
+	m2 = btf_members(t2);
+	for (i = 0; i < vlen; i++) {
+		if (m1->name_off != m2->name_off || m1->offset != m2->offset)
+			return false;
+		m1++;
+		m2++;
+	}
+	return true;
+}
+
+static long btf_hash_array(struct btf_type *t)
+{
+	const struct btf_array *info = btf_array(t);
+	long h = btf_hash_common(t);
+
+	h = hash_combine(h, info->type);
+	h = hash_combine(h, info->index_type);
+	h = hash_combine(h, info->nelems);
+	return h;
+}
