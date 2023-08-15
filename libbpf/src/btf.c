@@ -2457,3 +2457,64 @@ static int btf_ext_parse_hdr(__u8 *data, __u32 data_size)
 
 	return 0;
 }
+
+void btf_ext__free(struct btf_ext *btf_ext)
+{
+	if (IS_ERR_OR_NULL(btf_ext))
+		return;
+	free(btf_ext->func_info.sec_idxs);
+	free(btf_ext->line_info.sec_idxs);
+	free(btf_ext->core_relo_info.sec_idxs);
+	free(btf_ext->data);
+	free(btf_ext);
+}
+
+struct btf_ext *btf_ext__new(const __u8 *data, __u32 size)
+{
+	struct btf_ext *btf_ext;
+	int err;
+
+	btf_ext = calloc(1, sizeof(struct btf_ext));
+	if (!btf_ext)
+		return libbpf_err_ptr(-ENOMEM);
+
+	btf_ext->data_size = size;
+	btf_ext->data = malloc(size);
+	if (!btf_ext->data) {
+		err = -ENOMEM;
+		goto done;
+	}
+	memcpy(btf_ext->data, data, size);
+
+	err = btf_ext_parse_hdr(btf_ext->data, size);
+	if (err)
+		goto done;
+
+	if (btf_ext->hdr->hdr_len < offsetofend(struct btf_ext_header, line_info_len)) {
+		err = -EINVAL;
+		goto done;
+	}
+
+	err = btf_ext_setup_func_info(btf_ext);
+	if (err)
+		goto done;
+
+	err = btf_ext_setup_line_info(btf_ext);
+	if (err)
+		goto done;
+
+	if (btf_ext->hdr->hdr_len < offsetofend(struct btf_ext_header, core_relo_len))
+		goto done; /* skip core relos parsing */
+
+	err = btf_ext_setup_core_relos(btf_ext);
+	if (err)
+		goto done;
+
+done:
+	if (err) {
+		btf_ext__free(btf_ext);
+		return libbpf_err_ptr(err);
+	}
+
+	return btf_ext;
+}
