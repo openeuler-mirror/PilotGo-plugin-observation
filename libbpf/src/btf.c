@@ -2518,3 +2518,22 @@ done:
 
 	return btf_ext;
 }
+
+const void *btf_ext__get_raw_data(const struct btf_ext *btf_ext, __u32 *size)
+{
+	*size = btf_ext->data_size;
+	return btf_ext->data;
+}
+
+struct btf_dedup;
+
+static struct btf_dedup *btf_dedup_new(struct btf *btf, const struct btf_dedup_opts *opts);
+static void btf_dedup_free(struct btf_dedup *d);
+static int btf_dedup_prep(struct btf_dedup *d);
+static int btf_dedup_strings(struct btf_dedup *d);
+static int btf_dedup_prim_types(struct btf_dedup *d);
+static int btf_dedup_struct_types(struct btf_dedup *d);
+static int btf_dedup_ref_types(struct btf_dedup *d);
+static int btf_dedup_resolve_fwds(struct btf_dedup *d);
+static int btf_dedup_compact_types(struct btf_dedup *d);
+static int btf_dedup_remap_types(struct btf_dedup *d);
