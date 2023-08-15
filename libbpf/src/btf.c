@@ -2847,3 +2847,43 @@ err_out:
 
 	return err;
 }
+
+static long btf_hash_common(struct btf_type *t)
+{
+	long h;
+
+	h = hash_combine(0, t->name_off);
+	h = hash_combine(h, t->info);
+	h = hash_combine(h, t->size);
+	return h;
+}
+
+static bool btf_equal_common(struct btf_type *t1, struct btf_type *t2)
+{
+	return t1->name_off == t2->name_off &&
+	       t1->info == t2->info &&
+	       t1->size == t2->size;
+}
+
+/* Calculate type signature hash of INT or TAG. */
+static long btf_hash_int_decl_tag(struct btf_type *t)
+{
+	__u32 info = *(__u32 *)(t + 1);
+	long h;
+
+	h = btf_hash_common(t);
+	h = hash_combine(h, info);
+	return h;
+}
+
+/* Check structural equality of two INTs or TAGs. */
+static bool btf_equal_int_tag(struct btf_type *t1, struct btf_type *t2)
+{
+	__u32 info1, info2;
+
+	if (!btf_equal_common(t1, t2))
+		return false;
+	info1 = *(__u32 *)(t1 + 1);
+	info2 = *(__u32 *)(t2 + 1);
+	return info1 == info2;
+}
