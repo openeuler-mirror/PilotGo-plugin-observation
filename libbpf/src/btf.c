@@ -2934,3 +2934,45 @@ static bool btf_equal_enum64_members(struct btf_type *t1, struct btf_type *t2)
 	}
 	return true;
 }
+
+/* Check structural equality of two ENUMs or ENUM64s. */
+static bool btf_equal_enum(struct btf_type *t1, struct btf_type *t2)
+{
+	if (!btf_equal_common(t1, t2))
+		return false;
+
+	/* t1 & t2 kinds are identical because of btf_equal_common */
+	if (btf_kind(t1) == BTF_KIND_ENUM)
+		return btf_equal_enum_members(t1, t2);
+	else
+		return btf_equal_enum64_members(t1, t2);
+}
+
+static inline bool btf_is_enum_fwd(struct btf_type *t)
+{
+	return btf_is_any_enum(t) && btf_vlen(t) == 0;
+}
+
+static bool btf_compat_enum(struct btf_type *t1, struct btf_type *t2)
+{
+	if (!btf_is_enum_fwd(t1) && !btf_is_enum_fwd(t2))
+		return btf_equal_enum(t1, t2);
+	return t1->name_off == t2->name_off &&
+	       btf_is_any_enum(t1) && btf_is_any_enum(t2);
+}
+
+static long btf_hash_struct(struct btf_type *t)
+{
+	const struct btf_member *member = btf_members(t);
+	__u32 vlen = btf_vlen(t);
+	long h = btf_hash_common(t);
+	int i;
+
+	for (i = 0; i < vlen; i++) {
+		h = hash_combine(h, member->name_off);
+		h = hash_combine(h, member->offset);
+		/* no hashing of referenced type ID, it can be unresolved yet */
+		member++;
+	}
+	return h;
+}
