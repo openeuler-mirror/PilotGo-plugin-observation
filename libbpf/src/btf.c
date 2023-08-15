@@ -2805,3 +2805,45 @@ static int strs_dedup_remap_str_off(__u32 *str_off_ptr, void *ctx)
 	*str_off_ptr = d->btf->start_str_off + off;
 	return 0;
 }
+
+static int btf_dedup_strings(struct btf_dedup *d)
+{
+	int err;
+
+	if (d->btf->strs_deduped)
+		return 0;
+
+	d->strs_set = strset__new(BTF_MAX_STR_OFFSET, NULL, 0);
+	if (IS_ERR(d->strs_set)) {
+		err = PTR_ERR(d->strs_set);
+		goto err_out;
+	}
+
+	if (!d->btf->base_btf) {
+		/* insert empty string; we won't be looking it up during strings
+		 * dedup, but it's good to have it for generic BTF string lookups
+		 */
+		err = strset__add_str(d->strs_set, "");
+		if (err < 0)
+			goto err_out;
+	}
+
+	/* remap string offsets */
+	err = btf_for_each_str_off(d, strs_dedup_remap_str_off, d);
+	if (err)
+		goto err_out;
+
+	/* replace BTF string data and hash with deduped ones */
+	strset__free(d->btf->strs_set);
+	d->btf->hdr->str_len = strset__data_size(d->strs_set);
+	d->btf->strs_set = d->strs_set;
+	d->strs_set = NULL;
+	d->btf->strs_deduped = true;
+	return 0;
+
+err_out:
+	strset__free(d->strs_set);
+	d->strs_set = NULL;
+
+	return err;
+}
