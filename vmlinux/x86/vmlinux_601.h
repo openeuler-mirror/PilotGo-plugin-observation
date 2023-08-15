@@ -8356,3 +8356,119 @@ struct bvec_iter {
 } __attribute__((packed));
 
 typedef unsigned int blk_qc_t;
+
+typedef void bio_end_io_t(struct bio *);
+
+struct bio_issue {
+	u64 value;
+};
+
+struct bio_set;
+
+struct bio {
+	struct bio *bi_next;
+	struct block_device *bi_bdev;
+	blk_opf_t bi_opf;
+	short unsigned int bi_flags;
+	short unsigned int bi_ioprio;
+	blk_status_t bi_status;
+	atomic_t __bi_remaining;
+	struct bvec_iter bi_iter;
+	blk_qc_t bi_cookie;
+	bio_end_io_t *bi_end_io;
+	void *bi_private;
+	struct blkcg_gq *bi_blkg;
+	struct bio_issue bi_issue;
+	union {};
+	short unsigned int bi_vcnt;
+	short unsigned int bi_max_vecs;
+	atomic_t __bi_cnt;
+	struct bio_vec *bi_io_vec;
+	struct bio_set *bi_pool;
+	struct bio_vec bi_inline_vecs[0];
+};
+
+enum {
+	EI_ETYPE_NONE = 0,
+	EI_ETYPE_NULL = 1,
+	EI_ETYPE_ERRNO = 2,
+	EI_ETYPE_ERRNO_NULL = 3,
+	EI_ETYPE_TRUE = 4,
+};
+
+typedef void *mempool_alloc_t(gfp_t, void *);
+
+typedef void mempool_free_t(void *, void *);
+
+struct mempool_s {
+	spinlock_t lock;
+	int min_nr;
+	int curr_nr;
+	void **elements;
+	void *pool_data;
+	mempool_alloc_t *alloc;
+	mempool_free_t *free;
+	wait_queue_head_t wait;
+};
+
+typedef struct mempool_s mempool_t;
+
+struct bio_alloc_cache;
+
+struct bio_set {
+	struct kmem_cache *bio_slab;
+	unsigned int front_pad;
+	struct bio_alloc_cache *cache;
+	mempool_t bio_pool;
+	mempool_t bvec_pool;
+	unsigned int back_pad;
+	spinlock_t rescue_lock;
+	struct bio_list rescue_list;
+	struct work_struct rescue_work;
+	struct workqueue_struct *rescue_workqueue;
+	struct hlist_node cpuhp_dead;
+};
+
+struct block_device_operations;
+
+struct timer_rand_state;
+
+struct disk_events;
+
+struct badblocks;
+
+struct blk_independent_access_ranges;
+
+struct gendisk {
+	int major;
+	int first_minor;
+	int minors;
+	char disk_name[32];
+	short unsigned int events;
+	short unsigned int event_flags;
+	struct xarray part_tbl;
+	struct block_device *part0;
+	const struct block_device_operations *fops;
+	struct request_queue *queue;
+	void *private_data;
+	struct bio_set bio_split;
+	int flags;
+	long unsigned int state;
+	struct mutex open_mutex;
+	unsigned int open_partitions;
+	struct backing_dev_info *bdi;
+	struct kobject *slave_dir;
+	struct timer_rand_state *random;
+	atomic_t sync_io;
+	struct disk_events *ev;
+	int node_id;
+	struct badblocks *bb;
+	struct lockdep_map lockdep_map;
+	u64 diskseq;
+	struct blk_independent_access_ranges *ia_ranges;
+};
+
+struct partition_meta_info {
+	char uuid[37];
+	u8 volname[64];
+};
