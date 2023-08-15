@@ -2537,3 +2537,68 @@ static int btf_dedup_ref_types(struct btf_dedup *d);
 static int btf_dedup_resolve_fwds(struct btf_dedup *d);
 static int btf_dedup_compact_types(struct btf_dedup *d);
 static int btf_dedup_remap_types(struct btf_dedup *d);
+
+int btf__dedup(struct btf *btf, const struct btf_dedup_opts *opts)
+{
+	struct btf_dedup *d;
+	int err;
+
+	if (!OPTS_VALID(opts, btf_dedup_opts))
+		return libbpf_err(-EINVAL);
+
+	d = btf_dedup_new(btf, opts);
+	if (IS_ERR(d)) {
+		pr_debug("btf_dedup_new failed: %ld", PTR_ERR(d));
+		return libbpf_err(-EINVAL);
+	}
+
+	if (btf_ensure_modifiable(btf)) {
+		err = -ENOMEM;
+		goto done;
+	}
+
+	err = btf_dedup_prep(d);
+	if (err) {
+		pr_debug("btf_dedup_prep failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_strings(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_strings failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_prim_types(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_prim_types failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_struct_types(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_struct_types failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_resolve_fwds(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_resolve_fwds failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_ref_types(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_ref_types failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_compact_types(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_compact_types failed:%d\n", err);
+		goto done;
+	}
+	err = btf_dedup_remap_types(d);
+	if (err < 0) {
+		pr_debug("btf_dedup_remap_types failed:%d\n", err);
+		goto done;
+	}
+
+done:
+	btf_dedup_free(d);
+	return libbpf_err(err);
+}
