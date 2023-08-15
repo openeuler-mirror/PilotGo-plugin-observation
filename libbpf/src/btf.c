@@ -2602,3 +2602,38 @@ done:
 	btf_dedup_free(d);
 	return libbpf_err(err);
 }
+
+#define BTF_UNPROCESSED_ID ((__u32)-1)
+#define BTF_IN_PROGRESS_ID ((__u32)-2)
+
+struct btf_dedup {
+	/* .BTF section to be deduped in-place */
+	struct btf *btf;
+	struct btf_ext *btf_ext;
+	struct hashmap *dedup_table;
+	/* Canonical types map */
+	__u32 *map;
+	/* Hypothetical mapping, used during type graph equivalence checks */
+	__u32 *hypot_map;
+	__u32 *hypot_list;
+	size_t hypot_cnt;
+	size_t hypot_cap;
+	bool hypot_adjust_canon;
+	/* Various option modifying behavior of algorithm */
+	struct btf_dedup_opts opts;
+	/* temporary strings deduplication state */
+	struct strset *strs_set;
+};
+
+static long hash_combine(long h, long value)
+{
+	return h * 31 + value;
+}
+
+#define for_each_dedup_cand(d, node, hash) \
+	hashmap__for_each_key_entry(d->dedup_table, node, hash)
+
+static int btf_dedup_table_add(struct btf_dedup *d, long hash, __u32 type_id)
+{
+	return hashmap__append(d->dedup_table, hash, type_id);
+}
