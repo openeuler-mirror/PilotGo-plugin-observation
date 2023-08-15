@@ -8877,3 +8877,80 @@ struct crypto_alg {
 struct sk_buff;
 
 struct crypto_instance;
+
+
+struct crypto_type {
+	unsigned int (*ctxsize)(struct crypto_alg *, u32, u32);
+	unsigned int (*extsize)(struct crypto_alg *);
+	int (*init)(struct crypto_tfm *, u32, u32);
+	int (*init_tfm)(struct crypto_tfm *);
+	void (*show)(struct seq_file *, struct crypto_alg *);
+	int (*report)(struct sk_buff *, struct crypto_alg *);
+	void (*free)(struct crypto_instance *);
+	unsigned int type;
+	unsigned int maskclear;
+	unsigned int maskset;
+	unsigned int tfmsize;
+};
+
+struct crypto_template;
+
+struct crypto_spawn;
+
+struct crypto_instance {
+	struct crypto_alg alg;
+	struct crypto_template *tmpl;
+	union {
+		struct hlist_node list;
+		struct crypto_spawn *spawns;
+	};
+	void *__ctx[0];
+};
+
+struct crypto_spawn {
+	struct list_head list;
+	struct crypto_alg *alg;
+	union {
+		struct crypto_instance *inst;
+		struct crypto_spawn *next;
+	};
+	const struct crypto_type *frontend;
+	u32 mask;
+	bool dead;
+	bool registered;
+};
+
+struct rtattr;
+
+struct crypto_template {
+	struct list_head list;
+	struct hlist_head instances;
+	struct module *module;
+	int (*create)(struct crypto_template *, struct rtattr **);
+	char name[128];
+};
+
+typedef struct {
+	__be64 a;
+	__be64 b;
+} be128;
+
+struct gf128mul_4k {
+	be128 t[256];
+};
+
+struct ghash_ctx {
+	struct gf128mul_4k *gf128;
+};
+
+struct ghash_desc_ctx {
+	u8 buffer[16];
+	u32 bytes;
+};
+
+struct crypto_shash;
+
+struct shash_desc {
+	struct crypto_shash *tfm;
+	void *__ctx[0];
+};
