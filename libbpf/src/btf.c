@@ -2421,3 +2421,39 @@ static int btf_ext_setup_core_relos(struct btf_ext *btf_ext)
 
 	return btf_ext_setup_info(btf_ext, &param);
 }
+
+static int btf_ext_parse_hdr(__u8 *data, __u32 data_size)
+{
+	const struct btf_ext_header *hdr = (struct btf_ext_header *)data;
+
+	if (data_size < offsetofend(struct btf_ext_header, hdr_len) ||
+	    data_size < hdr->hdr_len) {
+		pr_debug("BTF.ext header not found");
+		return -EINVAL;
+	}
+
+	if (hdr->magic == bswap_16(BTF_MAGIC)) {
+		pr_warn("BTF.ext in non-native endianness is not supported\n");
+		return -ENOTSUP;
+	} else if (hdr->magic != BTF_MAGIC) {
+		pr_debug("Invalid BTF.ext magic:%x\n", hdr->magic);
+		return -EINVAL;
+	}
+
+	if (hdr->version != BTF_VERSION) {
+		pr_debug("Unsupported BTF.ext version:%u\n", hdr->version);
+		return -ENOTSUP;
+	}
+
+	if (hdr->flags) {
+		pr_debug("Unsupported BTF.ext flags:%x\n", hdr->flags);
+		return -ENOTSUP;
+	}
+
+	if (data_size == hdr->hdr_len) {
+		pr_debug("BTF.ext has no data\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
