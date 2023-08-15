@@ -2887,3 +2887,50 @@ static bool btf_equal_int_tag(struct btf_type *t1, struct btf_type *t2)
 	info2 = *(__u32 *)(t2 + 1);
 	return info1 == info2;
 }
+
+/* Calculate type signature hash of ENUM/ENUM64. */
+static long btf_hash_enum(struct btf_type *t)
+{
+	long h;
+
+	/* don't hash vlen, enum members and size to support enum fwd resolving */
+	h = hash_combine(0, t->name_off);
+	return h;
+}
+
+static bool btf_equal_enum_members(struct btf_type *t1, struct btf_type *t2)
+{
+	const struct btf_enum *m1, *m2;
+	__u16 vlen;
+	int i;
+
+	vlen = btf_vlen(t1);
+	m1 = btf_enum(t1);
+	m2 = btf_enum(t2);
+	for (i = 0; i < vlen; i++) {
+		if (m1->name_off != m2->name_off || m1->val != m2->val)
+			return false;
+		m1++;
+		m2++;
+	}
+	return true;
+}
+
+static bool btf_equal_enum64_members(struct btf_type *t1, struct btf_type *t2)
+{
+	const struct btf_enum64 *m1, *m2;
+	__u16 vlen;
+	int i;
+
+	vlen = btf_vlen(t1);
+	m1 = btf_enum64(t1);
+	m2 = btf_enum64(t2);
+	for (i = 0; i < vlen; i++) {
+		if (m1->name_off != m2->name_off || m1->val_lo32 != m2->val_lo32 ||
+		    m1->val_hi32 != m2->val_hi32)
+			return false;
+		m1++;
+		m2++;
+	}
+	return true;
+}
