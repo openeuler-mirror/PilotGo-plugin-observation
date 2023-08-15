@@ -2344,6 +2344,36 @@ static int btf_ext_setup_info(struct btf_ext *btf_ext,
 		return -EINVAL;
 	}
 
+		while (info_left) {
+		unsigned int sec_hdrlen = sizeof(struct btf_ext_info_sec);
+		__u64 total_record_size;
+		__u32 num_records;
+
+		if (info_left < sec_hdrlen) {
+			pr_debug("%s section header is not found in .BTF.ext\n",
+			     ext_sec->desc);
+			return -EINVAL;
+		}
+
+		num_records = sinfo->num_info;
+		if (num_records == 0) {
+			pr_debug("%s section has incorrect num_records in .BTF.ext\n",
+			     ext_sec->desc);
+			return -EINVAL;
+		}
+
+		total_record_size = sec_hdrlen + (__u64)num_records * record_size;
+		if (info_left < total_record_size) {
+			pr_debug("%s section has incorrect num_records in .BTF.ext\n",
+			     ext_sec->desc);
+			return -EINVAL;
+		}
+
+		info_left -= total_record_size;
+		sinfo = (void *)sinfo + total_record_size;
+		sec_cnt++;
+	}
+
 	ext_info = ext_sec->ext_info;
 	ext_info->len = ext_sec->len - sizeof(__u32);
 	ext_info->rec_size = record_size;
