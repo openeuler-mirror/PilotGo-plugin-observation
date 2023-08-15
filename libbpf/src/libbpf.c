@@ -3701,3 +3701,51 @@ static int find_extern_sec_btf_id(struct btf *btf, int ext_btf_id)
 
     return -ENOENT;
 }
+
+static enum kcfg_type find_kcfg_type(const struct btf *btf, int id,
+                                     bool *is_signed)
+{
+    const struct btf_type *t;
+    const char *name;
+
+    t = skip_mods_and_typedefs(btf, id, NULL);
+    name = btf__name_by_offset(btf, t->name_off);
+
+    if (is_signed)
+        *is_signed = false;
+    switch (btf_kind(t))
+    {
+    case BTF_KIND_INT:
+    {
+        int enc = btf_int_encoding(t);
+
+        if (enc & BTF_INT_BOOL)
+            return t->size == 1 ? KCFG_BOOL : KCFG_UNKNOWN;
+        if (is_signed)
+            *is_signed = enc & BTF_INT_SIGNED;
+        if (t->size == 1)
+            return KCFG_CHAR;
+        if (t->size < 1 || t->size > 8 || (t->size & (t->size - 1)))
+            return KCFG_UNKNOWN;
+        return KCFG_INT;
+    }
+    case BTF_KIND_ENUM:
+        if (t->size != 4)
+            return KCFG_UNKNOWN;
+        if (strcmp(name, "libbpf_tristate"))
+            return KCFG_UNKNOWN;
+        return KCFG_TRISTATE;
+    case BTF_KIND_ENUM64:
+        if (strcmp(name, "libbpf_tristate"))
+            return KCFG_UNKNOWN;
+        return KCFG_TRISTATE;
+    case BTF_KIND_ARRAY:
+        if (btf_array(t)->nelems == 0)
+            return KCFG_UNKNOWN;
+        if (find_kcfg_type(btf, btf_array(t)->type, NULL) != KCFG_CHAR)
+            return KCFG_UNKNOWN;
+        return KCFG_CHAR_ARR;
+    default:
+        return KCFG_UNKNOWN;
+    }
+}
