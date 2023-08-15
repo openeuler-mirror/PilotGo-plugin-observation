@@ -8472,3 +8472,98 @@ struct partition_meta_info {
 	char uuid[37];
 	u8 volname[64];
 };
+
+enum req_op {
+	REQ_OP_READ = 0,
+	REQ_OP_WRITE = 1,
+	REQ_OP_FLUSH = 2,
+	REQ_OP_DISCARD = 3,
+	REQ_OP_SECURE_ERASE = 5,
+	REQ_OP_WRITE_ZEROES = 9,
+	REQ_OP_ZONE_OPEN = 10,
+	REQ_OP_ZONE_CLOSE = 11,
+	REQ_OP_ZONE_FINISH = 12,
+	REQ_OP_ZONE_APPEND = 13,
+	REQ_OP_ZONE_RESET = 15,
+	REQ_OP_ZONE_RESET_ALL = 17,
+	REQ_OP_DRV_IN = 34,
+	REQ_OP_DRV_OUT = 35,
+	REQ_OP_LAST = 36,
+};
+
+struct blk_rq_stat {
+	u64 mean;
+	u64 min;
+	u64 max;
+	u32 nr_samples;
+	u64 batch;
+};
+
+struct blk_zone {
+	__u64 start;
+	__u64 len;
+	__u64 wp;
+	__u8 type;
+	__u8 cond;
+	__u8 non_seq;
+	__u8 reset;
+	__u8 resv[4];
+	__u64 capacity;
+	__u8 reserved[24];
+};
+
+typedef int (*report_zones_cb)(struct blk_zone *, unsigned int, void *);
+
+enum blk_unique_id {
+	BLK_UID_T10 = 1,
+	BLK_UID_EUI64 = 2,
+	BLK_UID_NAA = 3,
+};
+
+struct hd_geometry;
+
+struct pr_ops;
+
+struct block_device_operations {
+	void (*submit_bio)(struct bio *);
+	int (*poll_bio)(struct bio *, struct io_comp_batch *, unsigned int);
+	int (*open)(struct block_device *, fmode_t);
+	void (*release)(struct gendisk *, fmode_t);
+	int (*rw_page)(struct block_device *, sector_t, struct page *, enum req_op);
+	int (*ioctl)(struct block_device *, fmode_t, unsigned int, long unsigned int);
+	int (*compat_ioctl)(struct block_device *, fmode_t, unsigned int, long unsigned int);
+	unsigned int (*check_events)(struct gendisk *, unsigned int);
+	void (*unlock_native_capacity)(struct gendisk *);
+	int (*getgeo)(struct block_device *, struct hd_geometry *);
+	int (*set_read_only)(struct block_device *, bool);
+	void (*free_disk)(struct gendisk *);
+	void (*swap_slot_free_notify)(struct block_device *, long unsigned int);
+	int (*report_zones)(struct gendisk *, sector_t, unsigned int, report_zones_cb, void *);
+	char * (*devnode)(struct gendisk *, umode_t *);
+	int (*get_unique_id)(struct gendisk *, u8 *, enum blk_unique_id);
+	struct module *owner;
+	const struct pr_ops *pr_ops;
+	int (*alternative_gpt_sector)(struct gendisk *, sector_t *);
+};
+
+struct blk_independent_access_range {
+	struct kobject kobj;
+	sector_t sector;
+	sector_t nr_sectors;
+};
+
+struct blk_independent_access_ranges {
+	struct kobject kobj;
+	bool sysfs_registered;
+	unsigned int nr_ia_ranges;
+	struct blk_independent_access_range ia_range[0];
+};
+
+enum blk_eh_timer_return {
+	BLK_EH_DONE = 0,
+	BLK_EH_RESET_TIMER = 1,
+};
+
+struct blk_mq_hw_ctx;
+
+struct blk_mq_queue_data;
