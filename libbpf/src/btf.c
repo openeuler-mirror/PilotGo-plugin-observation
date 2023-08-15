@@ -2664,3 +2664,35 @@ static void btf_dedup_clear_hypot_map(struct btf_dedup *d)
 	d->hypot_cnt = 0;
 	d->hypot_adjust_canon = false;
 }
+
+static void btf_dedup_free(struct btf_dedup *d)
+{
+	hashmap__free(d->dedup_table);
+	d->dedup_table = NULL;
+
+	free(d->map);
+	d->map = NULL;
+
+	free(d->hypot_map);
+	d->hypot_map = NULL;
+
+	free(d->hypot_list);
+	d->hypot_list = NULL;
+
+	free(d);
+}
+
+static size_t btf_dedup_identity_hash_fn(long key, void *ctx)
+{
+	return key;
+}
+
+static size_t btf_dedup_collision_hash_fn(long key, void *ctx)
+{
+	return 0;
+}
+
+static bool btf_dedup_equal_fn(long k1, long k2, void *ctx)
+{
+	return k1 == k2;
+}
