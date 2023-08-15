@@ -8567,3 +8567,89 @@ enum blk_eh_timer_return {
 struct blk_mq_hw_ctx;
 
 struct blk_mq_queue_data;
+
+
+struct blk_mq_ops {
+	blk_status_t (*queue_rq)(struct blk_mq_hw_ctx *, const struct blk_mq_queue_data *);
+	void (*commit_rqs)(struct blk_mq_hw_ctx *);
+	void (*queue_rqs)(struct request **);
+	int (*get_budget)(struct request_queue *);
+	void (*put_budget)(struct request_queue *, int);
+	void (*set_rq_budget_token)(struct request *, int);
+	int (*get_rq_budget_token)(struct request *);
+	enum blk_eh_timer_return (*timeout)(struct request *);
+	int (*poll)(struct blk_mq_hw_ctx *, struct io_comp_batch *);
+	void (*complete)(struct request *);
+	int (*init_hctx)(struct blk_mq_hw_ctx *, void *, unsigned int);
+	void (*exit_hctx)(struct blk_mq_hw_ctx *, unsigned int);
+	int (*init_request)(struct blk_mq_tag_set *, struct request *, unsigned int, unsigned int);
+	void (*exit_request)(struct blk_mq_tag_set *, struct request *, unsigned int);
+	void (*cleanup_rq)(struct request *);
+	bool (*busy)(struct request_queue *);
+	void (*map_queues)(struct blk_mq_tag_set *);
+	void (*show_rq)(struct seq_file *, struct request *);
+};
+
+enum pr_type {
+	PR_WRITE_EXCLUSIVE = 1,
+	PR_EXCLUSIVE_ACCESS = 2,
+	PR_WRITE_EXCLUSIVE_REG_ONLY = 3,
+	PR_EXCLUSIVE_ACCESS_REG_ONLY = 4,
+	PR_WRITE_EXCLUSIVE_ALL_REGS = 5,
+	PR_EXCLUSIVE_ACCESS_ALL_REGS = 6,
+};
+
+struct pr_ops {
+	int (*pr_register)(struct block_device *, u64, u64, u32);
+	int (*pr_reserve)(struct block_device *, u64, enum pr_type, u32);
+	int (*pr_release)(struct block_device *, u64, enum pr_type);
+	int (*pr_preempt)(struct block_device *, u64, u64, enum pr_type, bool);
+	int (*pr_clear)(struct block_device *, u64);
+};
+
+struct mem_cgroup_reclaim_iter {
+	struct mem_cgroup *position;
+	unsigned int generation;
+};
+
+struct shrinker_info {
+	struct callback_head rcu;
+	atomic_long_t *nr_deferred;
+	long unsigned int *map;
+};
+
+struct lruvec_stats_percpu {
+	long int state[43];
+	long int state_prev[43];
+};
+
+struct lruvec_stats {
+	long int state[43];
+	long int state_pending[43];
+};
+
+struct mem_cgroup_per_node {
+	struct lruvec lruvec;
+	struct lruvec_stats_percpu *lruvec_stats_percpu;
+	struct lruvec_stats lruvec_stats;
+	long unsigned int lru_zone_size[20];
+	struct mem_cgroup_reclaim_iter iter;
+	struct shrinker_info *shrinker_info;
+	struct rb_node tree_node;
+	long unsigned int usage_in_excess;
+	bool on_tree;
+	struct mem_cgroup *memcg;
+};
+
+struct eventfd_ctx;
+
+struct mem_cgroup_threshold {
+	struct eventfd_ctx *eventfd;
+	long unsigned int threshold;
+};
+
+struct mem_cgroup_threshold_ary {
+	int current_threshold;
+	unsigned int size;
+	struct mem_cgroup_threshold entries[0];
+};
