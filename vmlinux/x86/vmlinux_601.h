@@ -8050,3 +8050,94 @@ struct queue_limits
 	enum blk_zoned_model zoned;
 	unsigned int dma_alignment;
 };
+
+struct elevator_queue;
+
+struct blk_queue_stats;
+
+struct rq_qos;
+
+struct blk_mq_ops;
+
+struct blk_mq_ctx;
+
+struct gendisk;
+
+struct blk_stat_callback;
+
+struct blk_rq_stat;
+
+struct blk_mq_tags;
+
+struct blkcg_gq;
+
+struct blk_trace;
+
+struct blk_flush_queue;
+
+struct throtl_data;
+
+struct blk_mq_tag_set;
+
+struct request_queue {
+	struct request *last_merge;
+	struct elevator_queue *elevator;
+	struct percpu_ref q_usage_counter;
+	struct blk_queue_stats *stats;
+	struct rq_qos *rq_qos;
+	const struct blk_mq_ops *mq_ops;
+	struct blk_mq_ctx *queue_ctx;
+	unsigned int queue_depth;
+	struct xarray hctx_table;
+	unsigned int nr_hw_queues;
+	void *queuedata;
+	long unsigned int queue_flags;
+	atomic_t pm_only;
+	int id;
+	spinlock_t queue_lock;
+	struct gendisk *disk;
+	struct kobject kobj;
+	struct kobject *mq_kobj;
+	struct device *dev;
+	enum rpm_status rpm_status;
+	long unsigned int nr_requests;
+	unsigned int dma_pad_mask;
+	unsigned int rq_timeout;
+	int poll_nsec;
+	struct blk_stat_callback *poll_cb;
+	struct blk_rq_stat *poll_stat;
+	struct timer_list timeout;
+	struct work_struct timeout_work;
+	atomic_t nr_active_requests_shared_tags;
+	struct blk_mq_tags *sched_shared_tags;
+	struct list_head icq_list;
+	long unsigned int blkcg_pols[1];
+	struct blkcg_gq *root_blkg;
+	struct list_head blkg_list;
+	struct queue_limits limits;
+	unsigned int required_elevator_features;
+	int node;
+	struct blk_trace *blk_trace;
+	struct blk_flush_queue *fq;
+	struct list_head requeue_list;
+	spinlock_t requeue_lock;
+	struct delayed_work requeue_work;
+	struct mutex sysfs_lock;
+	struct mutex sysfs_dir_lock;
+	struct list_head unused_hctx_list;
+	spinlock_t unused_hctx_lock;
+	int mq_freeze_depth;
+	struct throtl_data *td;
+	struct callback_head callback_head;
+	wait_queue_head_t mq_freeze_wq;
+	struct mutex mq_freeze_lock;
+	int quiesce_depth;
+	struct blk_mq_tag_set *tag_set;
+	struct list_head tag_set_list;
+	struct dentry *debugfs_dir;
+	struct dentry *sched_debugfs_dir;
+	struct dentry *rqos_debugfs_dir;
+	struct mutex debugfs_mutex;
+	bool mq_sysfs_init_done;
+	struct srcu_struct srcu[0];
+};
