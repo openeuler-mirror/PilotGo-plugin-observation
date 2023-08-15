@@ -8193,3 +8193,61 @@ struct writeback_control {
 	size_t wb_lcand_bytes;
 	size_t wb_tcand_bytes;
 };
+
+struct readahead_control {
+	struct file *file;
+	struct address_space *mapping;
+	struct file_ra_state *ra;
+	long unsigned int _index;
+	unsigned int _nr_pages;
+	unsigned int _batch_count;
+	bool _workingset;
+	long unsigned int _pflags;
+};
+
+struct swap_cluster_info {
+	spinlock_t lock;
+	unsigned int data: 24;
+	unsigned int flags: 8;
+};
+
+struct swap_cluster_list {
+	struct swap_cluster_info head;
+	struct swap_cluster_info tail;
+};
+
+struct percpu_cluster;
+
+struct swap_info_struct {
+	struct percpu_ref users;
+	long unsigned int flags;
+	short int prio;
+	struct plist_node list;
+	signed char type;
+	unsigned int max;
+	unsigned char *swap_map;
+	struct swap_cluster_info *cluster_info;
+	struct swap_cluster_list free_clusters;
+	unsigned int lowest_bit;
+	unsigned int highest_bit;
+	unsigned int pages;
+	unsigned int inuse_pages;
+	unsigned int cluster_next;
+	unsigned int cluster_nr;
+	unsigned int *cluster_next_cpu;
+	struct percpu_cluster *percpu_cluster;
+	struct rb_root swap_extent_root;
+	struct block_device *bdev;
+	struct file *swap_file;
+	unsigned int old_block_size;
+	struct completion comp;
+	spinlock_t lock;
+	spinlock_t cont_lock;
+	struct work_struct discard_work;
+	struct swap_cluster_list discard_clusters;
+	struct plist_node avail_lists[0];
+};
+
+struct disk_stats;
+
+struct partition_meta_info;
