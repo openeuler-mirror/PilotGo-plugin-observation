@@ -8742,3 +8742,89 @@ struct fc_log {
 	struct module *owner;
 	char *buffer[8];
 };
+
+struct fs_context_operations {
+	void (*free)(struct fs_context *);
+	int (*dup)(struct fs_context *, struct fs_context *);
+	int (*parse_param)(struct fs_context *, struct fs_parameter *);
+	int (*parse_monolithic)(struct fs_context *, void *);
+	int (*get_tree)(struct fs_context *);
+	int (*reconfigure)(struct fs_context *);
+};
+
+struct fs_parse_result {
+	bool negated;
+	union {
+		bool boolean;
+		int int_32;
+		unsigned int uint_32;
+		u64 uint_64;
+	};
+};
+
+enum {
+	PROC_ENTRY_PERMANENT = 1,
+};
+
+struct proc_ops {
+	unsigned int proc_flags;
+	int (*proc_open)(struct inode *, struct file *);
+	ssize_t (*proc_read)(struct file *, char *, size_t, loff_t *);
+	ssize_t (*proc_read_iter)(struct kiocb *, struct iov_iter *);
+	ssize_t (*proc_write)(struct file *, const char *, size_t, loff_t *);
+	loff_t (*proc_lseek)(struct file *, loff_t, int);
+	int (*proc_release)(struct inode *, struct file *);
+	__poll_t (*proc_poll)(struct file *, struct poll_table_struct *);
+	long int (*proc_ioctl)(struct file *, unsigned int, long unsigned int);
+	int (*proc_mmap)(struct file *, struct vm_area_struct *);
+	long unsigned int (*proc_get_unmapped_area)(struct file *, long unsigned int, long unsigned int, long unsigned int, long unsigned int);
+};
+
+typedef int rmap_t;
+
+typedef struct poll_table_struct poll_table;
+
+enum exception_stack_ordering {
+	ESTACK_DF = 0,
+	ESTACK_NMI = 1,
+	ESTACK_DB = 2,
+	ESTACK_MCE = 3,
+	ESTACK_VC = 4,
+	ESTACK_VC2 = 5,
+	N_EXCEPTION_STACKS = 6,
+};
+
+enum {
+	TRACE_EVENT_FL_FILTERED = 1,
+	TRACE_EVENT_FL_CAP_ANY = 2,
+	TRACE_EVENT_FL_NO_SET_FILTER = 4,
+	TRACE_EVENT_FL_IGNORE_ENABLE = 8,
+	TRACE_EVENT_FL_TRACEPOINT = 16,
+	TRACE_EVENT_FL_DYNAMIC = 32,
+	TRACE_EVENT_FL_KPROBE = 64,
+	TRACE_EVENT_FL_UPROBE = 128,
+	TRACE_EVENT_FL_EPROBE = 256,
+	TRACE_EVENT_FL_CUSTOM = 512,
+};
+
+struct syscall_metadata {
+	const char *name;
+	int syscall_nr;
+	int nb_args;
+	const char **types;
+	const char **args;
+	struct list_head enter_fields;
+	struct trace_event_call *enter_event;
+	struct trace_event_call *exit_event;
+};
+
+struct scatter_walk {
+	struct scatterlist *sg;
+	unsigned int offset;
+};
+
+typedef __u64 __be64;
+
+typedef void (*exitcall_t)();
+
+struct crypto_alg;
