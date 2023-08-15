@@ -3673,3 +3673,31 @@ static int find_extern_btf_id(const struct btf *btf, const char *ext_name)
 
     return -ENOENT;
 }
+
+static int find_extern_sec_btf_id(struct btf *btf, int ext_btf_id)
+{
+    const struct btf_var_secinfo *vs;
+    const struct btf_type *t;
+    int i, j, n;
+
+    if (!btf)
+        return -ESRCH;
+
+    n = btf__type_cnt(btf);
+    for (i = 1; i < n; i++)
+    {
+        t = btf__type_by_id(btf, i);
+
+        if (!btf_is_datasec(t))
+            continue;
+
+        vs = btf_var_secinfos(t);
+        for (j = 0; j < btf_vlen(t); j++, vs++)
+        {
+            if (vs->type == ext_btf_id)
+                return i;
+        }
+    }
+
+    return -ENOENT;
+}
