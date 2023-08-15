@@ -2753,3 +2753,55 @@ done:
 
 	return d;
 }
+
+static int btf_for_each_str_off(struct btf_dedup *d, str_off_visit_fn fn, void *ctx)
+{
+	int i, r;
+
+	for (i = 0; i < d->btf->nr_types; i++) {
+		struct btf_type *t = btf_type_by_id(d->btf, d->btf->start_id + i);
+
+		r = btf_type_visit_str_offs(t, fn, ctx);
+		if (r)
+			return r;
+	}
+
+	if (!d->btf_ext)
+		return 0;
+
+	r = btf_ext_visit_str_offs(d->btf_ext, fn, ctx);
+	if (r)
+		return r;
+
+	return 0;
+}
+
+static int strs_dedup_remap_str_off(__u32 *str_off_ptr, void *ctx)
+{
+	struct btf_dedup *d = ctx;
+	__u32 str_off = *str_off_ptr;
+	const char *s;
+	int off, err;
+
+	/* don't touch empty string or string in main BTF */
+	if (str_off == 0 || str_off < d->btf->start_str_off)
+		return 0;
+
+	s = btf__str_by_offset(d->btf, str_off);
+	if (d->btf->base_btf) {
+		err = btf__find_str(d->btf->base_btf, s);
+		if (err >= 0) {
+			*str_off_ptr = err;
+			return 0;
+		}
+		if (err != -ENOENT)
+			return err;
+	}
+
+	off = strset__add_str(d->strs_set, s);
+	if (off < 0)
+		return off;
+
+	*str_off_ptr = d->btf->start_str_off + off;
+	return 0;
+}
