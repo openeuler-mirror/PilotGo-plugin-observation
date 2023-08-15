@@ -8251,3 +8251,108 @@ struct swap_info_struct {
 struct disk_stats;
 
 struct partition_meta_info;
+
+struct block_device {
+	sector_t bd_start_sect;
+	sector_t bd_nr_sectors;
+	struct disk_stats *bd_stats;
+	long unsigned int bd_stamp;
+	bool bd_read_only;
+	dev_t bd_dev;
+	atomic_t bd_openers;
+	struct inode *bd_inode;
+	struct super_block *bd_super;
+	void *bd_claiming;
+	struct device bd_device;
+	void *bd_holder;
+	int bd_holders;
+	bool bd_write_holder;
+	struct kobject *bd_holder_dir;
+	u8 bd_partno;
+	spinlock_t bd_size_lock;
+	struct gendisk *bd_disk;
+	struct request_queue *bd_queue;
+	int bd_fsfreeze_count;
+	struct mutex bd_fsfreeze_mutex;
+	struct super_block *bd_fsfreeze_sb;
+	struct partition_meta_info *bd_meta_info;
+};
+
+struct io_comp_batch {
+	struct request *req_list;
+	bool need_ts;
+	void (*complete)(struct io_comp_batch *);
+};
+
+struct fc_log;
+
+struct p_log {
+	const char *prefix;
+	struct fc_log *log;
+};
+
+enum fs_context_purpose {
+	FS_CONTEXT_FOR_MOUNT = 0,
+	FS_CONTEXT_FOR_SUBMOUNT = 1,
+	FS_CONTEXT_FOR_RECONFIGURE = 2,
+};
+
+enum fs_context_phase {
+	FS_CONTEXT_CREATE_PARAMS = 0,
+	FS_CONTEXT_CREATING = 1,
+	FS_CONTEXT_AWAITING_MOUNT = 2,
+	FS_CONTEXT_AWAITING_RECONF = 3,
+	FS_CONTEXT_RECONF_PARAMS = 4,
+	FS_CONTEXT_RECONFIGURING = 5,
+	FS_CONTEXT_FAILED = 6,
+};
+
+struct fs_context_operations;
+
+struct fs_context {
+	const struct fs_context_operations *ops;
+	struct mutex uapi_mutex;
+	struct file_system_type *fs_type;
+	void *fs_private;
+	void *sget_key;
+	struct dentry *root;
+	struct user_namespace *user_ns;
+	struct net *net_ns;
+	const struct cred *cred;
+	struct p_log log;
+	const char *source;
+	void *security;
+	void *s_fs_info;
+	unsigned int sb_flags;
+	unsigned int sb_flags_mask;
+	unsigned int s_iflags;
+	unsigned int lsm_flags;
+	enum fs_context_purpose purpose: 8;
+	enum fs_context_phase phase: 8;
+	bool need_free: 1;
+	bool global: 1;
+	bool oldapi: 1;
+};
+
+struct audit_names;
+
+struct filename {
+	const char *name;
+	const char *uptr;
+	int refcnt;
+	struct audit_names *aname;
+	const char iname[0];
+};
+
+typedef __u32 blk_opf_t;
+
+typedef u8 blk_status_t;
+
+struct bvec_iter {
+	sector_t bi_sector;
+	unsigned int bi_size;
+	unsigned int bi_idx;
+	unsigned int bi_bvec_done;
+} __attribute__((packed));
+
+typedef unsigned int blk_qc_t;
