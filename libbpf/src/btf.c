@@ -3148,3 +3148,88 @@ static int btf_dedup_prep(struct btf_dedup *d)
 
 	return 0;
 }
+
+static int btf_dedup_prim_type(struct btf_dedup *d, __u32 type_id)
+{
+	struct btf_type *t = btf_type_by_id(d->btf, type_id);
+	struct hashmap_entry *hash_entry;
+	struct btf_type *cand;
+	/* if we don't find equivalent type, then we are canonical */
+	__u32 new_id = type_id;
+	__u32 cand_id;
+	long h;
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_CONST:
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_PTR:
+	case BTF_KIND_TYPEDEF:
+	case BTF_KIND_ARRAY:
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+	case BTF_KIND_FUNC:
+	case BTF_KIND_FUNC_PROTO:
+	case BTF_KIND_VAR:
+	case BTF_KIND_DATASEC:
+	case BTF_KIND_DECL_TAG:
+	case BTF_KIND_TYPE_TAG:
+		return 0;
+
+	case BTF_KIND_INT:
+		h = btf_hash_int_decl_tag(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_int_tag(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+		}
+		break;
+
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		h = btf_hash_enum(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_enum(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+			if (btf_compat_enum(t, cand)) {
+				if (btf_is_enum_fwd(t)) {
+					/* resolve fwd to full enum */
+					new_id = cand_id;
+					break;
+				}
+				/* resolve canonical enum fwd to full enum */
+				d->map[cand_id] = type_id;
+			}
+		}
+		break;
+
+	case BTF_KIND_FWD:
+	case BTF_KIND_FLOAT:
+		h = btf_hash_common(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_common(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+		}
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	d->map[type_id] = new_id;
+	if (type_id == new_id && btf_dedup_table_add(d, h, type_id))
+		return -ENOMEM;
+
+	return 0;
+}
