@@ -4111,3 +4111,174 @@ bpf_object__section_to_libbpf_map_type(const struct bpf_object *obj, int shndx)
         return LIBBPF_MAP_UNSPEC;
     }
 }
+
+static int bpf_program__record_reloc(struct bpf_program *prog,
+                                     struct reloc_desc *reloc_desc,
+                                     __u32 insn_idx, const char *sym_name,
+                                     const Elf64_Sym *sym, const Elf64_Rel *rel)
+{
+    struct bpf_insn *insn = &prog->insns[insn_idx];
+    size_t map_idx, nr_maps = prog->obj->nr_maps;
+    struct bpf_object *obj = prog->obj;
+    __u32 shdr_idx = sym->st_shndx;
+    enum libbpf_map_type type;
+    const char *sym_sec_name;
+    struct bpf_map *map;
+
+    if (!is_call_insn(insn) && !is_ldimm64_insn(insn))
+    {
+        pr_warn("prog '%s': invalid relo against '%s' for insns[%d].code 0x%x\n",
+                prog->name, sym_name, insn_idx, insn->code);
+        return -LIBBPF_ERRNO__RELOC;
+    }
+
+    if (sym_is_extern(sym))
+    {
+        int sym_idx = ELF64_R_SYM(rel->r_info);
+        int i, n = obj->nr_extern;
+        struct extern_desc *ext;
+
+        for (i = 0; i < n; i++)
+        {
+            ext = &obj->externs[i];
+            if (ext->sym_idx == sym_idx)
+                break;
+        }
+        if (i >= n)
+        {
+            pr_warn("prog '%s': extern relo failed to find extern for '%s' (%d)\n",
+                    prog->name, sym_name, sym_idx);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+        pr_debug("prog '%s': found extern #%d '%s' (sym %d) for insn #%u\n",
+                 prog->name, i, ext->name, ext->sym_idx, insn_idx);
+        if (insn->code == (BPF_JMP | BPF_CALL))
+            reloc_desc->type = RELO_EXTERN_CALL;
+        else
+            reloc_desc->type = RELO_EXTERN_LD64;
+        reloc_desc->insn_idx = insn_idx;
+        reloc_desc->ext_idx = i;
+        return 0;
+    }
+
+    /* sub-program call relocation */
+    if (is_call_insn(insn))
+    {
+        if (insn->src_reg != BPF_PSEUDO_CALL)
+        {
+            pr_warn("prog '%s': incorrect bpf_call opcode\n", prog->name);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+        /* text_shndx can be 0, if no default "main" program exists */
+        if (!shdr_idx || shdr_idx != obj->efile.text_shndx)
+        {
+            sym_sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, shdr_idx));
+            pr_warn("prog '%s': bad call relo against '%s' in section '%s'\n",
+                    prog->name, sym_name, sym_sec_name);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+        if (sym->st_value % BPF_INSN_SZ)
+        {
+            pr_warn("prog '%s': bad call relo against '%s' at offset %zu\n",
+                    prog->name, sym_name, (size_t)sym->st_value);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+        reloc_desc->type = RELO_CALL;
+        reloc_desc->insn_idx = insn_idx;
+        reloc_desc->sym_off = sym->st_value;
+        return 0;
+    }
+
+    if (!shdr_idx || shdr_idx >= SHN_LORESERVE)
+    {
+        pr_warn("prog '%s': invalid relo against '%s' in special section 0x%x; forgot to initialize global var?..\n",
+                prog->name, sym_name, shdr_idx);
+        return -LIBBPF_ERRNO__RELOC;
+    }
+
+    /* loading subprog addresses */
+    if (sym_is_subprog(sym, obj->efile.text_shndx))
+    {
+        /* global_func: sym->st_value = offset in the section, insn->imm = 0.
+         * local_func: sym->st_value = 0, insn->imm = offset in the section.
+         */
+        if ((sym->st_value % BPF_INSN_SZ) || (insn->imm % BPF_INSN_SZ))
+        {
+            pr_warn("prog '%s': bad subprog addr relo against '%s' at offset %zu+%d\n",
+                    prog->name, sym_name, (size_t)sym->st_value, insn->imm);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+
+        reloc_desc->type = RELO_SUBPROG_ADDR;
+        reloc_desc->insn_idx = insn_idx;
+        reloc_desc->sym_off = sym->st_value;
+        return 0;
+    }
+
+    type = bpf_object__section_to_libbpf_map_type(obj, shdr_idx);
+    sym_sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, shdr_idx));
+
+    /* generic map reference relocation */
+    if (type == LIBBPF_MAP_UNSPEC)
+    {
+        if (!bpf_object__shndx_is_maps(obj, shdr_idx))
+        {
+            pr_warn("prog '%s': bad map relo against '%s' in section '%s'\n",
+                    prog->name, sym_name, sym_sec_name);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+        for (map_idx = 0; map_idx < nr_maps; map_idx++)
+        {
+            map = &obj->maps[map_idx];
+            if (map->libbpf_type != type ||
+                map->sec_idx != sym->st_shndx ||
+                map->sec_offset != sym->st_value)
+                continue;
+            pr_debug("prog '%s': found map %zd (%s, sec %d, off %zu) for insn #%u\n",
+                     prog->name, map_idx, map->name, map->sec_idx,
+                     map->sec_offset, insn_idx);
+            break;
+        }
+        if (map_idx >= nr_maps)
+        {
+            pr_warn("prog '%s': map relo failed to find map for section '%s', off %zu\n",
+                    prog->name, sym_sec_name, (size_t)sym->st_value);
+            return -LIBBPF_ERRNO__RELOC;
+        }
+        reloc_desc->type = RELO_LD64;
+        reloc_desc->insn_idx = insn_idx;
+        reloc_desc->map_idx = map_idx;
+        reloc_desc->sym_off = 0; /* sym->st_value determines map_idx */
+        return 0;
+    }
+
+    /* global data map relocation */
+    if (!bpf_object__shndx_is_data(obj, shdr_idx))
+    {
+        pr_warn("prog '%s': bad data relo against section '%s'\n",
+                prog->name, sym_sec_name);
+        return -LIBBPF_ERRNO__RELOC;
+    }
+    for (map_idx = 0; map_idx < nr_maps; map_idx++)
+    {
+        map = &obj->maps[map_idx];
+        if (map->libbpf_type != type || map->sec_idx != sym->st_shndx)
+            continue;
+        pr_debug("prog '%s': found data map %zd (%s, sec %d, off %zu) for insn %u\n",
+                 prog->name, map_idx, map->name, map->sec_idx,
+                 map->sec_offset, insn_idx);
+        break;
+    }
+    if (map_idx >= nr_maps)
+    {
+        pr_warn("prog '%s': data relo failed to find map for section '%s'\n",
+                prog->name, sym_sec_name);
+        return -LIBBPF_ERRNO__RELOC;
+    }
+
+    reloc_desc->type = RELO_DATA;
+    reloc_desc->insn_idx = insn_idx;
+    reloc_desc->map_idx = map_idx;
+    reloc_desc->sym_off = sym->st_value;
+    return 0;
+}
