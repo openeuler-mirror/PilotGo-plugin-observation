@@ -3233,3 +3233,43 @@ static int btf_dedup_prim_type(struct btf_dedup *d, __u32 type_id)
 
 	return 0;
 }
+
+static int btf_dedup_prim_types(struct btf_dedup *d)
+{
+	int i, err;
+
+	for (i = 0; i < d->btf->nr_types; i++) {
+		err = btf_dedup_prim_type(d, d->btf->start_id + i);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static inline bool is_type_mapped(struct btf_dedup *d, uint32_t type_id)
+{
+	return d->map[type_id] <= BTF_MAX_NR_TYPES;
+}
+
+static inline __u32 resolve_type_id(struct btf_dedup *d, __u32 type_id)
+{
+	while (is_type_mapped(d, type_id) && d->map[type_id] != type_id)
+		type_id = d->map[type_id];
+	return type_id;
+}
+
+static uint32_t resolve_fwd_id(struct btf_dedup *d, uint32_t type_id)
+{
+	__u32 orig_type_id = type_id;
+
+	if (!btf_is_fwd(btf__type_by_id(d->btf, type_id)))
+		return type_id;
+
+	while (is_type_mapped(d, type_id) && d->map[type_id] != type_id)
+		type_id = d->map[type_id];
+
+	if (!btf_is_fwd(btf__type_by_id(d->btf, type_id)))
+		return type_id;
+
+	return orig_type_id;
+}
