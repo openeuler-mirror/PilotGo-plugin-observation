@@ -3749,3 +3749,42 @@ static enum kcfg_type find_kcfg_type(const struct btf *btf, int id,
         return KCFG_UNKNOWN;
     }
 }
+
+static int cmp_externs(const void *_a, const void *_b)
+{
+    const struct extern_desc *a = _a;
+    const struct extern_desc *b = _b;
+
+    if (a->type != b->type)
+        return a->type < b->type ? -1 : 1;
+
+    if (a->type == EXT_KCFG)
+    {
+        /* descending order by alignment requirements */
+        if (a->kcfg.align != b->kcfg.align)
+            return a->kcfg.align > b->kcfg.align ? -1 : 1;
+        /* ascending order by size, within same alignment class */
+        if (a->kcfg.sz != b->kcfg.sz)
+            return a->kcfg.sz < b->kcfg.sz ? -1 : 1;
+    }
+
+    /* resolve ties by name */
+    return strcmp(a->name, b->name);
+}
+
+static int find_int_btf_id(const struct btf *btf)
+{
+    const struct btf_type *t;
+    int i, n;
+
+    n = btf__type_cnt(btf);
+    for (i = 1; i < n; i++)
+    {
+        t = btf__type_by_id(btf, i);
+
+        if (btf_is_int(t) && btf_int_bits(t) == 32)
+            return i;
+    }
+
+    return 0;
+}
