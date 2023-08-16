@@ -3088,3 +3088,63 @@ static bool btf_compat_fnproto(struct btf_type *t1, struct btf_type *t2)
 	}
 	return true;
 }
+
+static int btf_dedup_prep(struct btf_dedup *d)
+{
+	struct btf_type *t;
+	int type_id;
+	long h;
+
+	if (!d->btf->base_btf)
+		return 0;
+
+	for (type_id = 1; type_id < d->btf->start_id; type_id++) {
+		t = btf_type_by_id(d->btf, type_id);
+
+		/* all base BTF types are self-canonical by definition */
+		d->map[type_id] = type_id;
+
+		switch (btf_kind(t)) {
+		case BTF_KIND_VAR:
+		case BTF_KIND_DATASEC:
+			/* VAR and DATASEC are never hash/deduplicated */
+			continue;
+		case BTF_KIND_CONST:
+		case BTF_KIND_VOLATILE:
+		case BTF_KIND_RESTRICT:
+		case BTF_KIND_PTR:
+		case BTF_KIND_FWD:
+		case BTF_KIND_TYPEDEF:
+		case BTF_KIND_FUNC:
+		case BTF_KIND_FLOAT:
+		case BTF_KIND_TYPE_TAG:
+			h = btf_hash_common(t);
+			break;
+		case BTF_KIND_INT:
+		case BTF_KIND_DECL_TAG:
+			h = btf_hash_int_decl_tag(t);
+			break;
+		case BTF_KIND_ENUM:
+		case BTF_KIND_ENUM64:
+			h = btf_hash_enum(t);
+			break;
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+			h = btf_hash_struct(t);
+			break;
+		case BTF_KIND_ARRAY:
+			h = btf_hash_array(t);
+			break;
+		case BTF_KIND_FUNC_PROTO:
+			h = btf_hash_fnproto(t);
+			break;
+		default:
+			pr_debug("unknown kind %d for type [%d]\n", btf_kind(t), type_id);
+			return -EINVAL;
+		}
+		if (btf_dedup_table_add(d, h, type_id))
+			return -ENOMEM;
+	}
+
+	return 0;
+}
