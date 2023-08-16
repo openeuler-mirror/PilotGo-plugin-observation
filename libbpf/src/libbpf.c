@@ -4051,3 +4051,63 @@ static int bpf_object__collect_externs(struct bpf_object *obj)
     }
     return 0;
 }
+
+static bool prog_is_subprog(const struct bpf_object *obj, const struct bpf_program *prog)
+{
+    return prog->sec_idx == obj->efile.text_shndx && obj->nr_programs > 1;
+}
+
+struct bpf_program *
+bpf_object__find_program_by_name(const struct bpf_object *obj,
+                                 const char *name)
+{
+    struct bpf_program *prog;
+
+    bpf_object__for_each_program(prog, obj)
+    {
+        if (prog_is_subprog(obj, prog))
+            continue;
+        if (!strcmp(prog->name, name))
+            return prog;
+    }
+    return errno = ENOENT, NULL;
+}
+
+static bool bpf_object__shndx_is_data(const struct bpf_object *obj,
+                                      int shndx)
+{
+    switch (obj->efile.secs[shndx].sec_type)
+    {
+    case SEC_BSS:
+    case SEC_DATA:
+    case SEC_RODATA:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool bpf_object__shndx_is_maps(const struct bpf_object *obj,
+                                      int shndx)
+{
+    return shndx == obj->efile.btf_maps_shndx;
+}
+
+static enum libbpf_map_type
+bpf_object__section_to_libbpf_map_type(const struct bpf_object *obj, int shndx)
+{
+    if (shndx == obj->efile.symbols_shndx)
+        return LIBBPF_MAP_KCONFIG;
+
+    switch (obj->efile.secs[shndx].sec_type)
+    {
+    case SEC_BSS:
+        return LIBBPF_MAP_BSS;
+    case SEC_DATA:
+        return LIBBPF_MAP_DATA;
+    case SEC_RODATA:
+        return LIBBPF_MAP_RODATA;
+    default:
+        return LIBBPF_MAP_UNSPEC;
+    }
+}
