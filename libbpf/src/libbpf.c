@@ -3788,3 +3788,43 @@ static int find_int_btf_id(const struct btf *btf)
 
     return 0;
 }
+
+static int add_dummy_ksym_var(struct btf *btf)
+{
+    int i, int_btf_id, sec_btf_id, dummy_var_btf_id;
+    const struct btf_var_secinfo *vs;
+    const struct btf_type *sec;
+
+    if (!btf)
+        return 0;
+
+    sec_btf_id = btf__find_by_name_kind(btf, KSYMS_SEC,
+                                        BTF_KIND_DATASEC);
+    if (sec_btf_id < 0)
+        return 0;
+
+    sec = btf__type_by_id(btf, sec_btf_id);
+    vs = btf_var_secinfos(sec);
+    for (i = 0; i < btf_vlen(sec); i++, vs++)
+    {
+        const struct btf_type *vt;
+
+        vt = btf__type_by_id(btf, vs->type);
+        if (btf_is_func(vt))
+            break;
+    }
+
+    /* No func in ksyms sec.  No need to add dummy var. */
+    if (i == btf_vlen(sec))
+        return 0;
+
+    int_btf_id = find_int_btf_id(btf);
+    dummy_var_btf_id = btf__add_var(btf,
+                                    "dummy_ksym",
+                                    BTF_VAR_GLOBAL_ALLOCATED,
+                                    int_btf_id);
+    if (dummy_var_btf_id < 0)
+        pr_warn("cannot create a dummy_ksym var\n");
+
+    return dummy_var_btf_id;
+}
