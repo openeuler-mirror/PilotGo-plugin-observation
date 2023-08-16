@@ -3828,3 +3828,226 @@ static int add_dummy_ksym_var(struct btf *btf)
 
     return dummy_var_btf_id;
 }
+
+static int bpf_object__collect_externs(struct bpf_object *obj)
+{
+    struct btf_type *sec, *kcfg_sec = NULL, *ksym_sec = NULL;
+    const struct btf_type *t;
+    struct extern_desc *ext;
+    int i, n, off, dummy_var_btf_id;
+    const char *ext_name, *sec_name;
+    Elf_Scn *scn;
+    Elf64_Shdr *sh;
+
+    if (!obj->efile.symbols)
+        return 0;
+
+    scn = elf_sec_by_idx(obj, obj->efile.symbols_shndx);
+    sh = elf_sec_hdr(obj, scn);
+    if (!sh || sh->sh_entsize != sizeof(Elf64_Sym))
+        return -LIBBPF_ERRNO__FORMAT;
+
+    dummy_var_btf_id = add_dummy_ksym_var(obj->btf);
+    if (dummy_var_btf_id < 0)
+        return dummy_var_btf_id;
+
+    n = sh->sh_size / sh->sh_entsize;
+    pr_debug("looking for externs among %d symbols...\n", n);
+
+    for (i = 0; i < n; i++)
+    {
+        Elf64_Sym *sym = elf_sym_by_idx(obj, i);
+
+        if (!sym)
+            return -LIBBPF_ERRNO__FORMAT;
+        if (!sym_is_extern(sym))
+            continue;
+        ext_name = elf_sym_str(obj, sym->st_name);
+        if (!ext_name || !ext_name[0])
+            continue;
+
+        ext = obj->externs;
+        ext = libbpf_reallocarray(ext, obj->nr_extern + 1, sizeof(*ext));
+        if (!ext)
+            return -ENOMEM;
+        obj->externs = ext;
+        ext = &ext[obj->nr_extern];
+        memset(ext, 0, sizeof(*ext));
+        obj->nr_extern++;
+
+        ext->btf_id = find_extern_btf_id(obj->btf, ext_name);
+        if (ext->btf_id <= 0)
+        {
+            pr_warn("failed to find BTF for extern '%s': %d\n",
+                    ext_name, ext->btf_id);
+            return ext->btf_id;
+        }
+        t = btf__type_by_id(obj->btf, ext->btf_id);
+        ext->name = btf__name_by_offset(obj->btf, t->name_off);
+        ext->sym_idx = i;
+        ext->is_weak = ELF64_ST_BIND(sym->st_info) == STB_WEAK;
+
+        ext->sec_btf_id = find_extern_sec_btf_id(obj->btf, ext->btf_id);
+        if (ext->sec_btf_id <= 0)
+        {
+            pr_warn("failed to find BTF for extern '%s' [%d] section: %d\n",
+                    ext_name, ext->btf_id, ext->sec_btf_id);
+            return ext->sec_btf_id;
+        }
+        sec = (void *)btf__type_by_id(obj->btf, ext->sec_btf_id);
+        sec_name = btf__name_by_offset(obj->btf, sec->name_off);
+
+        if (strcmp(sec_name, KCONFIG_SEC) == 0)
+        {
+            if (btf_is_func(t))
+            {
+                pr_warn("extern function %s is unsupported under %s section\n",
+                        ext->name, KCONFIG_SEC);
+                return -ENOTSUP;
+            }
+            kcfg_sec = sec;
+            ext->type = EXT_KCFG;
+            ext->kcfg.sz = btf__resolve_size(obj->btf, t->type);
+            if (ext->kcfg.sz <= 0)
+            {
+                pr_warn("failed to resolve size of extern (kcfg) '%s': %d\n",
+                        ext_name, ext->kcfg.sz);
+                return ext->kcfg.sz;
+            }
+            ext->kcfg.align = btf__align_of(obj->btf, t->type);
+            if (ext->kcfg.align <= 0)
+            {
+                pr_warn("failed to determine alignment of extern (kcfg) '%s': %d\n",
+                        ext_name, ext->kcfg.align);
+                return -EINVAL;
+            }
+            ext->kcfg.type = find_kcfg_type(obj->btf, t->type,
+                                            &ext->kcfg.is_signed);
+            if (ext->kcfg.type == KCFG_UNKNOWN)
+            {
+                pr_warn("extern (kcfg) '%s': type is unsupported\n", ext_name);
+                return -ENOTSUP;
+            }
+        }
+        else if (strcmp(sec_name, KSYMS_SEC) == 0)
+        {
+            ksym_sec = sec;
+            ext->type = EXT_KSYM;
+            skip_mods_and_typedefs(obj->btf, t->type,
+                                   &ext->ksym.type_id);
+        }
+        else
+        {
+            pr_warn("unrecognized extern section '%s'\n", sec_name);
+            return -ENOTSUP;
+        }
+    }
+    pr_debug("collected %d externs total\n", obj->nr_extern);
+
+    if (!obj->nr_extern)
+        return 0;
+
+    /* sort externs by type, for kcfg ones also by (align, size, name) */
+    qsort(obj->externs, obj->nr_extern, sizeof(*ext), cmp_externs);
+
+    if (ksym_sec)
+    {
+        /
+            int int_btf_id = find_int_btf_id(obj->btf);
+
+        const struct btf_type *dummy_var;
+
+        dummy_var = btf__type_by_id(obj->btf, dummy_var_btf_id);
+        for (i = 0; i < obj->nr_extern; i++)
+        {
+            ext = &obj->externs[i];
+            if (ext->type != EXT_KSYM)
+                continue;
+            pr_debug("extern (ksym) #%d: symbol %d, name %s\n",
+                     i, ext->sym_idx, ext->name);
+        }
+
+        sec = ksym_sec;
+        n = btf_vlen(sec);
+        for (i = 0, off = 0; i < n; i++, off += sizeof(int))
+        {
+            struct btf_var_secinfo *vs = btf_var_secinfos(sec) + i;
+            struct btf_type *vt;
+
+            vt = (void *)btf__type_by_id(obj->btf, vs->type);
+            ext_name = btf__name_by_offset(obj->btf, vt->name_off);
+            ext = find_extern_by_name(obj, ext_name);
+            if (!ext)
+            {
+                pr_warn("failed to find extern definition for BTF %s '%s'\n",
+                        btf_kind_str(vt), ext_name);
+                return -ESRCH;
+            }
+            if (btf_is_func(vt))
+            {
+                const struct btf_type *func_proto;
+                struct btf_param *param;
+                int j;
+
+                func_proto = btf__type_by_id(obj->btf,
+                                             vt->type);
+                param = btf_params(func_proto);
+                /* Reuse the dummy_var string if the
+                 * func proto does not have param name.
+                 */
+                for (j = 0; j < btf_vlen(func_proto); j++)
+                    if (param[j].type && !param[j].name_off)
+                        param[j].name_off =
+                            dummy_var->name_off;
+                vs->type = dummy_var_btf_id;
+                vt->info &= ~0xffff;
+                vt->info |= BTF_FUNC_GLOBAL;
+            }
+            else
+            {
+                btf_var(vt)->linkage = BTF_VAR_GLOBAL_ALLOCATED;
+                vt->type = int_btf_id;
+            }
+            vs->offset = off;
+            vs->size = sizeof(int);
+        }
+        sec->size = off;
+    }
+
+    if (kcfg_sec)
+    {
+        sec = kcfg_sec;
+        /* for kcfg externs calculate their offsets within a .kconfig map */
+        off = 0;
+        for (i = 0; i < obj->nr_extern; i++)
+        {
+            ext = &obj->externs[i];
+            if (ext->type != EXT_KCFG)
+                continue;
+
+            ext->kcfg.data_off = roundup(off, ext->kcfg.align);
+            off = ext->kcfg.data_off + ext->kcfg.sz;
+            pr_debug("extern (kcfg) #%d: symbol %d, off %u, name %s\n",
+                     i, ext->sym_idx, ext->kcfg.data_off, ext->name);
+        }
+        sec->size = off;
+        n = btf_vlen(sec);
+        for (i = 0; i < n; i++)
+        {
+            struct btf_var_secinfo *vs = btf_var_secinfos(sec) + i;
+
+            t = btf__type_by_id(obj->btf, vs->type);
+            ext_name = btf__name_by_offset(obj->btf, t->name_off);
+            ext = find_extern_by_name(obj, ext_name);
+            if (!ext)
+            {
+                pr_warn("failed to find extern definition for BTF var '%s'\n",
+                        ext_name);
+                return -ESRCH;
+            }
+            btf_var(t)->linkage = BTF_VAR_GLOBAL_ALLOCATED;
+            vs->offset = ext->kcfg.data_off;
+        }
+    }
+    return 0;
+}
