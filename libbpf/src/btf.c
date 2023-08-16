@@ -3008,3 +3008,40 @@ static long btf_hash_array(struct btf_type *t)
 	h = hash_combine(h, info->nelems);
 	return h;
 }
+
+static bool btf_equal_array(struct btf_type *t1, struct btf_type *t2)
+{
+	const struct btf_array *info1, *info2;
+
+	if (!btf_equal_common(t1, t2))
+		return false;
+
+	info1 = btf_array(t1);
+	info2 = btf_array(t2);
+	return info1->type == info2->type &&
+	       info1->index_type == info2->index_type &&
+	       info1->nelems == info2->nelems;
+}
+
+static bool btf_compat_array(struct btf_type *t1, struct btf_type *t2)
+{
+	if (!btf_equal_common(t1, t2))
+		return false;
+
+	return btf_array(t1)->nelems == btf_array(t2)->nelems;
+}
+
+static long btf_hash_fnproto(struct btf_type *t)
+{
+	const struct btf_param *member = btf_params(t);
+	__u16 vlen = btf_vlen(t);
+	long h = btf_hash_common(t);
+	int i;
+
+	for (i = 0; i < vlen; i++) {
+		h = hash_combine(h, member->name_off);
+		h = hash_combine(h, member->type);
+		member++;
+	}
+	return h;
+}
