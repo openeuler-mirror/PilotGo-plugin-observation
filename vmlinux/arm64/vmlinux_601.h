@@ -2298,3 +2298,42 @@ struct file {
 	errseq_t f_wb_err;
 	errseq_t f_sb_err;
 };
+
+struct userfaultfd_ctx;
+
+struct vm_userfaultfd_ctx {
+	struct userfaultfd_ctx *ctx;
+};
+
+struct anon_vma_name {
+	struct kref kref;
+	char name[0];
+};
+
+struct anon_vma;
+
+struct vm_operations_struct;
+
+struct vm_area_struct {
+	long unsigned int vm_start;
+	long unsigned int vm_end;
+	struct mm_struct *vm_mm;
+	pgprot_t vm_page_prot;
+	long unsigned int vm_flags;
+	union {
+		struct {
+			struct rb_node rb;
+			long unsigned int rb_subtree_last;
+		} shared;
+		struct anon_vma_name *anon_name;
+	};
+	struct list_head anon_vma_chain;
+	struct anon_vma *anon_vma;
+	const struct vm_operations_struct *vm_ops;
+	long unsigned int vm_pgoff;
+	struct file *vm_file;
+	void *vm_private_data;
+	atomic_long_t swap_readahead_info;
+	struct mempolicy *vm_policy;
+	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+};
