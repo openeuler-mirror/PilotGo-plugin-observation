@@ -9110,3 +9110,107 @@ struct io_uring_sqe {
 		__u8 cmd[0];
 	};
 };
+
+
+struct io_uring_cqe {
+	__u64 user_data;
+	__s32 res;
+	__u32 flags;
+	__u64 big_cqe[0];
+};
+
+enum io_uring_cmd_flags {
+	IO_URING_F_COMPLETE_DEFER = 1,
+	IO_URING_F_UNLOCKED = 2,
+	IO_URING_F_NONBLOCK = -2147483648,
+	IO_URING_F_SQE128 = 4,
+	IO_URING_F_CQE32 = 8,
+	IO_URING_F_IOPOLL = 16,
+	IO_URING_F_MULTISHOT = 32,
+};
+
+struct xattr_name {
+	char name[256];
+};
+
+struct xattr_ctx {
+	union {
+		const void *cvalue;
+		void *value;
+	};
+	void *kvalue;
+	size_t size;
+	struct xattr_name *kname;
+	unsigned int flags;
+};
+
+enum task_work_notify_mode {
+	TWA_NONE = 0,
+	TWA_RESUME = 1,
+	TWA_SIGNAL = 2,
+	TWA_SIGNAL_NO_IPI = 3,
+};
+
+struct io_wq_work_node {
+	struct io_wq_work_node *next;
+};
+
+struct io_wq_work_list {
+	struct io_wq_work_node *first;
+	struct io_wq_work_node *last;
+};
+
+struct io_wq_work {
+	struct io_wq_work_node list;
+	unsigned int flags;
+	int cancel_seq;
+};
+
+struct io_fixed_file {
+	long unsigned int file_ptr;
+};
+
+struct io_file_table {
+	struct io_fixed_file *files;
+	long unsigned int *bitmap;
+	unsigned int alloc_hint;
+};
+
+struct io_hash_bucket {
+	spinlock_t lock;
+	struct hlist_head list;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+struct io_hash_table {
+	struct io_hash_bucket *hbs;
+	unsigned int hash_bits;
+};
+
+struct io_kiocb;
+
+struct io_submit_link {
+	struct io_kiocb *head;
+	struct io_kiocb *last;
+};
+
+struct io_submit_state {
+	struct io_wq_work_node free_list;
+	struct io_wq_work_list compl_reqs;
+	struct io_submit_link link;
+	bool plug_started;
+	bool need_plug;
+	short unsigned int submit_nr;
+	struct blk_plug plug;
+};
+
+struct io_alloc_cache {
+	struct hlist_head list;
+	unsigned int nr_cached;
+};
