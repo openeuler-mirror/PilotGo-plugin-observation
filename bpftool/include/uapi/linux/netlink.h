@@ -33,3 +33,17 @@
 #define NETLINK_INET_DIAG	NETLINK_SOCK_DIAG
 
 #define MAX_LINKS 32
+struct sockaddr_nl {
+	__kernel_sa_family_t	nl_family;	/* AF_NETLINK	*/
+	unsigned short	nl_pad;		/* zero		*/
+	__u32		nl_pid;		/* port ID	*/
+       	__u32		nl_groups;	/* multicast groups mask */
+};
+
+struct nlmsghdr {
+	__u32		nlmsg_len;	/* Length of message including header */
+	__u16		nlmsg_type;	/* Message content */
+	__u16		nlmsg_flags;	/* Additional flags */
+	__u32		nlmsg_seq;	/* Sequence number */
+	__u32		nlmsg_pid;	/* Sending process port ID */
+};
