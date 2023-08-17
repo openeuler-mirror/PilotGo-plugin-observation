@@ -38,6 +38,37 @@
 # endif
 #endif
 
+static inline __u64 ptr_to_u64(const void *ptr)
+{
+	return (__u64) (unsigned long) ptr;
+}
+
+static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
+			  unsigned int size)
+{
+	return syscall(__NR_bpf, cmd, attr, size);
+}
+
+static inline int sys_bpf_fd(enum bpf_cmd cmd, union bpf_attr *attr,
+			     unsigned int size)
+{
+	int fd;
+
+	fd = sys_bpf(cmd, attr, size);
+	return ensure_good_fd(fd);
+}
+
+int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size, int attempts)
+{
+	int fd;
+
+	do {
+		fd = sys_bpf_fd(BPF_PROG_LOAD, attr, size);
+	} while (fd < 0 && errno == EAGAIN && --attempts > 0);
+
+	return fd;
+}
+
 int bpf_map_create(enum bpf_map_type map_type,
 		   const char *map_name,
 		   __u32 key_size,
