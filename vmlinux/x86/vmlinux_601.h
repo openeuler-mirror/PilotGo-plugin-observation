@@ -9712,3 +9712,116 @@ struct ZSTD_DCtx_s {
 	BYTE headerBuffer[18];
 	size_t oversizedDuration;
 };
+
+typedef struct ZSTD_DCtx_s ZSTD_DCtx;
+
+struct ZSTD_DDict_s {
+	void *dictBuffer;
+	const void *dictContent;
+	size_t dictSize;
+	ZSTD_entropyDTables_t entropy;
+	U32 dictID;
+	U32 entropyPresent;
+	ZSTD_customMem cMem;
+};
+
+typedef enum {
+	ZSTD_dct_auto = 0,
+	ZSTD_dct_rawContent = 1,
+	ZSTD_dct_fullDict = 2,
+} ZSTD_dictContentType_e;
+
+typedef enum {
+	ZSTD_dlm_byCopy = 0,
+	ZSTD_dlm_byRef = 1,
+} ZSTD_dictLoadMethod_e;
+
+struct notifier_block;
+
+typedef int (*notifier_fn_t)(struct notifier_block *, long unsigned int, void *);
+
+struct notifier_block {
+	notifier_fn_t notifier_call;
+	struct notifier_block *next;
+	int priority;
+};
+
+struct ei_entry {
+	struct list_head list;
+	long unsigned int start_addr;
+	long unsigned int end_addr;
+	int etype;
+	void *priv;
+};
+
+typedef phys_addr_t resource_size_t;
+
+struct pci_device_id {
+	__u32 vendor;
+	__u32 device;
+	__u32 subvendor;
+	__u32 subdevice;
+	__u32 class;
+	__u32 class_mask;
+	kernel_ulong_t driver_data;
+	__u32 override_only;
+};
+
+struct resource {
+	resource_size_t start;
+	resource_size_t end;
+	const char *name;
+	long unsigned int flags;
+	long unsigned int desc;
+	struct resource *parent;
+	struct resource *sibling;
+	struct resource *child;
+};
+
+struct pci_bus;
+
+struct hotplug_slot;
+
+struct pci_slot {
+	struct pci_bus *bus;
+	struct list_head list;
+	struct hotplug_slot *hotplug;
+	unsigned char number;
+	struct kobject kobj;
+};
+
+typedef short unsigned int pci_bus_flags_t;
+
+struct pci_dev;
+
+struct pci_ops;
+
+struct proc_dir_entry;
+
+struct pci_bus {
+	struct list_head node;
+	struct pci_bus *parent;
+	struct list_head children;
+	struct list_head devices;
+	struct pci_dev *self;
+	struct list_head slots;
+	struct resource *resource[4];
+	struct list_head resources;
+	struct resource busn_res;
+	struct pci_ops *ops;
+	void *sysdata;
+	struct proc_dir_entry *procdir;
+	unsigned char number;
+	unsigned char primary;
+	unsigned char max_bus_speed;
+	unsigned char cur_bus_speed;
+	char name[48];
+	short unsigned int bridge_ctl;
+	pci_bus_flags_t bus_flags;
+	struct device *bridge;
+	struct device dev;
+	struct bin_attribute *legacy_io;
+	struct bin_attribute *legacy_mem;
+	unsigned int is_added: 1;
+	unsigned int unsafe_warn: 1;
+};
