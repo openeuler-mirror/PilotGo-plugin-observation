@@ -19,6 +19,20 @@
 #  define __NR_bpf 357
 # elif defined(__x86_64__)
 #  define __NR_bpf 321
+# elif defined(__aarch64__)
+#  define __NR_bpf 280
+# elif defined(__sparc__)
+#  define __NR_bpf 349
+# elif defined(__s390__)
+#  define __NR_bpf 351
+# elif defined(__arc__)
+#  define __NR_bpf 280
+# elif defined(__mips__) && defined(_ABIO32)
+#  define __NR_bpf 4355
+# elif defined(__mips__) && defined(_ABIN32)
+#  define __NR_bpf 6319
+# elif defined(__mips__) && defined(_ABI64)
+#  define __NR_bpf 5315
 # else
 #  error __NR_bpf not defined. libbpf does not support your arch.
 # endif
@@ -62,6 +76,31 @@ int bpf_map_create(enum bpf_map_type map_type,
 
 	fd = sys_bpf_fd(BPF_MAP_CREATE, &attr, attr_sz);
 	return libbpf_err_errno(fd);
+}
+
+static void *
+alloc_zero_tailing_info(const void *orecord, __u32 cnt,
+			__u32 actual_rec_size, __u32 expected_rec_size)
+{
+	__u64 info_len = (__u64)actual_rec_size * cnt;
+	void *info, *nrecord;
+	int i;
+
+	info = malloc(info_len);
+	if (!info)
+		return NULL;
+
+	/* zero out bytes kernel does not understand */
+	nrecord = info;
+	for (i = 0; i < cnt; i++) {
+		memcpy(nrecord, orecord, expected_rec_size);
+		memset(nrecord + expected_rec_size, 0,
+		       actual_rec_size - expected_rec_size);
+		orecord += actual_rec_size;
+		nrecord += actual_rec_size;
+	}
+
+	return info;
 }
 
 int bpf_prog_load(enum bpf_prog_type prog_type,
