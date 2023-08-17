@@ -9506,3 +9506,102 @@ enum {
 	IOU_ISSUE_SKIP_COMPLETE = -529,
 	IOU_STOP_MULTISHOT = -125,
 };
+
+struct io_xattr {
+	struct file *file;
+	struct xattr_ctx ctx;
+	struct filename *filename;
+};
+
+typedef __u32 __le32;
+
+typedef s16 int16_t;
+
+typedef u8 uint8_t;
+
+typedef u64 uint64_t;
+
+typedef uint8_t BYTE;
+
+typedef uint16_t U16;
+
+typedef int16_t S16;
+
+typedef uint32_t U32;
+
+typedef uint64_t U64;
+
+typedef U32 HUF_DTable;
+
+typedef struct {
+	U16 nextState;
+	BYTE nbAdditionalBits;
+	BYTE nbBits;
+	U32 baseValue;
+} ZSTD_seqSymbol;
+
+typedef struct {
+	ZSTD_seqSymbol LLTable[513];
+	ZSTD_seqSymbol OFTable[257];
+	ZSTD_seqSymbol MLTable[513];
+	HUF_DTable hufTable[4097];
+	U32 rep[3];
+	U32 workspace[157];
+} ZSTD_entropyDTables_t;
+
+typedef enum {
+	ZSTD_frame = 0,
+	ZSTD_skippableFrame = 1,
+} ZSTD_frameType_e;
+
+typedef struct {
+	long long unsigned int frameContentSize;
+	long long unsigned int windowSize;
+	unsigned int blockSizeMax;
+	ZSTD_frameType_e frameType;
+	unsigned int headerSize;
+	unsigned int dictID;
+	unsigned int checksumFlag;
+} ZSTD_frameHeader;
+
+typedef enum {
+	bt_raw = 0,
+	bt_rle = 1,
+	bt_compressed = 2,
+	bt_reserved = 3,
+} blockType_e;
+
+typedef enum {
+	ZSTDds_getFrameHeaderSize = 0,
+	ZSTDds_decodeFrameHeader = 1,
+	ZSTDds_decodeBlockHeader = 2,
+	ZSTDds_decompressBlock = 3,
+	ZSTDds_decompressLastBlock = 4,
+	ZSTDds_checkChecksum = 5,
+	ZSTDds_decodeSkippableHeader = 6,
+	ZSTDds_skipFrame = 7,
+} ZSTD_dStage;
+
+struct xxh64_state {
+	uint64_t total_len;
+	uint64_t v1;
+	uint64_t v2;
+	uint64_t v3;
+	uint64_t v4;
+	uint64_t mem64[4];
+	uint32_t memsize;
+};
+
+typedef enum {
+	ZSTD_f_zstd1 = 0,
+	ZSTD_f_zstd1_magicless = 1,
+} ZSTD_format_e;
+
+typedef enum {
+	ZSTD_d_validateChecksum = 0,
+	ZSTD_d_ignoreChecksum = 1,
+} ZSTD_forceIgnoreChecksum_e;
+
+typedef void * (*ZSTD_allocFunction)(void *, size_t);
+
+typedef void (*ZSTD_freeFunction)(void *, void *);
