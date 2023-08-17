@@ -2246,3 +2246,19 @@ struct folio {
 	atomic_t _pincount;
 	unsigned int _folio_nr_pages;
 };
+
+struct vfsmount;
+
+struct path {
+	struct vfsmount *mnt;
+	struct dentry *dentry;
+};
+
+struct fown_struct {
+	rwlock_t lock;
+	struct pid *pid;
+	enum pid_type pid_type;
+	kuid_t uid;
+	kuid_t euid;
+	int signum;
+};
