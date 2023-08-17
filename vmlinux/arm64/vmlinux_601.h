@@ -2337,3 +2337,30 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 };
+
+enum page_entry_size {
+	PE_SIZE_PTE = 0,
+	PE_SIZE_PMD = 1,
+	PE_SIZE_PUD = 2,
+};
+
+struct vm_fault;
+
+struct vm_operations_struct {
+	void (*open)(struct vm_area_struct *);
+	void (*close)(struct vm_area_struct *);
+	int (*may_split)(struct vm_area_struct *, long unsigned int);
+	int (*mremap)(struct vm_area_struct *);
+	int (*mprotect)(struct vm_area_struct *, long unsigned int, long unsigned int, long unsigned int);
+	vm_fault_t (*fault)(struct vm_fault *);
+	vm_fault_t (*huge_fault)(struct vm_fault *, enum page_entry_size);
+	vm_fault_t (*map_pages)(struct vm_fault *, long unsigned int, long unsigned int);
+	long unsigned int (*pagesize)(struct vm_area_struct *);
+	vm_fault_t (*page_mkwrite)(struct vm_fault *);
+	vm_fault_t (*pfn_mkwrite)(struct vm_fault *);
+	int (*access)(struct vm_area_struct *, long unsigned int, void *, int, int);
+	const char * (*name)(struct vm_area_struct *);
+	int (*set_policy)(struct vm_area_struct *, struct mempolicy *);
+	struct mempolicy * (*get_policy)(struct vm_area_struct *, long unsigned int);
+	struct page * (*find_special_page)(struct vm_area_struct *, long unsigned int);
+};
