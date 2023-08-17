@@ -2217,3 +2217,32 @@ struct address_space {
 	struct list_head private_list;
 	void *private_data;
 };
+
+struct folio {
+	union {
+		struct {
+			long unsigned int flags;
+			union {
+				struct list_head lru;
+				struct {
+					void *__filler;
+					unsigned int mlock_count;
+				};
+			};
+			struct address_space *mapping;
+			long unsigned int index;
+			void *private;
+			atomic_t _mapcount;
+			atomic_t _refcount;
+			long unsigned int memcg_data;
+		};
+		struct page page;
+	};
+	long unsigned int _flags_1;
+	long unsigned int __head;
+	unsigned char _folio_dtor;
+	unsigned char _folio_order;
+	atomic_t _total_mapcount;
+	atomic_t _pincount;
+	unsigned int _folio_nr_pages;
+};
