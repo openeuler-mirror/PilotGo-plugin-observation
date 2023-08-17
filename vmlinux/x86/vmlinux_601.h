@@ -9352,3 +9352,157 @@ struct io_ring_ctx {
 	unsigned int evfd_last_cq_tail;
 	long: 64;
 };
+struct io_uring {
+	u32 head;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	u32 tail;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+struct io_rings {
+	struct io_uring sq;
+	struct io_uring cq;
+	u32 sq_ring_mask;
+	u32 cq_ring_mask;
+	u32 sq_ring_entries;
+	u32 cq_ring_entries;
+	u32 sq_dropped;
+	atomic_t sq_flags;
+	u32 cq_flags;
+	u32 cq_overflow;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct io_uring_cqe cqes[0];
+};
+
+struct io_cmd_data {
+	struct file *file;
+	__u8 data[56];
+};
+
+struct io_cqe {
+	__u64 user_data;
+	__s32 res;
+	union {
+		__u32 flags;
+		int fd;
+	};
+};
+
+typedef void (*io_req_tw_func_t)(struct io_kiocb *, bool *);
+
+struct io_task_work {
+	struct llist_node node;
+	io_req_tw_func_t func;
+};
+
+struct io_buffer;
+
+struct async_poll;
+
+struct io_kiocb {
+	union {
+		struct file *file;
+		struct io_cmd_data cmd;
+	};
+	u8 opcode;
+	u8 iopoll_completed;
+	u16 buf_index;
+	unsigned int flags;
+	struct io_cqe cqe;
+	struct io_ring_ctx *ctx;
+	struct task_struct *task;
+	struct io_rsrc_node *rsrc_node;
+	union {
+		struct io_mapped_ubuf *imu;
+		struct io_buffer *kbuf;
+		struct io_buffer_list *buf_list;
+	};
+	union {
+		struct io_wq_work_node comp_list;
+		__poll_t apoll_events;
+	};
+	atomic_t refs;
+	atomic_t poll_refs;
+	struct io_task_work io_task_work;
+	union {
+		struct hlist_node hash_node;
+		struct {
+			u64 extra1;
+			u64 extra2;
+		};
+	};
+	struct async_poll *apoll;
+	void *async_data;
+	struct io_kiocb *link;
+	const struct cred *creds;
+	struct io_wq_work work;
+};
+
+struct io_ev_fd {
+	struct eventfd_ctx *cq_ev_fd;
+	unsigned int eventfd_async: 1;
+	struct callback_head rcu;
+	atomic_t refs;
+	atomic_t ops;
+};
+
+struct io_wq_hash {
+	refcount_t refs;
+	long unsigned int map;
+	struct wait_queue_head wait;
+};
+
+enum {
+	REQ_F_FIXED_FILE = 1,
+	REQ_F_IO_DRAIN = 2,
+	REQ_F_LINK = 4,
+	REQ_F_HARDLINK = 8,
+	REQ_F_FORCE_ASYNC = 16,
+	REQ_F_BUFFER_SELECT = 32,
+	REQ_F_CQE_SKIP = 64,
+	REQ_F_FAIL = 256,
+	REQ_F_INFLIGHT = 512,
+	REQ_F_CUR_POS = 1024,
+	REQ_F_NOWAIT = 2048,
+	REQ_F_LINK_TIMEOUT = 4096,
+	REQ_F_NEED_CLEANUP = 8192,
+	REQ_F_POLLED = 16384,
+	REQ_F_BUFFER_SELECTED = 32768,
+	REQ_F_BUFFER_RING = 65536,
+	REQ_F_REISSUE = 131072,
+	REQ_F_SUPPORT_NOWAIT = 1073741824,
+	REQ_F_ISREG = 2147483648,
+	REQ_F_CREDS = 262144,
+	REQ_F_REFCOUNT = 524288,
+	REQ_F_ARM_LTIMEOUT = 1048576,
+	REQ_F_ASYNC_DATA = 2097152,
+	REQ_F_SKIP_LINK_CQES = 4194304,
+	REQ_F_SINGLE_POLL = 8388608,
+	REQ_F_DOUBLE_POLL = 16777216,
+	REQ_F_PARTIAL_IO = 33554432,
+	REQ_F_APOLL_MULTISHOT = 134217728,
+	REQ_F_CQE32_INIT = 67108864,
+	REQ_F_CLEAR_POLLIN = 268435456,
+	REQ_F_HASH_LOCKED = 536870912,
+};
+
+enum {
+	IOU_OK = 0,
+	IOU_ISSUE_SKIP_COMPLETE = -529,
+	IOU_STOP_MULTISHOT = -125,
+};
