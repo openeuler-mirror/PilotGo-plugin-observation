@@ -69,6 +69,32 @@ int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size, int attempts)
 	return fd;
 }
 
+int probe_memcg_account(void)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, attach_btf_obj_fd);
+	struct bpf_insn insns[] = {
+		BPF_EMIT_CALL(BPF_FUNC_ktime_get_coarse_ns),
+		BPF_EXIT_INSN(),
+	};
+	size_t insn_cnt = ARRAY_SIZE(insns);
+	union bpf_attr attr;
+	int prog_fd;
+
+	memset(&attr, 0, attr_sz);
+	attr.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
+	attr.insns = ptr_to_u64(insns);
+	attr.insn_cnt = insn_cnt;
+	attr.license = ptr_to_u64("GPL");
+
+	prog_fd = sys_bpf_fd(BPF_PROG_LOAD, &attr, attr_sz);
+	if (prog_fd >= 0) {
+		close(prog_fd);
+		return 1;
+	}
+	return 0;
+}
+
+
 int bpf_map_create(enum bpf_map_type map_type,
 		   const char *map_name,
 		   __u32 key_size,
