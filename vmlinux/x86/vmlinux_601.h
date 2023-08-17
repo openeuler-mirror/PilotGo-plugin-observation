@@ -9605,3 +9605,110 @@ typedef enum {
 typedef void * (*ZSTD_allocFunction)(void *, size_t);
 
 typedef void (*ZSTD_freeFunction)(void *, void *);
+
+typedef struct {
+	ZSTD_allocFunction customAlloc;
+	ZSTD_freeFunction customFree;
+	void *opaque;
+} ZSTD_customMem;
+
+typedef enum {
+	ZSTD_use_indefinitely = -1,
+	ZSTD_dont_use = 0,
+	ZSTD_use_once = 1,
+} ZSTD_dictUses_e;
+
+struct ZSTD_DDict_s;
+
+typedef struct ZSTD_DDict_s ZSTD_DDict;
+
+typedef struct {
+	const ZSTD_DDict **ddictPtrTable;
+	size_t ddictPtrTableSize;
+	size_t ddictPtrCount;
+} ZSTD_DDictHashSet;
+
+typedef enum {
+	ZSTD_rmd_refSingleDDict = 0,
+	ZSTD_rmd_refMultipleDDicts = 1,
+} ZSTD_refMultipleDDicts_e;
+
+typedef enum {
+	zdss_init = 0,
+	zdss_loadHeader = 1,
+	zdss_read = 2,
+	zdss_load = 3,
+	zdss_flush = 4,
+} ZSTD_dStreamStage;
+
+typedef enum {
+	ZSTD_bm_buffered = 0,
+	ZSTD_bm_stable = 1,
+} ZSTD_bufferMode_e;
+
+struct ZSTD_outBuffer_s {
+	void *dst;
+	size_t size;
+	size_t pos;
+};
+
+typedef struct ZSTD_outBuffer_s ZSTD_outBuffer;
+
+struct ZSTD_DCtx_s {
+	const ZSTD_seqSymbol *LLTptr;
+	const ZSTD_seqSymbol *MLTptr;
+	const ZSTD_seqSymbol *OFTptr;
+	const HUF_DTable *HUFptr;
+	ZSTD_entropyDTables_t entropy;
+	U32 workspace[640];
+	const void *previousDstEnd;
+	const void *prefixStart;
+	const void *virtualStart;
+	const void *dictEnd;
+	size_t expected;
+	ZSTD_frameHeader fParams;
+	U64 processedCSize;
+	U64 decodedSize;
+	blockType_e bType;
+	ZSTD_dStage stage;
+	U32 litEntropy;
+	U32 fseEntropy;
+	struct xxh64_state xxhState;
+	size_t headerSize;
+	ZSTD_format_e format;
+	ZSTD_forceIgnoreChecksum_e forceIgnoreChecksum;
+	U32 validateChecksum;
+	const BYTE *litPtr;
+	ZSTD_customMem customMem;
+	size_t litSize;
+	size_t rleSize;
+	size_t staticSize;
+	int bmi2;
+	ZSTD_DDict *ddictLocal;
+	const ZSTD_DDict *ddict;
+	U32 dictID;
+	int ddictIsCold;
+	ZSTD_dictUses_e dictUses;
+	ZSTD_DDictHashSet *ddictSet;
+	ZSTD_refMultipleDDicts_e refMultipleDDicts;
+	ZSTD_dStreamStage streamStage;
+	char *inBuff;
+	size_t inBuffSize;
+	size_t inPos;
+	size_t maxWindowSize;
+	char *outBuff;
+	size_t outBuffSize;
+	size_t outStart;
+	size_t outEnd;
+	size_t lhSize;
+	void *legacyContext;
+	U32 previousLegacyVersion;
+	U32 legacyVersion;
+	U32 hostageByte;
+	int noForwardProgress;
+	ZSTD_bufferMode_e outBufferMode;
+	ZSTD_outBuffer expectedOutBuffer;
+	BYTE litBuffer[131104];
+	BYTE headerBuffer[18];
+	size_t oversizedDuration;
+};
