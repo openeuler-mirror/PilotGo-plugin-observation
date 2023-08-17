@@ -2262,3 +2262,39 @@ struct fown_struct {
 	kuid_t euid;
 	int signum;
 };
+
+struct file_ra_state {
+	long unsigned int start;
+	unsigned int size;
+	unsigned int async_size;
+	unsigned int ra_pages;
+	unsigned int mmap_miss;
+	loff_t prev_pos;
+};
+
+struct file {
+	union {
+		struct llist_node f_llist;
+		struct callback_head f_rcuhead;
+		unsigned int f_iocb_flags;
+	};
+	struct path f_path;
+	struct inode *f_inode;
+	const struct file_operations *f_op;
+	spinlock_t f_lock;
+	atomic_long_t f_count;
+	unsigned int f_flags;
+	fmode_t f_mode;
+	struct mutex f_pos_lock;
+	loff_t f_pos;
+	struct fown_struct f_owner;
+	const struct cred *f_cred;
+	struct file_ra_state f_ra;
+	u64 f_version;
+	void *f_security;
+	void *private_data;
+	struct hlist_head *f_ep;
+	struct address_space *f_mapping;
+	errseq_t f_wb_err;
+	errseq_t f_sb_err;
+};
