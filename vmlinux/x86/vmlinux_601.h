@@ -9214,3 +9214,141 @@ struct io_alloc_cache {
 	struct hlist_head list;
 	unsigned int nr_cached;
 };
+
+struct io_restriction {
+	long unsigned int register_op[1];
+	long unsigned int sqe_op[1];
+	u8 sqe_flags_allowed;
+	u8 sqe_flags_required;
+	bool registered;
+};
+
+struct io_rings;
+
+struct io_rsrc_node;
+
+struct io_mapped_ubuf;
+
+struct io_buffer_list;
+
+struct io_sq_data;
+
+struct io_ev_fd;
+
+struct io_rsrc_data;
+
+struct socket;
+
+struct io_wq_hash;
+
+struct io_ring_ctx {
+	struct {
+		struct percpu_ref refs;
+		struct io_rings *rings;
+		unsigned int flags;
+		enum task_work_notify_mode notify_method;
+		unsigned int compat: 1;
+		unsigned int drain_next: 1;
+		unsigned int restricted: 1;
+		unsigned int off_timeout_used: 1;
+		unsigned int drain_active: 1;
+		unsigned int drain_disabled: 1;
+		unsigned int has_evfd: 1;
+		unsigned int syscall_iopoll: 1;
+		long: 64;
+		long: 64;
+		long: 64;
+	};
+	struct {
+		struct mutex uring_lock;
+		u32 *sq_array;
+		struct io_uring_sqe *sq_sqes;
+		unsigned int cached_sq_head;
+		unsigned int sq_entries;
+		struct io_rsrc_node *rsrc_node;
+		int rsrc_cached_refs;
+		atomic_t cancel_seq;
+		struct io_file_table file_table;
+		unsigned int nr_user_files;
+		unsigned int nr_user_bufs;
+		struct io_mapped_ubuf **user_bufs;
+		struct io_submit_state submit_state;
+		struct io_buffer_list *io_bl;
+		struct xarray io_bl_xa;
+		struct list_head io_buffers_cache;
+		struct io_hash_table cancel_table_locked;
+		struct list_head cq_overflow_list;
+		struct io_alloc_cache apoll_cache;
+		struct io_alloc_cache netmsg_cache;
+		long: 64;
+		long: 64;
+		long: 64;
+		long: 64;
+	};
+	struct io_wq_work_list locked_free_list;
+	unsigned int locked_free_nr;
+	const struct cred *sq_creds;
+	struct io_sq_data *sq_data;
+	struct wait_queue_head sqo_sq_wait;
+	struct list_head sqd_list;
+	long unsigned int check_cq;
+	unsigned int file_alloc_start;
+	unsigned int file_alloc_end;
+	struct xarray personalities;
+	u32 pers_next;
+	long: 64;
+	long: 64;
+	struct {
+		struct io_uring_cqe *cqe_cached;
+		struct io_uring_cqe *cqe_sentinel;
+		unsigned int cached_cq_tail;
+		unsigned int cq_entries;
+		struct io_ev_fd *io_ev_fd;
+		struct wait_queue_head cq_wait;
+		unsigned int cq_extra;
+		long: 64;
+	};
+	struct {
+		spinlock_t completion_lock;
+		struct io_wq_work_list iopoll_list;
+		struct io_hash_table cancel_table;
+		bool poll_multi_queue;
+		struct llist_head work_llist;
+		struct list_head io_buffers_comp;
+	};
+	struct {
+		spinlock_t timeout_lock;
+		atomic_t cq_timeouts;
+		struct list_head timeout_list;
+		struct list_head ltimeout_list;
+		unsigned int cq_last_tm_flush;
+		long: 64;
+		long: 64;
+	};
+	struct io_restriction restrictions;
+	struct task_struct *submitter_task;
+	struct io_rsrc_node *rsrc_backup_node;
+	struct io_mapped_ubuf *dummy_ubuf;
+	struct io_rsrc_data *file_data;
+	struct io_rsrc_data *buf_data;
+	struct delayed_work rsrc_put_work;
+	struct llist_head rsrc_put_llist;
+	struct list_head rsrc_ref_list;
+	spinlock_t rsrc_ref_lock;
+	struct list_head io_buffers_pages;
+	struct socket *ring_sock;
+	struct io_wq_hash *hash_map;
+	struct user_struct *user;
+	struct mm_struct *mm_account;
+	struct llist_head fallback_llist;
+	struct delayed_work fallback_work;
+	struct work_struct exit_work;
+	struct list_head tctx_list;
+	struct completion ref_comp;
+	u32 iowq_limits[2];
+	bool iowq_limits_set;
+	struct list_head defer_list;
+	unsigned int sq_thread_idle;
+	unsigned int evfd_last_cq_tail;
+	long: 64;
+};
