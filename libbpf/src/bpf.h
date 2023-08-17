@@ -215,6 +215,24 @@ LIBBPF_API int bpf_link_update(int link_fd, int new_prog_fd,
 
 LIBBPF_API int bpf_iter_create(int link_fd);
 
+struct bpf_prog_test_run_attr {
+	int prog_fd;
+	int repeat;
+	const void *data_in;
+	__u32 data_size_in;
+	void *data_out;      /* optional */
+	__u32 data_size_out; /* in: max length of data_out
+			      * out: length of data_out */
+	__u32 retval;        /* out: return code of the BPF program */
+	__u32 duration;      /* out: average per repetition in ns */
+	const void *ctx_in; /* optional */
+	__u32 ctx_size_in;
+	void *ctx_out;      /* optional */
+	__u32 ctx_size_out; /* in: max length of ctx_out
+			     * out: length of cxt_out */
+};
+
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
