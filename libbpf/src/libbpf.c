@@ -4316,3 +4316,101 @@ static struct bpf_program *find_prog_by_sec_insn(const struct bpf_object *obj,
 		return prog;
 	return NULL;
 }
+
+static int
+bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Data *data)
+{
+	const char *relo_sec_name, *sec_name;
+	size_t sec_idx = shdr->sh_info, sym_idx;
+	struct bpf_program *prog;
+	struct reloc_desc *relos;
+	int err, i, nrels;
+	const char *sym_name;
+	__u32 insn_idx;
+	Elf_Scn *scn;
+	Elf_Data *scn_data;
+	Elf64_Sym *sym;
+	Elf64_Rel *rel;
+
+	if (sec_idx >= obj->efile.sec_cnt)
+		return -EINVAL;
+
+	scn = elf_sec_by_idx(obj, sec_idx);
+	scn_data = elf_sec_data(obj, scn);
+
+	relo_sec_name = elf_sec_str(obj, shdr->sh_name);
+	sec_name = elf_sec_name(obj, scn);
+	if (!relo_sec_name || !sec_name)
+		return -EINVAL;
+
+	pr_debug("sec '%s': collecting relocation for section(%zu) '%s'\n",
+		 relo_sec_name, sec_idx, sec_name);
+	nrels = shdr->sh_size / shdr->sh_entsize;
+
+	for (i = 0; i < nrels; i++) {
+		rel = elf_rel_by_idx(data, i);
+		if (!rel) {
+			pr_warn("sec '%s': failed to get relo #%d\n", relo_sec_name, i);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		sym_idx = ELF64_R_SYM(rel->r_info);
+		sym = elf_sym_by_idx(obj, sym_idx);
+		if (!sym) {
+			pr_warn("sec '%s': symbol #%zu not found for relo #%d\n",
+				relo_sec_name, sym_idx, i);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		if (sym->st_shndx >= obj->efile.sec_cnt) {
+			pr_warn("sec '%s': corrupted symbol #%zu pointing to invalid section #%zu for relo #%d\n",
+				relo_sec_name, sym_idx, (size_t)sym->st_shndx, i);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		if (rel->r_offset % BPF_INSN_SZ || rel->r_offset >= scn_data->d_size) {
+			pr_warn("sec '%s': invalid offset 0x%zx for relo #%d\n",
+				relo_sec_name, (size_t)rel->r_offset, i);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		insn_idx = rel->r_offset / BPF_INSN_SZ;
+		/* relocations against static functions are recorded as
+		 * relocations against the section that contains a function;
+		 * in such case, symbol will be STT_SECTION and sym.st_name
+		 * will point to empty string (0), so fetch section name
+		 * instead
+		 */
+		if (ELF64_ST_TYPE(sym->st_info) == STT_SECTION && sym->st_name == 0)
+			sym_name = elf_sec_name(obj, elf_sec_by_idx(obj, sym->st_shndx));
+		else
+			sym_name = elf_sym_str(obj, sym->st_name);
+		sym_name = sym_name ?: "<?";
+
+		pr_debug("sec '%s': relo #%d: insn #%u against '%s'\n",
+			 relo_sec_name, i, insn_idx, sym_name);
+
+		prog = find_prog_by_sec_insn(obj, sec_idx, insn_idx);
+		if (!prog) {
+			pr_debug("sec '%s': relo #%d: couldn't find program in section '%s' for insn #%u, probably overridden weak function, skipping...\n",
+				relo_sec_name, i, sec_name, insn_idx);
+			continue;
+		}
+
+		relos = libbpf_reallocarray(prog->reloc_desc,
+					    prog->nr_reloc + 1, sizeof(*relos));
+		if (!relos)
+			return -ENOMEM;
+		prog->reloc_desc = relos;
+
+		/* adjust insn_idx to local BPF program frame of reference */
+		insn_idx -= prog->sec_insn_off;
+		err = bpf_program__record_reloc(prog, &relos[prog->nr_reloc],
+						insn_idx, sym_name, sym, rel);
+		if (err)
+			return err;
+
+		prog->nr_reloc++;
+	}
+	return 0;
+}
