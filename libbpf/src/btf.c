@@ -3463,3 +3463,47 @@ static int btf_dedup_is_equiv(struct btf_dedup *d, __u32 cand_id,
 	}
 	return 0;
 }
+
+static void btf_dedup_merge_hypot_map(struct btf_dedup *d)
+{
+	__u32 canon_type_id, targ_type_id;
+	__u16 t_kind, c_kind;
+	__u32 t_id, c_id;
+	int i;
+
+	for (i = 0; i < d->hypot_cnt; i++) {
+		canon_type_id = d->hypot_list[i];
+		targ_type_id = d->hypot_map[canon_type_id];
+		t_id = resolve_type_id(d, targ_type_id);
+		c_id = resolve_type_id(d, canon_type_id);
+		t_kind = btf_kind(btf__type_by_id(d->btf, t_id));
+		c_kind = btf_kind(btf__type_by_id(d->btf, c_id));
+
+		if (t_kind != BTF_KIND_FWD && c_kind == BTF_KIND_FWD)
+			d->map[c_id] = t_id;
+
+		/* if graph equivalence determined that we'd need to adjust
+		 * base canonical types, then we need to only point base FWDs
+		 * to STRUCTs/UNIONs and do no more modifications. For all
+		 * other purposes the type graphs were not equivalent.
+		 */
+		if (d->hypot_adjust_canon)
+			continue;
+
+		if (t_kind == BTF_KIND_FWD && c_kind != BTF_KIND_FWD)
+			d->map[t_id] = c_id;
+
+		if ((t_kind == BTF_KIND_STRUCT || t_kind == BTF_KIND_UNION) &&
+		    c_kind != BTF_KIND_FWD &&
+		    is_type_mapped(d, c_id) &&
+		    !is_type_mapped(d, t_id)) {
+			/*
+			 * as a perf optimization, we can map struct/union
+			 * that's part of type graph we just verified for
+			 * equivalence. We can do that for struct/union that has
+			 * canonical representative only, though.
+			 */
+			d->map[t_id] = c_id;
+		}
+	}
+}
