@@ -3376,6 +3376,45 @@ static int btf_dedup_is_equiv(struct btf_dedup *d, __u32 cand_id,
 		return fwd_kind == real_kind;
 	}
 
+	if (cand_kind != canon_kind)
+		return 0;
+
+	switch (cand_kind) {
+	case BTF_KIND_INT:
+		return btf_equal_int_tag(cand_type, canon_type);
+
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		return btf_compat_enum(cand_type, canon_type);
+
+	case BTF_KIND_FWD:
+	case BTF_KIND_FLOAT:
+		return btf_equal_common(cand_type, canon_type);
+
+	case BTF_KIND_CONST:
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_PTR:
+	case BTF_KIND_TYPEDEF:
+	case BTF_KIND_FUNC:
+	case BTF_KIND_TYPE_TAG:
+		if (cand_type->info != canon_type->info)
+			return 0;
+		return btf_dedup_is_equiv(d, cand_type->type, canon_type->type);
+
+	case BTF_KIND_ARRAY: {
+		const struct btf_array *cand_arr, *canon_arr;
+
+		if (!btf_compat_array(cand_type, canon_type))
+			return 0;
+		cand_arr = btf_array(cand_type);
+		canon_arr = btf_array(canon_type);
+		eq = btf_dedup_is_equiv(d, cand_arr->index_type, canon_arr->index_type);
+		if (eq <= 0)
+			return eq;
+		return btf_dedup_is_equiv(d, cand_arr->type, canon_arr->type);
+	}
+
 	default:
 		return -EINVAL;
 	}
