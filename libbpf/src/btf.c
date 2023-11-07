@@ -3318,3 +3318,66 @@ static bool btf_dedup_identical_structs(struct btf_dedup *d, __u32 id1, __u32 id
 	}
 	return true;
 }
+
+static int btf_dedup_is_equiv(struct btf_dedup *d, __u32 cand_id,
+			      __u32 canon_id)
+{
+	struct btf_type *cand_type;
+	struct btf_type *canon_type;
+	__u32 hypot_type_id;
+	__u16 cand_kind;
+	__u16 canon_kind;
+	int i, eq;
+
+	/* if both resolve to the same canonical, they must be equivalent */
+	if (resolve_type_id(d, cand_id) == resolve_type_id(d, canon_id))
+		return 1;
+
+	canon_id = resolve_fwd_id(d, canon_id);
+
+	hypot_type_id = d->hypot_map[canon_id];
+	if (hypot_type_id <= BTF_MAX_NR_TYPES) {
+		if (hypot_type_id == cand_id)
+			return 1;
+		if (btf_dedup_identical_arrays(d, hypot_type_id, cand_id))
+			return 1;
+		if (btf_dedup_identical_structs(d, hypot_type_id, cand_id))
+			return 1;
+		return 0;
+	}
+
+	if (btf_dedup_hypot_map_add(d, canon_id, cand_id))
+		return -ENOMEM;
+
+	cand_type = btf_type_by_id(d->btf, cand_id);
+	canon_type = btf_type_by_id(d->btf, canon_id);
+	cand_kind = btf_kind(cand_type);
+	canon_kind = btf_kind(canon_type);
+
+	if (cand_type->name_off != canon_type->name_off)
+		return 0;
+
+	/* FWD <--> STRUCT/UNION equivalence check, if enabled */
+	if ((cand_kind == BTF_KIND_FWD || canon_kind == BTF_KIND_FWD)
+	    && cand_kind != canon_kind) {
+		__u16 real_kind;
+		__u16 fwd_kind;
+
+		if (cand_kind == BTF_KIND_FWD) {
+			real_kind = canon_kind;
+			fwd_kind = btf_fwd_kind(cand_type);
+		} else {
+			real_kind = cand_kind;
+			fwd_kind = btf_fwd_kind(canon_type);
+			/* we'd need to resolve base FWD to STRUCT/UNION */
+			if (fwd_kind == real_kind && canon_id < d->btf->start_id)
+				d->hypot_adjust_canon = true;
+		}
+		return fwd_kind == real_kind;
+	}
+
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
