@@ -4480,3 +4480,80 @@ static int bpf_get_map_info_from_fdinfo(int fd, struct bpf_map_info *info)
 
 	return 0;
 }
+
+bool bpf_map__autocreate(const struct bpf_map *map)
+{
+	return map->autocreate;
+}
+
+int bpf_map__set_autocreate(struct bpf_map *map, bool autocreate)
+{
+	if (map->obj->loaded)
+		return libbpf_err(-EBUSY);
+
+	map->autocreate = autocreate;
+	return 0;
+}
+
+int bpf_map__reuse_fd(struct bpf_map *map, int fd)
+{
+	struct bpf_map_info info;
+	__u32 len = sizeof(info), name_len;
+	int new_fd, err;
+	char *new_name;
+
+	memset(&info, 0, len);
+	err = bpf_map_get_info_by_fd(fd, &info, &len);
+	if (err && errno == EINVAL)
+		err = bpf_get_map_info_from_fdinfo(fd, &info);
+	if (err)
+		return libbpf_err(err);
+
+	name_len = strlen(info.name);
+	if (name_len == BPF_OBJ_NAME_LEN - 1 && strncmp(map->name, info.name, name_len) == 0)
+		new_name = strdup(map->name);
+	else
+		new_name = strdup(info.name);
+
+	if (!new_name)
+		return libbpf_err(-errno);
+
+	new_fd = open("/", O_RDONLY | O_CLOEXEC);
+	if (new_fd < 0) {
+		err = -errno;
+		goto err_free_new_name;
+	}
+
+	new_fd = dup3(fd, new_fd, O_CLOEXEC);
+	if (new_fd < 0) {
+		err = -errno;
+		goto err_close_new_fd;
+	}
+
+	err = zclose(map->fd);
+	if (err) {
+		err = -errno;
+		goto err_close_new_fd;
+	}
+	free(map->name);
+
+	map->fd = new_fd;
+	map->name = new_name;
+	map->def.type = info.type;
+	map->def.key_size = info.key_size;
+	map->def.value_size = info.value_size;
+	map->def.max_entries = info.max_entries;
+	map->def.map_flags = info.map_flags;
+	map->btf_key_type_id = info.btf_key_type_id;
+	map->btf_value_type_id = info.btf_value_type_id;
+	map->reused = true;
+	map->map_extra = info.map_extra;
+
+	return 0;
+
+err_close_new_fd:
+	close(new_fd);
+err_free_new_name:
+	free(new_name);
+	return libbpf_err(err);
+}
