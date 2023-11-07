@@ -3415,6 +3415,49 @@ static int btf_dedup_is_equiv(struct btf_dedup *d, __u32 cand_id,
 		return btf_dedup_is_equiv(d, cand_arr->type, canon_arr->type);
 	}
 
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION: {
+		const struct btf_member *cand_m, *canon_m;
+		__u16 vlen;
+
+		if (!btf_shallow_equal_struct(cand_type, canon_type))
+			return 0;
+		vlen = btf_vlen(cand_type);
+		cand_m = btf_members(cand_type);
+		canon_m = btf_members(canon_type);
+		for (i = 0; i < vlen; i++) {
+			eq = btf_dedup_is_equiv(d, cand_m->type, canon_m->type);
+			if (eq <= 0)
+				return eq;
+			cand_m++;
+			canon_m++;
+		}
+
+		return 1;
+	}
+
+	case BTF_KIND_FUNC_PROTO: {
+		const struct btf_param *cand_p, *canon_p;
+		__u16 vlen;
+
+		if (!btf_compat_fnproto(cand_type, canon_type))
+			return 0;
+		eq = btf_dedup_is_equiv(d, cand_type->type, canon_type->type);
+		if (eq <= 0)
+			return eq;
+		vlen = btf_vlen(cand_type);
+		cand_p = btf_params(cand_type);
+		canon_p = btf_params(canon_type);
+		for (i = 0; i < vlen; i++) {
+			eq = btf_dedup_is_equiv(d, cand_p->type, canon_p->type);
+			if (eq <= 0)
+				return eq;
+			cand_p++;
+			canon_p++;
+		}
+		return 1;
+	}
+
 	default:
 		return -EINVAL;
 	}
