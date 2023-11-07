@@ -4414,3 +4414,33 @@ bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Dat
 	}
 	return 0;
 }
+
+static int map_fill_btf_type_info(struct bpf_object *obj, struct bpf_map *map)
+{
+	int id;
+
+	if (!obj->btf)
+		return -ENOENT;
+
+	/* if it's BTF-defined map, we don't need to search for type IDs.
+	 * For struct_ops map, it does not need btf_key_type_id and
+	 * btf_value_type_id.
+	 */
+	if (map->sec_idx == obj->efile.btf_maps_shndx || bpf_map__is_struct_ops(map))
+		return 0;
+
+	/*
+	 * LLVM annotates global data differently in BTF, that is,
+	 * only as '.data', '.bss' or '.rodata'.
+	 */
+	if (!bpf_map__is_internal(map))
+		return -ENOENT;
+
+	id = btf__find_by_name(obj->btf, map->real_name);
+	if (id < 0)
+		return id;
+
+	map->btf_key_type_id = 0;
+	map->btf_value_type_id = id;
+	return 0;
+}
