@@ -4282,3 +4282,37 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
     reloc_desc->sym_off = sym->st_value;
     return 0;
 }
+
+static bool prog_contains_insn(const struct bpf_program *prog, size_t insn_idx)
+{
+	return insn_idx >= prog->sec_insn_off &&
+	       insn_idx < prog->sec_insn_off + prog->sec_insn_cnt;
+}
+
+static struct bpf_program *find_prog_by_sec_insn(const struct bpf_object *obj,
+						 size_t sec_idx, size_t insn_idx)
+{
+	int l = 0, r = obj->nr_programs - 1, m;
+	struct bpf_program *prog;
+
+	if (!obj->nr_programs)
+		return NULL;
+
+	while (l < r) {
+		m = l + (r - l + 1) / 2;
+		prog = &obj->programs[m];
+
+		if (prog->sec_idx < sec_idx ||
+		    (prog->sec_idx == sec_idx && prog->sec_insn_off <= insn_idx))
+			l = m;
+		else
+			r = m - 1;
+	}
+	/* matching program could be at index l, but it still might be the
+	 * wrong one, so we need to double check conditions for the last time
+	 */
+	prog = &obj->programs[l];
+	if (prog->sec_idx == sec_idx && prog_contains_insn(prog, insn_idx))
+		return prog;
+	return NULL;
+}
