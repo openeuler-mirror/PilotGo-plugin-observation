@@ -3507,3 +3507,51 @@ static void btf_dedup_merge_hypot_map(struct btf_dedup *d)
 		}
 	}
 }
+
+static int btf_dedup_struct_type(struct btf_dedup *d, __u32 type_id)
+{
+	struct btf_type *cand_type, *t;
+	struct hashmap_entry *hash_entry;
+	/* if we don't find equivalent type, then we are canonical */
+	__u32 new_id = type_id;
+	__u16 kind;
+	long h;
+
+	/* already deduped or is in process of deduping (loop detected) */
+	if (d->map[type_id] <= BTF_MAX_NR_TYPES)
+		return 0;
+
+	t = btf_type_by_id(d->btf, type_id);
+	kind = btf_kind(t);
+
+	if (kind != BTF_KIND_STRUCT && kind != BTF_KIND_UNION)
+		return 0;
+
+	h = btf_hash_struct(t);
+	for_each_dedup_cand(d, hash_entry, h) {
+		__u32 cand_id = hash_entry->value;
+		int eq;
+
+		cand_type = btf_type_by_id(d->btf, cand_id);
+		if (!btf_shallow_equal_struct(t, cand_type))
+			continue;
+
+		btf_dedup_clear_hypot_map(d);
+		eq = btf_dedup_is_equiv(d, type_id, cand_id);
+		if (eq < 0)
+			return eq;
+		if (!eq)
+			continue;
+		btf_dedup_merge_hypot_map(d);
+		if (d->hypot_adjust_canon) /* not really equivalent */
+			continue;
+		new_id = cand_id;
+		break;
+	}
+
+	d->map[type_id] = new_id;
+	if (type_id == new_id && btf_dedup_table_add(d, h, type_id))
+		return -ENOMEM;
+
+	return 0;
+}
