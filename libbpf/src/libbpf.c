@@ -4771,3 +4771,46 @@ static int probe_kern_btf_decl_tag(void)
 	return probe_fd(libbpf__load_raw_btf((char *)types, sizeof(types),
 					     strs, sizeof(strs)));
 }
+
+static int probe_kern_btf_type_tag(void)
+{
+	static const char strs[] = "\0tag";
+	__u32 types[] = {
+		/* int */
+		BTF_TYPE_INT_ENC(0, BTF_INT_SIGNED, 0, 32, 4),		/* [1] */
+		/* attr */
+		BTF_TYPE_TYPE_TAG_ENC(1, 1),				/* [2] */
+		/* ptr */
+		BTF_TYPE_ENC(0, BTF_INFO_ENC(BTF_KIND_PTR, 0, 0), 2),	/* [3] */
+	};
+
+	return probe_fd(libbpf__load_raw_btf((char *)types, sizeof(types),
+					     strs, sizeof(strs)));
+}
+
+static int probe_kern_array_mmap(void)
+{
+	LIBBPF_OPTS(bpf_map_create_opts, opts, .map_flags = BPF_F_MMAPABLE);
+	int fd;
+
+	fd = bpf_map_create(BPF_MAP_TYPE_ARRAY, "libbpf_mmap", sizeof(int), sizeof(int), 1, &opts);
+	return probe_fd(fd);
+}
+
+static int probe_kern_exp_attach_type(void)
+{
+	LIBBPF_OPTS(bpf_prog_load_opts, opts, .expected_attach_type = BPF_CGROUP_INET_SOCK_CREATE);
+	struct bpf_insn insns[] = {
+		BPF_MOV64_IMM(BPF_REG_0, 0),
+		BPF_EXIT_INSN(),
+	};
+	int fd, insn_cnt = ARRAY_SIZE(insns);
+
+	/* use any valid combination of program type and (optional)
+	 * non-zero expected attach type (i.e., not a BPF_CGROUP_INET_INGRESS)
+	 * to see if kernel supports expected_attach_type field for
+	 * BPF_PROG_LOAD command
+	 */
+	fd = bpf_prog_load(BPF_PROG_TYPE_CGROUP_SOCK, NULL, "GPL", insns, insn_cnt, &opts);
+	return probe_fd(fd);
+}
