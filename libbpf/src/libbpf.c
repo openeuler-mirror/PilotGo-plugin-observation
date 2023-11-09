@@ -4619,3 +4619,59 @@ bpf_object__probe_loading(struct bpf_object *obj)
 
 	return 0;
 }
+
+static int probe_fd(int fd)
+{
+	if (fd >= 0)
+		close(fd);
+	return fd >= 0;
+}
+
+static int probe_kern_prog_name(void)
+{
+	const size_t attr_sz = offsetofend(union bpf_attr, prog_name);
+	struct bpf_insn insns[] = {
+		BPF_MOV64_IMM(BPF_REG_0, 0),
+		BPF_EXIT_INSN(),
+	};
+	union bpf_attr attr;
+	int ret;
+
+	memset(&attr, 0, attr_sz);
+	attr.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
+	attr.license = ptr_to_u64("GPL");
+	attr.insns = ptr_to_u64(insns);
+	attr.insn_cnt = (__u32)ARRAY_SIZE(insns);
+	libbpf_strlcpy(attr.prog_name, "libbpf_nametest", sizeof(attr.prog_name));
+
+	/* make sure loading with name works */
+	ret = sys_bpf_prog_load(&attr, attr_sz, PROG_LOAD_ATTEMPTS);
+	return probe_fd(ret);
+}
+
+static int probe_kern_global_data(void)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	struct bpf_insn insns[] = {
+		BPF_LD_MAP_VALUE(BPF_REG_1, 0, 16),
+		BPF_ST_MEM(BPF_DW, BPF_REG_1, 0, 42),
+		BPF_MOV64_IMM(BPF_REG_0, 0),
+		BPF_EXIT_INSN(),
+	};
+	int ret, map, insn_cnt = ARRAY_SIZE(insns);
+
+	map = bpf_map_create(BPF_MAP_TYPE_ARRAY, "libbpf_global", sizeof(int), 32, 1, NULL);
+	if (map < 0) {
+		ret = -errno;
+		cp = libbpf_strerror_r(ret, errmsg, sizeof(errmsg));
+		pr_warn("Error in %s():%s(%d). Couldn't create simple array map.\n",
+			__func__, cp, -ret);
+		return ret;
+	}
+
+	insns[0].imm = map;
+
+	ret = bpf_prog_load(BPF_PROG_TYPE_SOCKET_FILTER, NULL, "GPL", insns, insn_cnt, NULL);
+	close(map);
+	return probe_fd(ret);
+}
