@@ -3555,3 +3555,141 @@ static int btf_dedup_struct_type(struct btf_dedup *d, __u32 type_id)
 
 	return 0;
 }
+
+static int btf_dedup_struct_types(struct btf_dedup *d)
+{
+	int i, err;
+
+	for (i = 0; i < d->btf->nr_types; i++) {
+		err = btf_dedup_struct_type(d, d->btf->start_id + i);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static int btf_dedup_ref_type(struct btf_dedup *d, __u32 type_id)
+{
+	struct hashmap_entry *hash_entry;
+	__u32 new_id = type_id, cand_id;
+	struct btf_type *t, *cand;
+	/* if we don't find equivalent type, then we are representative type */
+	int ref_type_id;
+	long h;
+
+	if (d->map[type_id] == BTF_IN_PROGRESS_ID)
+		return -ELOOP;
+	if (d->map[type_id] <= BTF_MAX_NR_TYPES)
+		return resolve_type_id(d, type_id);
+
+	t = btf_type_by_id(d->btf, type_id);
+	d->map[type_id] = BTF_IN_PROGRESS_ID;
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_CONST:
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_PTR:
+	case BTF_KIND_TYPEDEF:
+	case BTF_KIND_FUNC:
+	case BTF_KIND_TYPE_TAG:
+		ref_type_id = btf_dedup_ref_type(d, t->type);
+		if (ref_type_id < 0)
+			return ref_type_id;
+		t->type = ref_type_id;
+
+		h = btf_hash_common(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_common(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+		}
+		break;
+
+	case BTF_KIND_DECL_TAG:
+		ref_type_id = btf_dedup_ref_type(d, t->type);
+		if (ref_type_id < 0)
+			return ref_type_id;
+		t->type = ref_type_id;
+
+		h = btf_hash_int_decl_tag(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_int_tag(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+		}
+		break;
+
+	case BTF_KIND_ARRAY: {
+		struct btf_array *info = btf_array(t);
+
+		ref_type_id = btf_dedup_ref_type(d, info->type);
+		if (ref_type_id < 0)
+			return ref_type_id;
+		info->type = ref_type_id;
+
+		ref_type_id = btf_dedup_ref_type(d, info->index_type);
+		if (ref_type_id < 0)
+			return ref_type_id;
+		info->index_type = ref_type_id;
+
+		h = btf_hash_array(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_array(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+		}
+		break;
+	}
+
+	case BTF_KIND_FUNC_PROTO: {
+		struct btf_param *param;
+		__u16 vlen;
+		int i;
+
+		ref_type_id = btf_dedup_ref_type(d, t->type);
+		if (ref_type_id < 0)
+			return ref_type_id;
+		t->type = ref_type_id;
+
+		vlen = btf_vlen(t);
+		param = btf_params(t);
+		for (i = 0; i < vlen; i++) {
+			ref_type_id = btf_dedup_ref_type(d, param->type);
+			if (ref_type_id < 0)
+				return ref_type_id;
+			param->type = ref_type_id;
+			param++;
+		}
+
+		h = btf_hash_fnproto(t);
+		for_each_dedup_cand(d, hash_entry, h) {
+			cand_id = hash_entry->value;
+			cand = btf_type_by_id(d->btf, cand_id);
+			if (btf_equal_fnproto(t, cand)) {
+				new_id = cand_id;
+				break;
+			}
+		}
+		break;
+	}
+
+	default:
+		return -EINVAL;
+	}
+
+	d->map[type_id] = new_id;
+	if (type_id == new_id && btf_dedup_table_add(d, h, type_id))
+		return -ENOMEM;
+
+	return new_id;
+}
