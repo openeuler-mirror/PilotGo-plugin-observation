@@ -3780,3 +3780,75 @@ static int btf_dedup_resolve_fwd(struct btf_dedup *d, struct hashmap *names_map,
 
 	return 0;
 }
+
+static int btf_dedup_resolve_fwds(struct btf_dedup *d)
+{
+	int i, err;
+	struct hashmap *names_map;
+
+	names_map = hashmap__new(btf_dedup_identity_hash_fn, btf_dedup_equal_fn, NULL);
+	if (IS_ERR(names_map))
+		return PTR_ERR(names_map);
+
+	err = btf_dedup_fill_unique_names_map(d, names_map);
+	if (err < 0)
+		goto exit;
+
+	for (i = 0; i < d->btf->nr_types; i++) {
+		err = btf_dedup_resolve_fwd(d, names_map, d->btf->start_id + i);
+		if (err < 0)
+			break;
+	}
+
+exit:
+	hashmap__free(names_map);
+	return err;
+}
+
+static int btf_dedup_compact_types(struct btf_dedup *d)
+{
+	__u32 *new_offs;
+	__u32 next_type_id = d->btf->start_id;
+	const struct btf_type *t;
+	void *p;
+	int i, id, len;
+
+	/* we are going to reuse hypot_map to store compaction remapping */
+	d->hypot_map[0] = 0;
+	/* base BTF types are not renumbered */
+	for (id = 1; id < d->btf->start_id; id++)
+		d->hypot_map[id] = id;
+	for (i = 0, id = d->btf->start_id; i < d->btf->nr_types; i++, id++)
+		d->hypot_map[id] = BTF_UNPROCESSED_ID;
+
+	p = d->btf->types_data;
+
+	for (i = 0, id = d->btf->start_id; i < d->btf->nr_types; i++, id++) {
+		if (d->map[id] != id)
+			continue;
+
+		t = btf__type_by_id(d->btf, id);
+		len = btf_type_size(t);
+		if (len < 0)
+			return len;
+
+		memmove(p, t, len);
+		d->hypot_map[id] = next_type_id;
+		d->btf->type_offs[next_type_id - d->btf->start_id] = p - d->btf->types_data;
+		p += len;
+		next_type_id++;
+	}
+
+	/* shrink struct btf's internal types index and update btf_header */
+	d->btf->nr_types = next_type_id - d->btf->start_id;
+	d->btf->type_offs_cap = d->btf->nr_types;
+	d->btf->hdr->type_len = p - d->btf->types_data;
+	new_offs = libbpf_reallocarray(d->btf->type_offs, d->btf->type_offs_cap,
+				       sizeof(*new_offs));
+	if (d->btf->type_offs_cap && !new_offs)
+		return -ENOMEM;
+	d->btf->type_offs = new_offs;
+	d->btf->hdr->str_off = d->btf->hdr->type_len;
+	d->btf->raw_size = d->btf->hdr->hdr_len + d->btf->hdr->type_len + d->btf->hdr->str_len;
+	return 0;
+}
