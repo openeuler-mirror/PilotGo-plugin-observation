@@ -3693,3 +3693,57 @@ static int btf_dedup_ref_type(struct btf_dedup *d, __u32 type_id)
 
 	return new_id;
 }
+
+static int btf_dedup_ref_types(struct btf_dedup *d)
+{
+	int i, err;
+
+	for (i = 0; i < d->btf->nr_types; i++) {
+		err = btf_dedup_ref_type(d, d->btf->start_id + i);
+		if (err < 0)
+			return err;
+	}
+	/* we won't need d->dedup_table anymore */
+	hashmap__free(d->dedup_table);
+	d->dedup_table = NULL;
+	return 0;
+}
+
+/*
+ * Collect a map from type names to type ids for all canonical structs
+ * and unions. If the same name is shared by several canonical types
+ * use a special value 0 to indicate this fact.
+ */
+static int btf_dedup_fill_unique_names_map(struct btf_dedup *d, struct hashmap *names_map)
+{
+	__u32 nr_types = btf__type_cnt(d->btf);
+	struct btf_type *t;
+	__u32 type_id;
+	__u16 kind;
+	int err;
+
+	/*
+	 * Iterate over base and split module ids in order to get all
+	 * available structs in the map.
+	 */
+	for (type_id = 1; type_id < nr_types; ++type_id) {
+		t = btf_type_by_id(d->btf, type_id);
+		kind = btf_kind(t);
+
+		if (kind != BTF_KIND_STRUCT && kind != BTF_KIND_UNION)
+			continue;
+
+		/* Skip non-canonical types */
+		if (type_id != d->map[type_id])
+			continue;
+
+		err = hashmap__add(names_map, t->name_off, type_id);
+		if (err == -EEXIST)
+			err = hashmap__set(names_map, t->name_off, 0, NULL, NULL);
+
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
