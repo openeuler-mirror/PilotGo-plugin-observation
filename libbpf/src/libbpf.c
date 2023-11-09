@@ -4557,3 +4557,65 @@ err_free_new_name:
 	free(new_name);
 	return libbpf_err(err);
 }
+
+__u32 bpf_map__max_entries(const struct bpf_map *map)
+{
+	return map->def.max_entries;
+}
+
+struct bpf_map *bpf_map__inner_map(struct bpf_map *map)
+{
+	if (!bpf_map_type__is_map_in_map(map->def.type))
+		return errno = EINVAL, NULL;
+
+	return map->inner_map;
+}
+
+int bpf_map__set_max_entries(struct bpf_map *map, __u32 max_entries)
+{
+	if (map->obj->loaded)
+		return libbpf_err(-EBUSY);
+
+	map->def.max_entries = max_entries;
+
+	/* auto-adjust BPF ringbuf map max_entries to be a multiple of page size */
+	if (map_is_ringbuf(map))
+		map->def.max_entries = adjust_ringbuf_sz(map->def.max_entries);
+
+	return 0;
+}
+
+static int
+bpf_object__probe_loading(struct bpf_object *obj)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	struct bpf_insn insns[] = {
+		BPF_MOV64_IMM(BPF_REG_0, 0),
+		BPF_EXIT_INSN(),
+	};
+	int ret, insn_cnt = ARRAY_SIZE(insns);
+
+	if (obj->gen_loader)
+		return 0;
+
+	ret = bump_rlimit_memlock();
+	if (ret)
+		pr_warn("Failed to bump RLIMIT_MEMLOCK (err = %d), you might need to do it explicitly!\n", ret);
+
+	/* make sure basic loading works */
+	ret = bpf_prog_load(BPF_PROG_TYPE_SOCKET_FILTER, NULL, "GPL", insns, insn_cnt, NULL);
+	if (ret < 0)
+		ret = bpf_prog_load(BPF_PROG_TYPE_TRACEPOINT, NULL, "GPL", insns, insn_cnt, NULL);
+	if (ret < 0) {
+		ret = errno;
+		cp = libbpf_strerror_r(ret, errmsg, sizeof(errmsg));
+		pr_warn("Error in %s():%s(%d). Couldn't load trivial BPF "
+			"program. Make sure your kernel supports BPF "
+			"(CONFIG_BPF_SYSCALL=y) and/or that RLIMIT_MEMLOCK is "
+			"set to big enough value.\n", __func__, cp, ret);
+		return -ret;
+	}
+	close(ret);
+
+	return 0;
+}
