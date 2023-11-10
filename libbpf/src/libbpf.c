@@ -5066,3 +5066,79 @@ static bool map_is_reuse_compat(const struct bpf_map *map, int map_fd)
 		map_info.map_flags == map->def.map_flags &&
 		map_info.map_extra == map->map_extra);
 }
+
+static int
+bpf_object__reuse_map(struct bpf_map *map)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	int err, pin_fd;
+
+	pin_fd = bpf_obj_get(map->pin_path);
+	if (pin_fd < 0) {
+		err = -errno;
+		if (err == -ENOENT) {
+			pr_debug("found no pinned map to reuse at '%s'\n",
+				 map->pin_path);
+			return 0;
+		}
+
+		cp = libbpf_strerror_r(-err, errmsg, sizeof(errmsg));
+		pr_warn("couldn't retrieve pinned map '%s': %s\n",
+			map->pin_path, cp);
+		return err;
+	}
+
+	if (!map_is_reuse_compat(map, pin_fd)) {
+		pr_warn("couldn't reuse pinned map at '%s': parameter mismatch\n",
+			map->pin_path);
+		close(pin_fd);
+		return -EINVAL;
+	}
+
+	err = bpf_map__reuse_fd(map, pin_fd);
+	close(pin_fd);
+	if (err)
+		return err;
+
+	map->pinned = true;
+	pr_debug("reused pinned map at '%s'\n", map->pin_path);
+
+	return 0;
+}
+
+static int
+bpf_object__populate_internal_map(struct bpf_object *obj, struct bpf_map *map)
+{
+	enum libbpf_map_type map_type = map->libbpf_type;
+	char *cp, errmsg[STRERR_BUFSIZE];
+	int err, zero = 0;
+
+	if (obj->gen_loader) {
+		bpf_gen__map_update_elem(obj->gen_loader, map - obj->maps,
+					 map->mmaped, map->def.value_size);
+		if (map_type == LIBBPF_MAP_RODATA || map_type == LIBBPF_MAP_KCONFIG)
+			bpf_gen__map_freeze(obj->gen_loader, map - obj->maps);
+		return 0;
+	}
+	err = bpf_map_update_elem(map->fd, &zero, map->mmaped, 0);
+	if (err) {
+		err = -errno;
+		cp = libbpf_strerror_r(err, errmsg, sizeof(errmsg));
+		pr_warn("Error setting initial map(%s) contents: %s\n",
+			map->name, cp);
+		return err;
+	}
+
+	/* Freeze .rodata and .kconfig map as read-only from syscall side. */
+	if (map_type == LIBBPF_MAP_RODATA || map_type == LIBBPF_MAP_KCONFIG) {
+		err = bpf_map_freeze(map->fd);
+		if (err) {
+			err = -errno;
+			cp = libbpf_strerror_r(err, errmsg, sizeof(errmsg));
+			pr_warn("Error freezing map(%s) as read-only: %s\n",
+				map->name, cp);
+			return err;
+		}
+	}
+	return 0;
+}
