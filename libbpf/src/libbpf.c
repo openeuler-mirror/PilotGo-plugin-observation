@@ -4948,3 +4948,70 @@ enum kern_feature_result {
 	FEAT_SUPPORTED = 1,
 	FEAT_MISSING = 2,
 };
+
+typedef int (*feature_probe_fn)(void);
+
+static struct kern_feature_desc {
+	const char *desc;
+	feature_probe_fn probe;
+	enum kern_feature_result res;
+} feature_probes[__FEAT_CNT] = {
+	[FEAT_PROG_NAME] = {
+		"BPF program name", probe_kern_prog_name,
+	},
+	[FEAT_GLOBAL_DATA] = {
+		"global variables", probe_kern_global_data,
+	},
+	[FEAT_BTF] = {
+		"minimal BTF", probe_kern_btf,
+	},
+	[FEAT_BTF_FUNC] = {
+		"BTF functions", probe_kern_btf_func,
+	},
+	[FEAT_BTF_GLOBAL_FUNC] = {
+		"BTF global function", probe_kern_btf_func_global,
+	},
+	[FEAT_BTF_DATASEC] = {
+		"BTF data section and variable", probe_kern_btf_datasec,
+	},
+	[FEAT_ARRAY_MMAP] = {
+		"ARRAY map mmap()", probe_kern_array_mmap,
+	},
+	[FEAT_EXP_ATTACH_TYPE] = {
+		"BPF_PROG_LOAD expected_attach_type attribute",
+		probe_kern_exp_attach_type,
+	},
+	[FEAT_PROBE_READ_KERN] = {
+		"bpf_probe_read_kernel() helper", probe_kern_probe_read_kernel,
+	},
+	[FEAT_PROG_BIND_MAP] = {
+		"BPF_PROG_BIND_MAP support", probe_prog_bind_map,
+	},
+	[FEAT_MODULE_BTF] = {
+		"module BTF support", probe_module_btf,
+	},
+	[FEAT_BTF_FLOAT] = {
+		"BTF_KIND_FLOAT support", probe_kern_btf_float,
+	},
+	[FEAT_PERF_LINK] = {
+		"BPF perf link support", probe_perf_link,
+	},
+	[FEAT_BTF_DECL_TAG] = {
+		"BTF_KIND_DECL_TAG support", probe_kern_btf_decl_tag,
+	},
+	[FEAT_BTF_TYPE_TAG] = {
+		"BTF_KIND_TYPE_TAG support", probe_kern_btf_type_tag,
+	},
+	[FEAT_MEMCG_ACCOUNT] = {
+		"memcg-based memory accounting", probe_memcg_account,
+	},
+	[FEAT_BPF_COOKIE] = {
+		"BPF cookie support", probe_kern_bpf_cookie,
+	},
+	[FEAT_BTF_ENUM64] = {
+		"BTF_KIND_ENUM64 support", probe_kern_btf_enum64,
+	},
+	[FEAT_SYSCALL_WRAPPER] = {
+		"Kernel using syscall wrapper", probe_kern_syscall_wrapper,
+	},
+};
