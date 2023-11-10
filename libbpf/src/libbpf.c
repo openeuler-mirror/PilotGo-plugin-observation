@@ -5015,3 +5015,54 @@ static struct kern_feature_desc {
 		"Kernel using syscall wrapper", probe_kern_syscall_wrapper,
 	},
 };
+
+bool kernel_supports(const struct bpf_object *obj, enum kern_feature_id feat_id)
+{
+	struct kern_feature_desc *feat = &feature_probes[feat_id];
+	int ret;
+
+	if (obj && obj->gen_loader)
+		/* To generate loader program assume the latest kernel
+		 * to avoid doing extra prog_load, map_create syscalls.
+		 */
+		return true;
+
+	if (READ_ONCE(feat->res) == FEAT_UNKNOWN) {
+		ret = feat->probe();
+		if (ret > 0) {
+			WRITE_ONCE(feat->res, FEAT_SUPPORTED);
+		} else if (ret == 0) {
+			WRITE_ONCE(feat->res, FEAT_MISSING);
+		} else {
+			pr_warn("Detection of kernel %s support failed: %d\n", feat->desc, ret);
+			WRITE_ONCE(feat->res, FEAT_MISSING);
+		}
+	}
+
+	return READ_ONCE(feat->res) == FEAT_SUPPORTED;
+}
+
+static bool map_is_reuse_compat(const struct bpf_map *map, int map_fd)
+{
+	struct bpf_map_info map_info;
+	char msg[STRERR_BUFSIZE];
+	__u32 map_info_len = sizeof(map_info);
+	int err;
+
+	memset(&map_info, 0, map_info_len);
+	err = bpf_map_get_info_by_fd(map_fd, &map_info, &map_info_len);
+	if (err && errno == EINVAL)
+		err = bpf_get_map_info_from_fdinfo(map_fd, &map_info);
+	if (err) {
+		pr_warn("failed to get map info for map FD %d: %s\n", map_fd,
+			libbpf_strerror_r(errno, msg, sizeof(msg)));
+		return false;
+	}
+
+	return (map_info.type == map->def.type &&
+		map_info.key_size == map->def.key_size &&
+		map_info.value_size == map->def.value_size &&
+		map_info.max_entries == map->def.max_entries &&
+		map_info.map_flags == map->def.map_flags &&
+		map_info.map_extra == map->map_extra);
+}
