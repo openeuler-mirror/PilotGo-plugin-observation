@@ -3904,3 +3904,47 @@ static int btf_dedup_remap_types(struct btf_dedup *d)
 
 	return 0;
 }
+
+/*
+ * Probe few well-known locations for vmlinux kernel image and try to load BTF
+ * data out of it to use for target BTF.
+ */
+struct btf *btf__load_vmlinux_btf(void)
+{
+	const char *locations[] = {
+		/* try canonical vmlinux BTF through sysfs first */
+		"/sys/kernel/btf/vmlinux",
+		/* fall back to trying to find vmlinux on disk otherwise */
+		"/boot/vmlinux-%1$s",
+		"/lib/modules/%1$s/vmlinux-%1$s",
+		"/lib/modules/%1$s/build/vmlinux",
+		"/usr/lib/modules/%1$s/kernel/vmlinux",
+		"/usr/lib/debug/boot/vmlinux-%1$s",
+		"/usr/lib/debug/boot/vmlinux-%1$s.debug",
+		"/usr/lib/debug/lib/modules/%1$s/vmlinux",
+	};
+	char path[PATH_MAX + 1];
+	struct utsname buf;
+	struct btf *btf;
+	int i, err;
+
+	uname(&buf);
+
+	for (i = 0; i < ARRAY_SIZE(locations); i++) {
+		snprintf(path, PATH_MAX, locations[i], buf.release);
+
+		if (faccessat(AT_FDCWD, path, R_OK, AT_EACCESS))
+			continue;
+
+		btf = btf__parse(path, NULL);
+		err = libbpf_get_error(btf);
+		pr_debug("loading kernel BTF '%s': %d\n", path, err);
+		if (err)
+			continue;
+
+		return btf;
+	}
+
+	pr_warn("failed to find valid kernel BTF\n");
+	return libbpf_err_ptr(-ESRCH);
+}
