@@ -3852,3 +3852,55 @@ static int btf_dedup_compact_types(struct btf_dedup *d)
 	d->btf->raw_size = d->btf->hdr->hdr_len + d->btf->hdr->type_len + d->btf->hdr->str_len;
 	return 0;
 }
+
+/*
+ * Figure out final (deduplicated and compacted) type ID for provided original
+ * `type_id` by first resolving it into corresponding canonical type ID and
+ * then mapping it to a deduplicated type ID, stored in btf_dedup->hypot_map,
+ * which is populated during compaction phase.
+ */
+static int btf_dedup_remap_type_id(__u32 *type_id, void *ctx)
+{
+	struct btf_dedup *d = ctx;
+	__u32 resolved_type_id, new_type_id;
+
+	resolved_type_id = resolve_type_id(d, *type_id);
+	new_type_id = d->hypot_map[resolved_type_id];
+	if (new_type_id > BTF_MAX_NR_TYPES)
+		return -EINVAL;
+
+	*type_id = new_type_id;
+	return 0;
+}
+
+/*
+ * Remap referenced type IDs into deduped type IDs.
+ *
+ * After BTF types are deduplicated and compacted, their final type IDs may
+ * differ from original ones. The map from original to a corresponding
+ * deduped type ID is stored in btf_dedup->hypot_map and is populated during
+ * compaction phase. During remapping phase we are rewriting all type IDs
+ * referenced from any BTF type (e.g., struct fields, func proto args, etc) to
+ * their final deduped type IDs.
+ */
+static int btf_dedup_remap_types(struct btf_dedup *d)
+{
+	int i, r;
+
+	for (i = 0; i < d->btf->nr_types; i++) {
+		struct btf_type *t = btf_type_by_id(d->btf, d->btf->start_id + i);
+
+		r = btf_type_visit_type_ids(t, btf_dedup_remap_type_id, d);
+		if (r)
+			return r;
+	}
+
+	if (!d->btf_ext)
+		return 0;
+
+	r = btf_ext_visit_type_ids(d->btf_ext, btf_dedup_remap_type_id, d);
+	if (r)
+		return r;
+
+	return 0;
+}
