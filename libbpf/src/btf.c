@@ -4088,3 +4088,83 @@ int btf_type_visit_str_offs(struct btf_type *t, str_off_visit_fn visit, void *ct
 
 	return 0;
 }
+
+int btf_ext_visit_type_ids(struct btf_ext *btf_ext, type_id_visit_fn visit, void *ctx)
+{
+	const struct btf_ext_info *seg;
+	struct btf_ext_info_sec *sec;
+	int i, err;
+
+	seg = &btf_ext->func_info;
+	for_each_btf_ext_sec(seg, sec) {
+		struct bpf_func_info_min *rec;
+
+		for_each_btf_ext_rec(seg, sec, i, rec) {
+			err = visit(&rec->type_id, ctx);
+			if (err < 0)
+				return err;
+		}
+	}
+
+	seg = &btf_ext->core_relo_info;
+	for_each_btf_ext_sec(seg, sec) {
+		struct bpf_core_relo *rec;
+
+		for_each_btf_ext_rec(seg, sec, i, rec) {
+			err = visit(&rec->type_id, ctx);
+			if (err < 0)
+				return err;
+		}
+	}
+
+	return 0;
+}
+
+int btf_ext_visit_str_offs(struct btf_ext *btf_ext, str_off_visit_fn visit, void *ctx)
+{
+	const struct btf_ext_info *seg;
+	struct btf_ext_info_sec *sec;
+	int i, err;
+
+	seg = &btf_ext->func_info;
+	for_each_btf_ext_sec(seg, sec) {
+		err = visit(&sec->sec_name_off, ctx);
+		if (err)
+			return err;
+	}
+
+	seg = &btf_ext->line_info;
+	for_each_btf_ext_sec(seg, sec) {
+		struct bpf_line_info_min *rec;
+
+		err = visit(&sec->sec_name_off, ctx);
+		if (err)
+			return err;
+
+		for_each_btf_ext_rec(seg, sec, i, rec) {
+			err = visit(&rec->file_name_off, ctx);
+			if (err)
+				return err;
+			err = visit(&rec->line_off, ctx);
+			if (err)
+				return err;
+		}
+	}
+
+	seg = &btf_ext->core_relo_info;
+	for_each_btf_ext_sec(seg, sec) {
+		struct bpf_core_relo *rec;
+
+		err = visit(&sec->sec_name_off, ctx);
+		if (err)
+			return err;
+
+		for_each_btf_ext_rec(seg, sec, i, rec) {
+			err = visit(&rec->access_str_off, ctx);
+			if (err)
+				return err;
+		}
+	}
+
+	return 0;
+}
