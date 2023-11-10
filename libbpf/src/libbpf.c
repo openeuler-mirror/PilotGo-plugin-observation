@@ -5142,3 +5142,108 @@ bpf_object__populate_internal_map(struct bpf_object *obj, struct bpf_map *map)
 	}
 	return 0;
 }
+
+static void bpf_map__destroy(struct bpf_map *map);
+
+static int bpf_object__create_map(struct bpf_object *obj, struct bpf_map *map, bool is_inner)
+{
+	LIBBPF_OPTS(bpf_map_create_opts, create_attr);
+	struct bpf_map_def *def = &map->def;
+	const char *map_name = NULL;
+	int err = 0;
+
+	if (kernel_supports(obj, FEAT_PROG_NAME))
+		map_name = map->name;
+	create_attr.map_ifindex = map->map_ifindex;
+	create_attr.map_flags = def->map_flags;
+	create_attr.numa_node = map->numa_node;
+	create_attr.map_extra = map->map_extra;
+
+	if (bpf_map__is_struct_ops(map))
+		create_attr.btf_vmlinux_value_type_id = map->btf_vmlinux_value_type_id;
+
+	if (obj->btf && btf__fd(obj->btf) >= 0) {
+		create_attr.btf_fd = btf__fd(obj->btf);
+		create_attr.btf_key_type_id = map->btf_key_type_id;
+		create_attr.btf_value_type_id = map->btf_value_type_id;
+	}
+
+	if (bpf_map_type__is_map_in_map(def->type)) {
+		if (map->inner_map) {
+			err = bpf_object__create_map(obj, map->inner_map, true);
+			if (err) {
+				pr_warn("map '%s': failed to create inner map: %d\n",
+					map->name, err);
+				return err;
+			}
+			map->inner_map_fd = bpf_map__fd(map->inner_map);
+		}
+		if (map->inner_map_fd >= 0)
+			create_attr.inner_map_fd = map->inner_map_fd;
+	}
+
+	switch (def->type) {
+	case BPF_MAP_TYPE_PERF_EVENT_ARRAY:
+	case BPF_MAP_TYPE_CGROUP_ARRAY:
+	case BPF_MAP_TYPE_STACK_TRACE:
+	case BPF_MAP_TYPE_ARRAY_OF_MAPS:
+	case BPF_MAP_TYPE_HASH_OF_MAPS:
+	case BPF_MAP_TYPE_DEVMAP:
+	case BPF_MAP_TYPE_DEVMAP_HASH:
+	case BPF_MAP_TYPE_CPUMAP:
+	case BPF_MAP_TYPE_XSKMAP:
+	case BPF_MAP_TYPE_SOCKMAP:
+	case BPF_MAP_TYPE_SOCKHASH:
+	case BPF_MAP_TYPE_QUEUE:
+	case BPF_MAP_TYPE_STACK:
+		create_attr.btf_fd = 0;
+		create_attr.btf_key_type_id = 0;
+		create_attr.btf_value_type_id = 0;
+		map->btf_key_type_id = 0;
+		map->btf_value_type_id = 0;
+	default:
+		break;
+	}
+
+	if (obj->gen_loader) {
+		bpf_gen__map_create(obj->gen_loader, def->type, map_name,
+				    def->key_size, def->value_size, def->max_entries,
+				    &create_attr, is_inner ? -1 : map - obj->maps);
+		/* Pretend to have valid FD to pass various fd >= 0 checks.
+		 * This fd == 0 will not be used with any syscall and will be reset to -1 eventually.
+		 */
+		map->fd = 0;
+	} else {
+		map->fd = bpf_map_create(def->type, map_name,
+					 def->key_size, def->value_size,
+					 def->max_entries, &create_attr);
+	}
+	if (map->fd < 0 && (create_attr.btf_key_type_id ||
+			    create_attr.btf_value_type_id)) {
+		char *cp, errmsg[STRERR_BUFSIZE];
+
+		err = -errno;
+		cp = libbpf_strerror_r(err, errmsg, sizeof(errmsg));
+		pr_warn("Error in bpf_create_map_xattr(%s):%s(%d). Retrying without BTF.\n",
+			map->name, cp, err);
+		create_attr.btf_fd = 0;
+		create_attr.btf_key_type_id = 0;
+		create_attr.btf_value_type_id = 0;
+		map->btf_key_type_id = 0;
+		map->btf_value_type_id = 0;
+		map->fd = bpf_map_create(def->type, map_name,
+					 def->key_size, def->value_size,
+					 def->max_entries, &create_attr);
+	}
+
+	err = map->fd < 0 ? -errno : 0;
+
+	if (bpf_map_type__is_map_in_map(def->type) && map->inner_map) {
+		if (obj->gen_loader)
+			map->inner_map->fd = -1;
+		bpf_map__destroy(map->inner_map);
+		zfree(&map->inner_map);
+	}
+
+	return err;
+}
