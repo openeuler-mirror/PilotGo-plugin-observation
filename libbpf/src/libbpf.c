@@ -5626,3 +5626,64 @@ err_out:
 
 	return 0;
 }
+
+static struct bpf_core_cand_list *
+bpf_core_find_cands(struct bpf_object *obj, const struct btf *local_btf, __u32 local_type_id)
+{
+	struct bpf_core_cand local_cand = {};
+	struct bpf_core_cand_list *cands;
+	const struct btf *main_btf;
+	const struct btf_type *local_t;
+	const char *local_name;
+	size_t local_essent_len;
+	int err, i;
+
+	local_cand.btf = local_btf;
+	local_cand.id = local_type_id;
+	local_t = btf__type_by_id(local_btf, local_type_id);
+	if (!local_t)
+		return ERR_PTR(-EINVAL);
+
+	local_name = btf__name_by_offset(local_btf, local_t->name_off);
+	if (str_is_empty(local_name))
+		return ERR_PTR(-EINVAL);
+	local_essent_len = bpf_core_essential_name_len(local_name);
+
+	cands = calloc(1, sizeof(*cands));
+	if (!cands)
+		return ERR_PTR(-ENOMEM);
+
+	/* Attempt to find target candidates in vmlinux BTF first */
+	main_btf = obj->btf_vmlinux_override ?: obj->btf_vmlinux;
+	err = bpf_core_add_cands(&local_cand, local_essent_len, main_btf, "vmlinux", 1, cands);
+	if (err)
+		goto err_out;
+
+	/* if vmlinux BTF has any candidate, don't got for module BTFs */
+	if (cands->len)
+		return cands;
+
+	/* if vmlinux BTF was overridden, don't attempt to load module BTFs */
+	if (obj->btf_vmlinux_override)
+		return cands;
+
+	/* now look through module BTFs, trying to still find candidates */
+	err = load_module_btfs(obj);
+	if (err)
+		goto err_out;
+
+	for (i = 0; i < obj->btf_module_cnt; i++) {
+		err = bpf_core_add_cands(&local_cand, local_essent_len,
+					 obj->btf_modules[i].btf,
+					 obj->btf_modules[i].name,
+					 btf__type_cnt(obj->btf_vmlinux),
+					 cands);
+		if (err)
+			goto err_out;
+	}
+
+	return cands;
+err_out:
+	bpf_core_free_cands(cands);
+	return ERR_PTR(err);
+}
