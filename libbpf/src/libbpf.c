@@ -5534,3 +5534,95 @@ int bpf_core_add_cands(struct bpf_core_cand *local_cand,
 	}
 	return 0;
 }
+
+static int load_module_btfs(struct bpf_object *obj)
+{
+	struct bpf_btf_info info;
+	struct module_btf *mod_btf;
+	struct btf *btf;
+	char name[64];
+	__u32 id = 0, len;
+	int err, fd;
+
+	if (obj->btf_modules_loaded)
+		return 0;
+
+	if (obj->gen_loader)
+		return 0;
+
+	/* don't do this again, even if we find no module BTFs */
+	obj->btf_modules_loaded = true;
+
+	/* kernel too old to support module BTFs */
+	if (!kernel_supports(obj, FEAT_MODULE_BTF))
+		return 0;
+
+	while (true) {
+		err = bpf_btf_get_next_id(id, &id);
+		if (err && errno == ENOENT)
+			return 0;
+		if (err) {
+			err = -errno;
+			pr_warn("failed to iterate BTF objects: %d\n", err);
+			return err;
+		}
+
+		fd = bpf_btf_get_fd_by_id(id);
+		if (fd < 0) {
+			if (errno == ENOENT)
+				continue; /* expected race: BTF was unloaded */
+			err = -errno;
+			pr_warn("failed to get BTF object #%d FD: %d\n", id, err);
+			return err;
+		}
+
+		len = sizeof(info);
+		memset(&info, 0, sizeof(info));
+		info.name = ptr_to_u64(name);
+		info.name_len = sizeof(name);
+
+		err = bpf_btf_get_info_by_fd(fd, &info, &len);
+		if (err) {
+			err = -errno;
+			pr_warn("failed to get BTF object #%d info: %d\n", id, err);
+			goto err_out;
+		}
+
+		/* ignore non-module BTFs */
+		if (!info.kernel_btf || strcmp(name, "vmlinux") == 0) {
+			close(fd);
+			continue;
+		}
+
+		btf = btf_get_from_fd(fd, obj->btf_vmlinux);
+		err = libbpf_get_error(btf);
+		if (err) {
+			pr_warn("failed to load module [%s]'s BTF object #%d: %d\n",
+				name, id, err);
+			goto err_out;
+		}
+
+		err = libbpf_ensure_mem((void **)&obj->btf_modules, &obj->btf_module_cap,
+					sizeof(*obj->btf_modules), obj->btf_module_cnt + 1);
+		if (err)
+			goto err_out;
+
+		mod_btf = &obj->btf_modules[obj->btf_module_cnt++];
+
+		mod_btf->btf = btf;
+		mod_btf->id = id;
+		mod_btf->fd = fd;
+		mod_btf->name = strdup(name);
+		if (!mod_btf->name) {
+			err = -ENOMEM;
+			goto err_out;
+		}
+		continue;
+
+err_out:
+		close(fd);
+		return err;
+	}
+
+	return 0;
+}
