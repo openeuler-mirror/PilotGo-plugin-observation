@@ -6187,3 +6187,46 @@ line_info:
 	}
 	return 0;
 }
+
+static int cmp_relo_by_insn_idx(const void *key, const void *elem)
+{
+	size_t insn_idx = *(const size_t *)key;
+	const struct reloc_desc *relo = elem;
+
+	if (insn_idx == relo->insn_idx)
+		return 0;
+	return insn_idx < relo->insn_idx ? -1 : 1;
+}
+
+static struct reloc_desc *find_prog_insn_relo(const struct bpf_program *prog, size_t insn_idx)
+{
+	if (!prog->nr_reloc)
+		return NULL;
+	return bsearch(&insn_idx, prog->reloc_desc, prog->nr_reloc,
+		       sizeof(*prog->reloc_desc), cmp_relo_by_insn_idx);
+}
+
+static int append_subprog_relos(struct bpf_program *main_prog, struct bpf_program *subprog)
+{
+	int new_cnt = main_prog->nr_reloc + subprog->nr_reloc;
+	struct reloc_desc *relos;
+	int i;
+
+	if (main_prog == subprog)
+		return 0;
+	relos = libbpf_reallocarray(main_prog->reloc_desc, new_cnt, sizeof(*relos));
+	if (!relos)
+		return -ENOMEM;
+	if (subprog->nr_reloc)
+		memcpy(relos + main_prog->nr_reloc, subprog->reloc_desc,
+		       sizeof(*relos) * subprog->nr_reloc);
+
+	for (i = main_prog->nr_reloc; i < new_cnt; i++)
+		relos[i].insn_idx += subprog->sub_insn_off;
+	/* After insn_idx adjustment the 'relos' array is still sorted
+	 * by insn_idx and doesn't break bsearch.
+	 */
+	main_prog->reloc_desc = relos;
+	main_prog->nr_reloc = new_cnt;
+	return 0;
+}
