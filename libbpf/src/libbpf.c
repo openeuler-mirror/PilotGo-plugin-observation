@@ -5687,3 +5687,59 @@ err_out:
 	bpf_core_free_cands(cands);
 	return ERR_PTR(err);
 }
+
+int bpf_core_types_are_compat(const struct btf *local_btf, __u32 local_id,
+			      const struct btf *targ_btf, __u32 targ_id)
+{
+	return __bpf_core_types_are_compat(local_btf, local_id, targ_btf, targ_id, 32);
+}
+
+int bpf_core_types_match(const struct btf *local_btf, __u32 local_id,
+			 const struct btf *targ_btf, __u32 targ_id)
+{
+	return __bpf_core_types_match(local_btf, local_id, targ_btf, targ_id, false, 32);
+}
+
+static size_t bpf_core_hash_fn(const long key, void *ctx)
+{
+	return key;
+}
+
+static bool bpf_core_equal_fn(const long k1, const long k2, void *ctx)
+{
+	return k1 == k2;
+}
+
+static int record_relo_core(struct bpf_program *prog,
+			    const struct bpf_core_relo *core_relo, int insn_idx)
+{
+	struct reloc_desc *relos, *relo;
+
+	relos = libbpf_reallocarray(prog->reloc_desc,
+				    prog->nr_reloc + 1, sizeof(*relos));
+	if (!relos)
+		return -ENOMEM;
+	relo = &relos[prog->nr_reloc];
+	relo->type = RELO_CORE;
+	relo->insn_idx = insn_idx;
+	relo->core_relo = core_relo;
+	prog->reloc_desc = relos;
+	prog->nr_reloc++;
+	return 0;
+}
+
+static const struct bpf_core_relo *find_relo_core(struct bpf_program *prog, int insn_idx)
+{
+	struct reloc_desc *relo;
+	int i;
+
+	for (i = 0; i < prog->nr_reloc; i++) {
+		relo = &prog->reloc_desc[i];
+		if (relo->type != RELO_CORE || relo->insn_idx != insn_idx)
+			continue;
+
+		return relo->core_relo;
+	}
+
+	return NULL;
+}
