@@ -5449,3 +5449,88 @@ err_out:
 		zclose(obj->maps[j].fd);
 	return err;
 }
+
+static bool bpf_core_is_flavor_sep(const char *s)
+{
+	/* check X___Y name pattern, where X and Y are not underscores */
+	return s[0] != '_' &&				      /* X */
+	       s[1] == '_' && s[2] == '_' && s[3] == '_' &&   /* ___ */
+	       s[4] != '_';				      /* Y */
+}
+
+/* Given 'some_struct_name___with_flavor' return the length of a name prefix
+ * before last triple underscore. Struct name part after last triple
+ * underscore is ignored by BPF CO-RE relocation during relocation matching.
+ */
+size_t bpf_core_essential_name_len(const char *name)
+{
+	size_t n = strlen(name);
+	int i;
+
+	for (i = n - 5; i >= 0; i--) {
+		if (bpf_core_is_flavor_sep(name + i))
+			return i + 1;
+	}
+	return n;
+}
+
+void bpf_core_free_cands(struct bpf_core_cand_list *cands)
+{
+	if (!cands)
+		return;
+
+	free(cands->cands);
+	free(cands);
+}
+
+int bpf_core_add_cands(struct bpf_core_cand *local_cand,
+		       size_t local_essent_len,
+		       const struct btf *targ_btf,
+		       const char *targ_btf_name,
+		       int targ_start_id,
+		       struct bpf_core_cand_list *cands)
+{
+	struct bpf_core_cand *new_cands, *cand;
+	const struct btf_type *t, *local_t;
+	const char *targ_name, *local_name;
+	size_t targ_essent_len;
+	int n, i;
+
+	local_t = btf__type_by_id(local_cand->btf, local_cand->id);
+	local_name = btf__str_by_offset(local_cand->btf, local_t->name_off);
+
+	n = btf__type_cnt(targ_btf);
+	for (i = targ_start_id; i < n; i++) {
+		t = btf__type_by_id(targ_btf, i);
+		if (!btf_kind_core_compat(t, local_t))
+			continue;
+
+		targ_name = btf__name_by_offset(targ_btf, t->name_off);
+		if (str_is_empty(targ_name))
+			continue;
+
+		targ_essent_len = bpf_core_essential_name_len(targ_name);
+		if (targ_essent_len != local_essent_len)
+			continue;
+
+		if (strncmp(local_name, targ_name, local_essent_len) != 0)
+			continue;
+
+		pr_debug("CO-RE relocating [%d] %s %s: found target candidate [%d] %s %s in [%s]\n",
+			 local_cand->id, btf_kind_str(local_t),
+			 local_name, i, btf_kind_str(t), targ_name,
+			 targ_btf_name);
+		new_cands = libbpf_reallocarray(cands->cands, cands->len + 1,
+					      sizeof(*cands->cands));
+		if (!new_cands)
+			return -ENOMEM;
+
+		cand = &new_cands[cands->len];
+		cand->btf = targ_btf;
+		cand->id = i;
+
+		cands->cands = new_cands;
+		cands->len++;
+	}
+	return 0;
+}
