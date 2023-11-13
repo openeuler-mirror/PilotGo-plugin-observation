@@ -6047,3 +6047,71 @@ bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
 
 	return 0;
 }
+
+static int adjust_prog_btf_ext_info(const struct bpf_object *obj,
+				    const struct bpf_program *prog,
+				    const struct btf_ext_info *ext_info,
+				    void **prog_info, __u32 *prog_rec_cnt,
+				    __u32 *prog_rec_sz)
+{
+	void *copy_start = NULL, *copy_end = NULL;
+	void *rec, *rec_end, *new_prog_info;
+	const struct btf_ext_info_sec *sec;
+	size_t old_sz, new_sz;
+	int i, sec_num, sec_idx, off_adj;
+
+	sec_num = 0;
+	for_each_btf_ext_sec(ext_info, sec) {
+		sec_idx = ext_info->sec_idxs[sec_num];
+		sec_num++;
+		if (prog->sec_idx != sec_idx)
+			continue;
+
+		for_each_btf_ext_rec(ext_info, sec, i, rec) {
+			__u32 insn_off = *(__u32 *)rec / BPF_INSN_SZ;
+
+			if (insn_off < prog->sec_insn_off)
+				continue;
+			if (insn_off >= prog->sec_insn_off + prog->sec_insn_cnt)
+				break;
+
+			if (!copy_start)
+				copy_start = rec;
+			copy_end = rec + ext_info->rec_size;
+		}
+
+		if (!copy_start)
+			return -ENOENT;
+
+		/* append func/line info of a given (sub-)program to the main
+		 * program func/line info
+		 */
+		old_sz = (size_t)(*prog_rec_cnt) * ext_info->rec_size;
+		new_sz = old_sz + (copy_end - copy_start);
+		new_prog_info = realloc(*prog_info, new_sz);
+		if (!new_prog_info)
+			return -ENOMEM;
+		*prog_info = new_prog_info;
+		*prog_rec_cnt = new_sz / ext_info->rec_size;
+		memcpy(new_prog_info + old_sz, copy_start, copy_end - copy_start);
+
+		/* Kernel instruction offsets are in units of 8-byte
+		 * instructions, while .BTF.ext instruction offsets generated
+		 * by Clang are in units of bytes. So convert Clang offsets
+		 * into kernel offsets and adjust offset according to program
+		 * relocated position.
+		 */
+		off_adj = prog->sub_insn_off - prog->sec_insn_off;
+		rec = new_prog_info + old_sz;
+		rec_end = new_prog_info + new_sz;
+		for (; rec < rec_end; rec += ext_info->rec_size) {
+			__u32 *insn_off = rec;
+
+			*insn_off = *insn_off / BPF_INSN_SZ + off_adj;
+		}
+		*prog_rec_sz = ext_info->rec_size;
+		return 0;
+	}
+
+	return -ENOENT;
+}
