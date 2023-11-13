@@ -5283,3 +5283,56 @@ static int init_map_in_map_slots(struct bpf_object *obj, struct bpf_map *map)
 
 	return 0;
 }
+
+static int init_prog_array_slots(struct bpf_object *obj, struct bpf_map *map)
+{
+	const struct bpf_program *targ_prog;
+	unsigned int i;
+	int fd, err;
+
+	if (obj->gen_loader)
+		return -ENOTSUP;
+
+	for (i = 0; i < map->init_slots_sz; i++) {
+		if (!map->init_slots[i])
+			continue;
+
+		targ_prog = map->init_slots[i];
+		fd = bpf_program__fd(targ_prog);
+
+		err = bpf_map_update_elem(map->fd, &i, &fd, 0);
+		if (err) {
+			err = -errno;
+			pr_warn("map '%s': failed to initialize slot [%d] to prog '%s' fd=%d: %d\n",
+				map->name, i, targ_prog->name, fd, err);
+			return err;
+		}
+		pr_debug("map '%s': slot [%d] set to prog '%s' fd=%d\n",
+			 map->name, i, targ_prog->name, fd);
+	}
+
+	zfree(&map->init_slots);
+	map->init_slots_sz = 0;
+
+	return 0;
+}
+
+static int bpf_object_init_prog_arrays(struct bpf_object *obj)
+{
+	struct bpf_map *map;
+	int i, err;
+
+	for (i = 0; i < obj->nr_maps; i++) {
+		map = &obj->maps[i];
+
+		if (!map->init_slots_sz || map->def.type != BPF_MAP_TYPE_PROG_ARRAY)
+			continue;
+
+		err = init_prog_array_slots(obj, map);
+		if (err < 0) {
+			zclose(map->fd);
+			return err;
+		}
+	}
+	return 0;
+}
