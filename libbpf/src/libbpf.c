@@ -6230,3 +6230,105 @@ static int append_subprog_relos(struct bpf_program *main_prog, struct bpf_progra
 	main_prog->nr_reloc = new_cnt;
 	return 0;
 }
+
+static int
+bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
+		       struct bpf_program *prog)
+{
+	size_t sub_insn_idx, insn_idx, new_cnt;
+	struct bpf_program *subprog;
+	struct bpf_insn *insns, *insn;
+	struct reloc_desc *relo;
+	int err;
+
+	err = reloc_prog_func_and_line_info(obj, main_prog, prog);
+	if (err)
+		return err;
+
+	for (insn_idx = 0; insn_idx < prog->sec_insn_cnt; insn_idx++) {
+		insn = &main_prog->insns[prog->sub_insn_off + insn_idx];
+		if (!insn_is_subprog_call(insn) && !insn_is_pseudo_func(insn))
+			continue;
+
+		relo = find_prog_insn_relo(prog, insn_idx);
+		if (relo && relo->type == RELO_EXTERN_CALL)
+			/* kfunc relocations will be handled later
+			 * in bpf_object__relocate_data()
+			 */
+			continue;
+		if (relo && relo->type != RELO_CALL && relo->type != RELO_SUBPROG_ADDR) {
+			pr_warn("prog '%s': unexpected relo for insn #%zu, type %d\n",
+				prog->name, insn_idx, relo->type);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+		if (relo) {
+			if (relo->type == RELO_CALL)
+				sub_insn_idx = relo->sym_off / BPF_INSN_SZ + insn->imm + 1;
+			else
+				sub_insn_idx = (relo->sym_off + insn->imm) / BPF_INSN_SZ;
+		} else if (insn_is_pseudo_func(insn)) {
+			/*
+			 * RELO_SUBPROG_ADDR relo is always emitted even if both
+			 * functions are in the same section, so it shouldn't reach here.
+			 */
+			pr_warn("prog '%s': missing subprog addr relo for insn #%zu\n",
+				prog->name, insn_idx);
+			return -LIBBPF_ERRNO__RELOC;
+		} else {
+			/* if subprogram call is to a static function within
+			 * the same ELF section, there won't be any relocation
+			 * emitted, but it also means there is no additional
+			 * offset necessary, insns->imm is relative to
+			 * instruction's original position within the section
+			 */
+			sub_insn_idx = prog->sec_insn_off + insn_idx + insn->imm + 1;
+		}
+
+		/* we enforce that sub-programs should be in .text section */
+		subprog = find_prog_by_sec_insn(obj, obj->efile.text_shndx, sub_insn_idx);
+		if (!subprog) {
+			pr_warn("prog '%s': no .text section found yet sub-program call exists\n",
+				prog->name);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+
+		if (subprog->sub_insn_off == 0) {
+			subprog->sub_insn_off = main_prog->insns_cnt;
+
+			new_cnt = main_prog->insns_cnt + subprog->insns_cnt;
+			insns = libbpf_reallocarray(main_prog->insns, new_cnt, sizeof(*insns));
+			if (!insns) {
+				pr_warn("prog '%s': failed to realloc prog code\n", main_prog->name);
+				return -ENOMEM;
+			}
+			main_prog->insns = insns;
+			main_prog->insns_cnt = new_cnt;
+
+			memcpy(main_prog->insns + subprog->sub_insn_off, subprog->insns,
+			       subprog->insns_cnt * sizeof(*insns));
+
+			pr_debug("prog '%s': added %zu insns from sub-prog '%s'\n",
+				 main_prog->name, subprog->insns_cnt, subprog->name);
+
+			/* The subprog insns are now appended. Append its relos too. */
+			err = append_subprog_relos(main_prog, subprog);
+			if (err)
+				return err;
+			err = bpf_object__reloc_code(obj, main_prog, subprog);
+			if (err)
+				return err;
+		}
+
+		/* main_prog->insns memory could have been re-allocated, so
+		 * calculate pointer again
+		 */
+		insn = &main_prog->insns[prog->sub_insn_off + insn_idx];
+
+		insn->imm = subprog->sub_insn_off - (prog->sub_insn_off + insn_idx) - 1;
+
+		pr_debug("prog '%s': insn #%zu relocated, imm %d points to subprog '%s' (now at %zu offset)\n",
+			 prog->name, insn_idx, insn->imm, subprog->name, subprog->sub_insn_off);
+	}
+
+	return 0;
+}
