@@ -5336,3 +5336,116 @@ static int bpf_object_init_prog_arrays(struct bpf_object *obj)
 	}
 	return 0;
 }
+
+static int map_set_def_max_entries(struct bpf_map *map)
+{
+	if (map->def.type == BPF_MAP_TYPE_PERF_EVENT_ARRAY && !map->def.max_entries) {
+		int nr_cpus;
+
+		nr_cpus = libbpf_num_possible_cpus();
+		if (nr_cpus < 0) {
+			pr_warn("map '%s': failed to determine number of system CPUs: %d\n",
+				map->name, nr_cpus);
+			return nr_cpus;
+		}
+		pr_debug("map '%s': setting size to %d\n", map->name, nr_cpus);
+		map->def.max_entries = nr_cpus;
+	}
+
+	return 0;
+}
+
+static int
+bpf_object__create_maps(struct bpf_object *obj)
+{
+	struct bpf_map *map;
+	char *cp, errmsg[STRERR_BUFSIZE];
+	unsigned int i, j;
+	int err;
+	bool retried;
+
+	for (i = 0; i < obj->nr_maps; i++) {
+		map = &obj->maps[i];
+
+		if (bpf_map__is_internal(map) && !kernel_supports(obj, FEAT_GLOBAL_DATA))
+			map->autocreate = false;
+
+		if (!map->autocreate) {
+			pr_debug("map '%s': skipped auto-creating...\n", map->name);
+			continue;
+		}
+
+		err = map_set_def_max_entries(map);
+		if (err)
+			goto err_out;
+
+		retried = false;
+retry:
+		if (map->pin_path) {
+			err = bpf_object__reuse_map(map);
+			if (err) {
+				pr_warn("map '%s': error reusing pinned map\n",
+					map->name);
+				goto err_out;
+			}
+			if (retried && map->fd < 0) {
+				pr_warn("map '%s': cannot find pinned map\n",
+					map->name);
+				err = -ENOENT;
+				goto err_out;
+			}
+		}
+
+		if (map->fd >= 0) {
+			pr_debug("map '%s': skipping creation (preset fd=%d)\n",
+				 map->name, map->fd);
+		} else {
+			err = bpf_object__create_map(obj, map, false);
+			if (err)
+				goto err_out;
+
+			pr_debug("map '%s': created successfully, fd=%d\n",
+				 map->name, map->fd);
+
+			if (bpf_map__is_internal(map)) {
+				err = bpf_object__populate_internal_map(obj, map);
+				if (err < 0) {
+					zclose(map->fd);
+					goto err_out;
+				}
+			}
+
+			if (map->init_slots_sz && map->def.type != BPF_MAP_TYPE_PROG_ARRAY) {
+				err = init_map_in_map_slots(obj, map);
+				if (err < 0) {
+					zclose(map->fd);
+					goto err_out;
+				}
+			}
+		}
+
+		if (map->pin_path && !map->pinned) {
+			err = bpf_map__pin(map, NULL);
+			if (err) {
+				zclose(map->fd);
+				if (!retried && err == -EEXIST) {
+					retried = true;
+					goto retry;
+				}
+				pr_warn("map '%s': failed to auto-pin at '%s': %d\n",
+					map->name, map->pin_path, err);
+				goto err_out;
+			}
+		}
+	}
+
+	return 0;
+
+err_out:
+	cp = libbpf_strerror_r(err, errmsg, sizeof(errmsg));
+	pr_warn("map '%s': failed to create: %s(%d)\n", map->name, cp, err);
+	pr_perm_msg(err);
+	for (j = 0; j < i; j++)
+		zclose(obj->maps[j].fd);
+	return err;
+}
