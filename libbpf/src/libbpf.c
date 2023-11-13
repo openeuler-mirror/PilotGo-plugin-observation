@@ -5951,3 +5951,99 @@ static void poison_kfunc_call(struct bpf_program *prog, int relo_idx,
 	 */
 	insn->imm = POISON_CALL_KFUNC_BASE + ext_idx;
 }
+
+static int
+bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
+{
+	int i;
+
+	for (i = 0; i < prog->nr_reloc; i++) {
+		struct reloc_desc *relo = &prog->reloc_desc[i];
+		struct bpf_insn *insn = &prog->insns[relo->insn_idx];
+		const struct bpf_map *map;
+		struct extern_desc *ext;
+
+		switch (relo->type) {
+		case RELO_LD64:
+			map = &obj->maps[relo->map_idx];
+			if (obj->gen_loader) {
+				insn[0].src_reg = BPF_PSEUDO_MAP_IDX;
+				insn[0].imm = relo->map_idx;
+			} else if (map->autocreate) {
+				insn[0].src_reg = BPF_PSEUDO_MAP_FD;
+				insn[0].imm = map->fd;
+			} else {
+				poison_map_ldimm64(prog, i, relo->insn_idx, insn,
+						   relo->map_idx, map);
+			}
+			break;
+		case RELO_DATA:
+			map = &obj->maps[relo->map_idx];
+			insn[1].imm = insn[0].imm + relo->sym_off;
+			if (obj->gen_loader) {
+				insn[0].src_reg = BPF_PSEUDO_MAP_IDX_VALUE;
+				insn[0].imm = relo->map_idx;
+			} else if (map->autocreate) {
+				insn[0].src_reg = BPF_PSEUDO_MAP_VALUE;
+				insn[0].imm = map->fd;
+			} else {
+				poison_map_ldimm64(prog, i, relo->insn_idx, insn,
+						   relo->map_idx, map);
+			}
+			break;
+		case RELO_EXTERN_LD64:
+			ext = &obj->externs[relo->ext_idx];
+			if (ext->type == EXT_KCFG) {
+				if (obj->gen_loader) {
+					insn[0].src_reg = BPF_PSEUDO_MAP_IDX_VALUE;
+					insn[0].imm = obj->kconfig_map_idx;
+				} else {
+					insn[0].src_reg = BPF_PSEUDO_MAP_VALUE;
+					insn[0].imm = obj->maps[obj->kconfig_map_idx].fd;
+				}
+				insn[1].imm = ext->kcfg.data_off;
+			} else /* EXT_KSYM */ {
+				if (ext->ksym.type_id && ext->is_set) { /* typed ksyms */
+					insn[0].src_reg = BPF_PSEUDO_BTF_ID;
+					insn[0].imm = ext->ksym.kernel_btf_id;
+					insn[1].imm = ext->ksym.kernel_btf_obj_fd;
+				} else { /* typeless ksyms or unresolved typed ksyms */
+					insn[0].imm = (__u32)ext->ksym.addr;
+					insn[1].imm = ext->ksym.addr >> 32;
+				}
+			}
+			break;
+		case RELO_EXTERN_CALL:
+			ext = &obj->externs[relo->ext_idx];
+			insn[0].src_reg = BPF_PSEUDO_KFUNC_CALL;
+			if (ext->is_set) {
+				insn[0].imm = ext->ksym.kernel_btf_id;
+				insn[0].off = ext->ksym.btf_fd_idx;
+			} else { /* unresolved weak kfunc call */
+				poison_kfunc_call(prog, i, relo->insn_idx, insn,
+						  relo->ext_idx, ext);
+			}
+			break;
+		case RELO_SUBPROG_ADDR:
+			if (insn[0].src_reg != BPF_PSEUDO_FUNC) {
+				pr_warn("prog '%s': relo #%d: bad insn\n",
+					prog->name, i);
+				return -EINVAL;
+			}
+			/* handled already */
+			break;
+		case RELO_CALL:
+			/* handled already */
+			break;
+		case RELO_CORE:
+			/* will be handled by bpf_program_record_relos() */
+			break;
+		default:
+			pr_warn("prog '%s': relo #%d: bad relo type %d\n",
+				prog->name, i, relo->type);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
