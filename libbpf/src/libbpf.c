@@ -5897,3 +5897,57 @@ out:
 	}
 	return err;
 }
+
+/* base map load ldimm64 special constant, used also for log fixup logic */
+#define POISON_LDIMM64_MAP_BASE 2001000000
+#define POISON_LDIMM64_MAP_PFX "200100"
+
+static void poison_map_ldimm64(struct bpf_program *prog, int relo_idx,
+			       int insn_idx, struct bpf_insn *insn,
+			       int map_idx, const struct bpf_map *map)
+{
+	int i;
+
+	pr_debug("prog '%s': relo #%d: poisoning insn #%d that loads map #%d '%s'\n",
+		 prog->name, relo_idx, insn_idx, map_idx, map->name);
+
+	/* we turn single ldimm64 into two identical invalid calls */
+	for (i = 0; i < 2; i++) {
+		insn->code = BPF_JMP | BPF_CALL;
+		insn->dst_reg = 0;
+		insn->src_reg = 0;
+		insn->off = 0;
+		/* if this instruction is reachable (not a dead code),
+		 * verifier will complain with something like:
+		 * invalid func unknown#2001000123
+		 * where lower 123 is map index into obj->maps[] array
+		 */
+		insn->imm = POISON_LDIMM64_MAP_BASE + map_idx;
+
+		insn++;
+	}
+}
+
+/* unresolved kfunc call special constant, used also for log fixup logic */
+#define POISON_CALL_KFUNC_BASE 2002000000
+#define POISON_CALL_KFUNC_PFX "2002"
+
+static void poison_kfunc_call(struct bpf_program *prog, int relo_idx,
+			      int insn_idx, struct bpf_insn *insn,
+			      int ext_idx, const struct extern_desc *ext)
+{
+	pr_debug("prog '%s': relo #%d: poisoning insn #%d that calls kfunc '%s'\n",
+		 prog->name, relo_idx, insn_idx, ext->name);
+
+	/* we turn kfunc call into invalid helper call with identifiable constant */
+	insn->code = BPF_JMP | BPF_CALL;
+	insn->dst_reg = 0;
+	insn->src_reg = 0;
+	insn->off = 0;
+	/* if this instruction is reachable (not a dead code),
+	 * verifier will complain with something like:
+	 * invalid func unknown#2001000123
+	 * where lower 123 is extern index into obj->externs[] array
+	 */
+	insn->imm = POISON_CALL_KFUNC_BASE + ext_idx;
+}
