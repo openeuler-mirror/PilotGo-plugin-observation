@@ -5743,3 +5743,46 @@ static const struct bpf_core_relo *find_relo_core(struct bpf_program *prog, int 
 
 	return NULL;
 }
+
+static int bpf_core_resolve_relo(struct bpf_program *prog,
+				 const struct bpf_core_relo *relo,
+				 int relo_idx,
+				 const struct btf *local_btf,
+				 struct hashmap *cand_cache,
+				 struct bpf_core_relo_res *targ_res)
+{
+	struct bpf_core_spec specs_scratch[3] = {};
+	struct bpf_core_cand_list *cands = NULL;
+	const char *prog_name = prog->name;
+	const struct btf_type *local_type;
+	const char *local_name;
+	__u32 local_id = relo->type_id;
+	int err;
+
+	local_type = btf__type_by_id(local_btf, local_id);
+	if (!local_type)
+		return -EINVAL;
+
+	local_name = btf__name_by_offset(local_btf, local_type->name_off);
+	if (!local_name)
+		return -EINVAL;
+
+	if (relo->kind != BPF_CORE_TYPE_ID_LOCAL &&
+	    !hashmap__find(cand_cache, local_id, &cands)) {
+		cands = bpf_core_find_cands(prog->obj, local_btf, local_id);
+		if (IS_ERR(cands)) {
+			pr_warn("prog '%s': relo #%d: target candidate search failed for [%d] %s %s: %ld\n",
+				prog_name, relo_idx, local_id, btf_kind_str(local_type),
+				local_name, PTR_ERR(cands));
+			return PTR_ERR(cands);
+		}
+		err = hashmap__set(cand_cache, local_id, cands, NULL, NULL);
+		if (err) {
+			bpf_core_free_cands(cands);
+			return err;
+		}
+	}
+
+	return bpf_core_calc_relo_insn(prog_name, relo, relo_idx, local_btf, cands, specs_scratch,
+				       targ_res);
+}
