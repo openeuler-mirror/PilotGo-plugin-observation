@@ -6463,3 +6463,143 @@ bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 
 	return 0;
 }
+
+static int bpf_object__collect_st_ops_relos(struct bpf_object *obj,
+					    Elf64_Shdr *shdr, Elf_Data *data);
+
+static int bpf_object__collect_map_relos(struct bpf_object *obj,
+					 Elf64_Shdr *shdr, Elf_Data *data)
+{
+	const int bpf_ptr_sz = 8, host_ptr_sz = sizeof(void *);
+	int i, j, nrels, new_sz;
+	const struct btf_var_secinfo *vi = NULL;
+	const struct btf_type *sec, *var, *def;
+	struct bpf_map *map = NULL, *targ_map = NULL;
+	struct bpf_program *targ_prog = NULL;
+	bool is_prog_array, is_map_in_map;
+	const struct btf_member *member;
+	const char *name, *mname, *type;
+	unsigned int moff;
+	Elf64_Sym *sym;
+	Elf64_Rel *rel;
+	void *tmp;
+
+	if (!obj->efile.btf_maps_sec_btf_id || !obj->btf)
+		return -EINVAL;
+	sec = btf__type_by_id(obj->btf, obj->efile.btf_maps_sec_btf_id);
+	if (!sec)
+		return -EINVAL;
+
+	nrels = shdr->sh_size / shdr->sh_entsize;
+	for (i = 0; i < nrels; i++) {
+		rel = elf_rel_by_idx(data, i);
+		if (!rel) {
+			pr_warn(".maps relo #%d: failed to get ELF relo\n", i);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		sym = elf_sym_by_idx(obj, ELF64_R_SYM(rel->r_info));
+		if (!sym) {
+			pr_warn(".maps relo #%d: symbol %zx not found\n",
+				i, (size_t)ELF64_R_SYM(rel->r_info));
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+		name = elf_sym_str(obj, sym->st_name) ?: "<?>";
+
+		pr_debug(".maps relo #%d: for %zd value %zd rel->r_offset %zu name %d ('%s')\n",
+			 i, (ssize_t)(rel->r_info >> 32), (size_t)sym->st_value,
+			 (size_t)rel->r_offset, sym->st_name, name);
+
+		for (j = 0; j < obj->nr_maps; j++) {
+			map = &obj->maps[j];
+			if (map->sec_idx != obj->efile.btf_maps_shndx)
+				continue;
+
+			vi = btf_var_secinfos(sec) + map->btf_var_idx;
+			if (vi->offset <= rel->r_offset &&
+			    rel->r_offset + bpf_ptr_sz <= vi->offset + vi->size)
+				break;
+		}
+		if (j == obj->nr_maps) {
+			pr_warn(".maps relo #%d: cannot find map '%s' at rel->r_offset %zu\n",
+				i, name, (size_t)rel->r_offset);
+			return -EINVAL;
+		}
+
+		is_map_in_map = bpf_map_type__is_map_in_map(map->def.type);
+		is_prog_array = map->def.type == BPF_MAP_TYPE_PROG_ARRAY;
+		type = is_map_in_map ? "map" : "prog";
+		if (is_map_in_map) {
+			if (sym->st_shndx != obj->efile.btf_maps_shndx) {
+				pr_warn(".maps relo #%d: '%s' isn't a BTF-defined map\n",
+					i, name);
+				return -LIBBPF_ERRNO__RELOC;
+			}
+			if (map->def.type == BPF_MAP_TYPE_HASH_OF_MAPS &&
+			    map->def.key_size != sizeof(int)) {
+				pr_warn(".maps relo #%d: hash-of-maps '%s' should have key size %zu.\n",
+					i, map->name, sizeof(int));
+				return -EINVAL;
+			}
+			targ_map = bpf_object__find_map_by_name(obj, name);
+			if (!targ_map) {
+				pr_warn(".maps relo #%d: '%s' isn't a valid map reference\n",
+					i, name);
+				return -ESRCH;
+			}
+		} else if (is_prog_array) {
+			targ_prog = bpf_object__find_program_by_name(obj, name);
+			if (!targ_prog) {
+				pr_warn(".maps relo #%d: '%s' isn't a valid program reference\n",
+					i, name);
+				return -ESRCH;
+			}
+			if (targ_prog->sec_idx != sym->st_shndx ||
+			    targ_prog->sec_insn_off * 8 != sym->st_value ||
+			    prog_is_subprog(obj, targ_prog)) {
+				pr_warn(".maps relo #%d: '%s' isn't an entry-point program\n",
+					i, name);
+				return -LIBBPF_ERRNO__RELOC;
+			}
+		} else {
+			return -EINVAL;
+		}
+
+		var = btf__type_by_id(obj->btf, vi->type);
+		def = skip_mods_and_typedefs(obj->btf, var->type, NULL);
+		if (btf_vlen(def) == 0)
+			return -EINVAL;
+		member = btf_members(def) + btf_vlen(def) - 1;
+		mname = btf__name_by_offset(obj->btf, member->name_off);
+		if (strcmp(mname, "values"))
+			return -EINVAL;
+
+		moff = btf_member_bit_offset(def, btf_vlen(def) - 1) / 8;
+		if (rel->r_offset - vi->offset < moff)
+			return -EINVAL;
+
+		moff = rel->r_offset - vi->offset - moff;
+		/* here we use BPF pointer size, which is always 64 bit, as we
+		 * are parsing ELF that was built for BPF target
+		 */
+		if (moff % bpf_ptr_sz)
+			return -EINVAL;
+		moff /= bpf_ptr_sz;
+		if (moff >= map->init_slots_sz) {
+			new_sz = moff + 1;
+			tmp = libbpf_reallocarray(map->init_slots, new_sz, host_ptr_sz);
+			if (!tmp)
+				return -ENOMEM;
+			map->init_slots = tmp;
+			memset(map->init_slots + map->init_slots_sz, 0,
+			       (new_sz - map->init_slots_sz) * host_ptr_sz);
+			map->init_slots_sz = new_sz;
+		}
+		map->init_slots[moff] = is_map_in_map ? (void *)targ_map : (void *)targ_prog;
+
+		pr_debug(".maps relo #%d: map '%s' slot [%d] points to %s '%s'\n",
+			 i, map->name, moff, type, name);
+	}
+
+	return 0;
+}
