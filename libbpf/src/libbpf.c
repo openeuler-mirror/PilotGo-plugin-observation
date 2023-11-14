@@ -7031,3 +7031,53 @@ static void fixup_log_missing_kfunc_call(struct bpf_program *prog,
 
 	patch_log(buf, buf_sz, log_sz, line1, line3 - line1, patch);
 }
+
+static void fixup_verifier_log(struct bpf_program *prog, char *buf, size_t buf_sz)
+{
+	/* look for familiar error patterns in last N lines of the log */
+	const size_t max_last_line_cnt = 10;
+	char *prev_line, *cur_line, *next_line;
+	size_t log_sz;
+	int i;
+
+	if (!buf)
+		return;
+
+	log_sz = strlen(buf) + 1;
+	next_line = buf + log_sz - 1;
+
+	for (i = 0; i < max_last_line_cnt; i++, next_line = cur_line) {
+		cur_line = find_prev_line(buf, next_line);
+		if (!cur_line)
+			return;
+
+		if (str_has_pfx(cur_line, "invalid func unknown#195896080\n")) {
+			prev_line = find_prev_line(buf, cur_line);
+			if (!prev_line)
+				continue;
+
+			/* failed CO-RE relocation case */
+			fixup_log_failed_core_relo(prog, buf, buf_sz, log_sz,
+						   prev_line, cur_line, next_line);
+			return;
+		} else if (str_has_pfx(cur_line, "invalid func unknown#"POISON_LDIMM64_MAP_PFX)) {
+			prev_line = find_prev_line(buf, cur_line);
+			if (!prev_line)
+				continue;
+
+			/* reference to uncreated BPF map */
+			fixup_log_missing_map_load(prog, buf, buf_sz, log_sz,
+						   prev_line, cur_line, next_line);
+			return;
+		} else if (str_has_pfx(cur_line, "invalid func unknown#"POISON_CALL_KFUNC_PFX)) {
+			prev_line = find_prev_line(buf, cur_line);
+			if (!prev_line)
+				continue;
+
+			/* reference to unresolved kfunc */
+			fixup_log_missing_kfunc_call(prog, buf, buf_sz, log_sz,
+						     prev_line, cur_line, next_line);
+			return;
+		}
+	}
+}
