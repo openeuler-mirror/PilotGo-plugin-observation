@@ -7198,3 +7198,92 @@ static int bpf_object_init_progs(struct bpf_object *obj, const struct bpf_object
 
 	return 0;
 }
+
+static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf, size_t obj_buf_sz,
+					  const struct bpf_object_open_opts *opts)
+{
+	const char *obj_name, *kconfig, *btf_tmp_path;
+	struct bpf_object *obj;
+	char tmp_name[64];
+	int err;
+	char *log_buf;
+	size_t log_size;
+	__u32 log_level;
+
+	if (elf_version(EV_CURRENT) == EV_NONE) {
+		pr_warn("failed to init libelf for %s\n",
+			path ? : "(mem buf)");
+		return ERR_PTR(-LIBBPF_ERRNO__LIBELF);
+	}
+
+	if (!OPTS_VALID(opts, bpf_object_open_opts))
+		return ERR_PTR(-EINVAL);
+
+	obj_name = OPTS_GET(opts, object_name, NULL);
+	if (obj_buf) {
+		if (!obj_name) {
+			snprintf(tmp_name, sizeof(tmp_name), "%lx-%lx",
+				 (unsigned long)obj_buf,
+				 (unsigned long)obj_buf_sz);
+			obj_name = tmp_name;
+		}
+		path = obj_name;
+		pr_debug("loading object '%s' from buffer\n", obj_name);
+	}
+
+	log_buf = OPTS_GET(opts, kernel_log_buf, NULL);
+	log_size = OPTS_GET(opts, kernel_log_size, 0);
+	log_level = OPTS_GET(opts, kernel_log_level, 0);
+	if (log_size > UINT_MAX)
+		return ERR_PTR(-EINVAL);
+	if (log_size && !log_buf)
+		return ERR_PTR(-EINVAL);
+
+	obj = bpf_object__new(path, obj_buf, obj_buf_sz, obj_name);
+	if (IS_ERR(obj))
+		return obj;
+
+	obj->log_buf = log_buf;
+	obj->log_size = log_size;
+	obj->log_level = log_level;
+
+	btf_tmp_path = OPTS_GET(opts, btf_custom_path, NULL);
+	if (btf_tmp_path) {
+		if (strlen(btf_tmp_path) >= PATH_MAX) {
+			err = -ENAMETOOLONG;
+			goto out;
+		}
+		obj->btf_custom_path = strdup(btf_tmp_path);
+		if (!obj->btf_custom_path) {
+			err = -ENOMEM;
+			goto out;
+		}
+	}
+
+	kconfig = OPTS_GET(opts, kconfig, NULL);
+	if (kconfig) {
+		obj->kconfig = strdup(kconfig);
+		if (!obj->kconfig) {
+			err = -ENOMEM;
+			goto out;
+		}
+	}
+
+	err = bpf_object__elf_init(obj);
+	err = err ? : bpf_object__check_endianness(obj);
+	err = err ? : bpf_object__elf_collect(obj);
+	err = err ? : bpf_object__collect_externs(obj);
+	err = err ? : bpf_object_fixup_btf(obj);
+	err = err ? : bpf_object__init_maps(obj, opts);
+	err = err ? : bpf_object_init_progs(obj, opts);
+	err = err ? : bpf_object__collect_relos(obj);
+	if (err)
+		goto out;
+
+	bpf_object__elf_finish(obj);
+
+	return obj;
+out:
+	bpf_object__close(obj);
+	return ERR_PTR(err);
+}
