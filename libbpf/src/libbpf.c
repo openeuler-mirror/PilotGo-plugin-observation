@@ -7287,3 +7287,62 @@ out:
 	bpf_object__close(obj);
 	return ERR_PTR(err);
 }
+
+struct bpf_object *
+bpf_object__open_file(const char *path, const struct bpf_object_open_opts *opts)
+{
+	if (!path)
+		return libbpf_err_ptr(-EINVAL);
+
+	pr_debug("loading %s\n", path);
+
+	return libbpf_ptr(bpf_object_open(path, NULL, 0, opts));
+}
+
+struct bpf_object *bpf_object__open(const char *path)
+{
+	return bpf_object__open_file(path, NULL);
+}
+
+struct bpf_object *
+bpf_object__open_mem(const void *obj_buf, size_t obj_buf_sz,
+		     const struct bpf_object_open_opts *opts)
+{
+	if (!obj_buf || obj_buf_sz == 0)
+		return libbpf_err_ptr(-EINVAL);
+
+	return libbpf_ptr(bpf_object_open(NULL, obj_buf, obj_buf_sz, opts));
+}
+
+static int bpf_object_unload(struct bpf_object *obj)
+{
+	size_t i;
+
+	if (!obj)
+		return libbpf_err(-EINVAL);
+
+	for (i = 0; i < obj->nr_maps; i++) {
+		zclose(obj->maps[i].fd);
+		if (obj->maps[i].st_ops)
+			zfree(&obj->maps[i].st_ops->kern_vdata);
+	}
+
+	for (i = 0; i < obj->nr_programs; i++)
+		bpf_program__unload(&obj->programs[i]);
+
+	return 0;
+}
+
+static int bpf_object__sanitize_maps(struct bpf_object *obj)
+{
+	struct bpf_map *m;
+
+	bpf_object__for_each_map(m, obj) {
+		if (!bpf_map__is_internal(m))
+			continue;
+		if (!kernel_supports(obj, FEAT_ARRAY_MMAP))
+			m->def.map_flags &= ~BPF_F_MMAPABLE;
+	}
+
+	return 0;
+}
