@@ -40,3 +40,50 @@ extern "C"
         LIBBPF_ERRNO__NLPARSE,  /* netlink parsing error */
         __LIBBPF_ERRNO__END,
     };
+
+    LIBBPF_API int libbpf_strerror(int err, char *buf, size_t size);
+    LIBBPF_API const char *libbpf_bpf_attach_type_str(enum bpf_attach_type t);
+
+    LIBBPF_API const char *libbpf_bpf_link_type_str(enum bpf_link_type t);
+
+    LIBBPF_API const char *libbpf_bpf_map_type_str(enum bpf_map_type t);
+
+    LIBBPF_API const char *libbpf_bpf_prog_type_str(enum bpf_prog_type t);
+    enum libbpf_print_level
+    {
+        LIBBPF_WARN,
+        LIBBPF_INFO,
+        LIBBPF_DEBUG,
+    };
+
+    typedef int (*libbpf_print_fn_t)(enum libbpf_print_level level,
+                                     const char *, va_list ap);
+    LIBBPF_API libbpf_print_fn_t libbpf_set_print(libbpf_print_fn_t fn);
+    struct bpf_object;
+    struct bpf_object_open_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+
+        const char *object_name;
+        /* parse map definitions non-strictly, allowing extra attributes/data */
+        bool relaxed_maps;
+
+        const char *pin_root_path;
+
+        __u32 : 32;
+        const char *kconfig;
+
+        const char *btf_custom_path;
+
+        char *kernel_log_buf;
+        size_t kernel_log_size;
+
+        __u32 kernel_log_level;
+
+        size_t : 0;
+    };
+#define bpf_object_open_opts__last_field kernel_log_level
+    LIBBPF_API struct bpf_object *bpf_object__open(const char *path);
+    LIBBPF_API struct bpf_object *
+    bpf_object__open_file(const char *path, const struct bpf_object_open_opts *opts);
