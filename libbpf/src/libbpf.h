@@ -449,3 +449,69 @@ extern "C"
     LIBBPF_API int bpf_map__set_initial_value(struct bpf_map *map,
                                               const void *data, size_t size);
     LIBBPF_API const void *bpf_map__initial_value(struct bpf_map *map, size_t *psize);
+    LIBBPF_API bool bpf_map__is_internal(const struct bpf_map *map);
+
+    LIBBPF_API int bpf_map__set_pin_path(struct bpf_map *map, const char *path);
+
+    LIBBPF_API const char *bpf_map__pin_path(const struct bpf_map *map);
+
+    LIBBPF_API bool bpf_map__is_pinned(const struct bpf_map *map);
+
+    LIBBPF_API int bpf_map__pin(struct bpf_map *map, const char *path);
+
+    LIBBPF_API int bpf_map__unpin(struct bpf_map *map, const char *path);
+
+    LIBBPF_API int bpf_map__set_inner_map_fd(struct bpf_map *map, int fd);
+    LIBBPF_API struct bpf_map *bpf_map__inner_map(struct bpf_map *map);
+
+    LIBBPF_API int bpf_map__lookup_elem(const struct bpf_map *map,
+                                        const void *key, size_t key_sz,
+                                        void *value, size_t value_sz, __u64 flags);
+
+    LIBBPF_API int bpf_map__update_elem(const struct bpf_map *map,
+                                        const void *key, size_t key_sz,
+                                        const void *value, size_t value_sz, __u64 flags);
+
+    LIBBPF_API int bpf_map__delete_elem(const struct bpf_map *map,
+                                        const void *key, size_t key_sz, __u64 flags);
+    LIBBPF_API int bpf_map__lookup_and_delete_elem(const struct bpf_map *map,
+                                                   const void *key, size_t key_sz,
+                                                   void *value, size_t value_sz, __u64 flags);
+    LIBBPF_API int bpf_map__get_next_key(const struct bpf_map *map,
+                                         const void *cur_key, void *next_key, size_t key_sz);
+
+    struct bpf_xdp_set_link_opts
+    {
+        size_t sz;
+        int old_fd;
+        size_t : 0;
+    };
+#define bpf_xdp_set_link_opts__last_field old_fd
+
+    struct bpf_xdp_attach_opts
+    {
+        size_t sz;
+        int old_prog_fd;
+        size_t : 0;
+    };
+#define bpf_xdp_attach_opts__last_field old_prog_fd
+
+    struct bpf_xdp_query_opts
+    {
+        size_t sz;
+        __u32 prog_id;       /* output */
+        __u32 drv_prog_id;   /* output */
+        __u32 hw_prog_id;    /* output */
+        __u32 skb_prog_id;   /* output */
+        __u8 attach_mode;    /* output */
+        __u64 feature_flags; /* output */
+        size_t : 0;
+    };
+#define bpf_xdp_query_opts__last_field feature_flags
+
+    LIBBPF_API int bpf_xdp_attach(int ifindex, int prog_fd, __u32 flags,
+                                  const struct bpf_xdp_attach_opts *opts);
+    LIBBPF_API int bpf_xdp_detach(int ifindex, __u32 flags,
+                                  const struct bpf_xdp_attach_opts *opts);
+    LIBBPF_API int bpf_xdp_query(int ifindex, int flags, struct bpf_xdp_query_opts *opts);
+    LIBBPF_API int bpf_xdp_query_id(int ifindex, int flags, __u32 *prog_id);
