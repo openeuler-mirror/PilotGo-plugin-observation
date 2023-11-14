@@ -7081,3 +7081,85 @@ static void fixup_verifier_log(struct bpf_program *prog, char *buf, size_t buf_s
 		}
 	}
 }
+
+static int bpf_program_record_relos(struct bpf_program *prog)
+{
+	struct bpf_object *obj = prog->obj;
+	int i;
+
+	for (i = 0; i < prog->nr_reloc; i++) {
+		struct reloc_desc *relo = &prog->reloc_desc[i];
+		struct extern_desc *ext = &obj->externs[relo->ext_idx];
+		int kind;
+
+		switch (relo->type) {
+		case RELO_EXTERN_LD64:
+			if (ext->type != EXT_KSYM)
+				continue;
+			kind = btf_is_var(btf__type_by_id(obj->btf, ext->btf_id)) ?
+				BTF_KIND_VAR : BTF_KIND_FUNC;
+			bpf_gen__record_extern(obj->gen_loader, ext->name,
+					       ext->is_weak, !ext->ksym.type_id,
+					       true, kind, relo->insn_idx);
+			break;
+		case RELO_EXTERN_CALL:
+			bpf_gen__record_extern(obj->gen_loader, ext->name,
+					       ext->is_weak, false, false, BTF_KIND_FUNC,
+					       relo->insn_idx);
+			break;
+		case RELO_CORE: {
+			struct bpf_core_relo cr = {
+				.insn_off = relo->insn_idx * 8,
+				.type_id = relo->core_relo->type_id,
+				.access_str_off = relo->core_relo->access_str_off,
+				.kind = relo->core_relo->kind,
+			};
+
+			bpf_gen__record_relo_core(obj->gen_loader, &cr);
+			break;
+		}
+		default:
+			continue;
+		}
+	}
+	return 0;
+}
+
+static int
+bpf_object__load_progs(struct bpf_object *obj, int log_level)
+{
+	struct bpf_program *prog;
+	size_t i;
+	int err;
+
+	for (i = 0; i < obj->nr_programs; i++) {
+		prog = &obj->programs[i];
+		err = bpf_object__sanitize_prog(obj, prog);
+		if (err)
+			return err;
+	}
+
+	for (i = 0; i < obj->nr_programs; i++) {
+		prog = &obj->programs[i];
+		if (prog_is_subprog(obj, prog))
+			continue;
+		if (!prog->autoload) {
+			pr_debug("prog '%s': skipped loading\n", prog->name);
+			continue;
+		}
+		prog->log_level |= log_level;
+
+		if (obj->gen_loader)
+			bpf_program_record_relos(prog);
+
+		err = bpf_object_load_prog(obj, prog, prog->insns, prog->insns_cnt,
+					   obj->license, obj->kern_version, &prog->fd);
+		if (err) {
+			pr_warn("prog '%s': failed to load: %d\n", prog->name, err);
+			return err;
+		}
+	}
+
+	bpf_object__free_relocs(obj);
+	return 0;
+}
