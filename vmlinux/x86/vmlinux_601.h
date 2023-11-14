@@ -9850,3 +9850,33 @@ struct pci_vpd {
 	unsigned int len;
 	u8 cap;
 };
+struct pci_sriov {
+	int pos;
+	int nres;
+	u32 cap;
+	u16 ctrl;
+	u16 total_VFs;
+	u16 initial_VFs;
+	u16 num_VFs;
+	u16 offset;
+	u16 stride;
+	u16 vf_device;
+	u32 pgsz;
+	u8 link;
+	u8 max_VF_buses;
+	u16 driver_max_VFs;
+	struct pci_dev *dev;
+	struct pci_dev *self;
+	u32 class;
+	u8 hdr_type;
+	u16 subsystem_vendor;
+	u16 subsystem_device;
+	resource_size_t barsz[6];
+	bool drivers_autoprobe;
+};
+
+struct rcec_ea;
+
+struct pci_driver;
+
+struct pcie_link_state;
