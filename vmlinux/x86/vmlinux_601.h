@@ -9825,3 +9825,28 @@ struct pci_bus {
 	unsigned int is_added: 1;
 	unsigned int unsafe_warn: 1;
 };
+enum {
+	PCI_STD_RESOURCES = 0,
+	PCI_STD_RESOURCE_END = 5,
+	PCI_ROM_RESOURCE = 6,
+	PCI_IOV_RESOURCES = 7,
+	PCI_IOV_RESOURCE_END = 12,
+	PCI_BRIDGE_RESOURCES = 13,
+	PCI_BRIDGE_RESOURCE_END = 16,
+	PCI_NUM_RESOURCES = 17,
+	DEVICE_COUNT_RESOURCE = 17,
+};
+
+typedef int pci_power_t;
+
+typedef unsigned int pci_channel_state_t;
+
+typedef unsigned int pcie_reset_state_t;
+
+typedef short unsigned int pci_dev_flags_t;
+
+struct pci_vpd {
+	struct mutex lock;
+	unsigned int len;
+	u8 cap;
+};
