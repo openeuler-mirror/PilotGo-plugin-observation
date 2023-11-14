@@ -10000,3 +10000,35 @@ struct pci_dev {
 	long unsigned int priv_flags;
 	u8 reset_methods[7];
 };
+struct rcec_ea {
+	u8 nextbusn;
+	u8 lastbusn;
+	u32 bitmap;
+};
+
+struct pci_dynids {
+	spinlock_t lock;
+	struct list_head list;
+};
+
+struct pci_error_handlers;
+
+struct pci_driver {
+	struct list_head node;
+	const char *name;
+	const struct pci_device_id *id_table;
+	int (*probe)(struct pci_dev *, const struct pci_device_id *);
+	void (*remove)(struct pci_dev *);
+	int (*suspend)(struct pci_dev *, pm_message_t);
+	int (*resume)(struct pci_dev *);
+	void (*shutdown)(struct pci_dev *);
+	int (*sriov_configure)(struct pci_dev *, int);
+	int (*sriov_set_msix_vec_count)(struct pci_dev *, int);
+	u32 (*sriov_get_vf_total_msix)(struct pci_dev *);
+	const struct pci_error_handlers *err_handler;
+	const struct attribute_group **groups;
+	const struct attribute_group **dev_groups;
+	struct device_driver driver;
+	struct pci_dynids dynids;
+	bool driver_managed_dma;
+};
