@@ -6973,3 +6973,61 @@ static void fixup_log_failed_core_relo(struct bpf_program *prog,
 
 	patch_log(buf, buf_sz, log_sz, line1, line3 - line1, patch);
 }
+
+static void fixup_log_missing_map_load(struct bpf_program *prog,
+				       char *buf, size_t buf_sz, size_t log_sz,
+				       char *line1, char *line2, char *line3)
+{
+	/* Expected log for failed and not properly guarded map reference:
+	 * line1 -> 123: (85) call unknown#2001000345
+	 * line2 -> invalid func unknown#2001000345
+	 * line3 -> <anything else or end of buffer>
+	 *
+	 * "123" is the index of the instruction that was poisoned.
+	 * "345" in "2001000345" is a map index in obj->maps to fetch map name.
+	 */
+	struct bpf_object *obj = prog->obj;
+	const struct bpf_map *map;
+	int insn_idx, map_idx;
+	char patch[128];
+
+	if (sscanf(line1, "%d: (%*d) call unknown#%d\n", &insn_idx, &map_idx) != 2)
+		return;
+
+	map_idx -= POISON_LDIMM64_MAP_BASE;
+	if (map_idx < 0 || map_idx >= obj->nr_maps)
+		return;
+	map = &obj->maps[map_idx];
+
+	snprintf(patch, sizeof(patch),
+		 "%d: <invalid BPF map reference>\n"
+		 "BPF map '%s' is referenced but wasn't created\n",
+		 insn_idx, map->name);
+
+	patch_log(buf, buf_sz, log_sz, line1, line3 - line1, patch);
+}
+
+static void fixup_log_missing_kfunc_call(struct bpf_program *prog,
+					 char *buf, size_t buf_sz, size_t log_sz,
+					 char *line1, char *line2, char *line3)
+{
+	struct bpf_object *obj = prog->obj;
+	const struct extern_desc *ext;
+	int insn_idx, ext_idx;
+	char patch[128];
+
+	if (sscanf(line1, "%d: (%*d) call unknown#%d\n", &insn_idx, &ext_idx) != 2)
+		return;
+
+	ext_idx -= POISON_CALL_KFUNC_BASE;
+	if (ext_idx < 0 || ext_idx >= obj->nr_extern)
+		return;
+	ext = &obj->externs[ext_idx];
+
+	snprintf(patch, sizeof(patch),
+		 "%d: <invalid kfunc call>\n"
+		 "kfunc '%s' is referenced but wasn't resolved\n",
+		 insn_idx, ext->name);
+
+	patch_log(buf, buf_sz, log_sz, line1, line3 - line1, patch);
+}
