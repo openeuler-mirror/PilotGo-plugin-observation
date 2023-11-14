@@ -7346,3 +7346,65 @@ static int bpf_object__sanitize_maps(struct bpf_object *obj)
 
 	return 0;
 }
+
+int libbpf_kallsyms_parse(kallsyms_cb_t cb, void *ctx)
+{
+	char sym_type, sym_name[500];
+	unsigned long long sym_addr;
+	int ret, err = 0;
+	FILE *f;
+
+	f = fopen("/proc/kallsyms", "r");
+	if (!f) {
+		err = -errno;
+		pr_warn("failed to open /proc/kallsyms: %d\n", err);
+		return err;
+	}
+
+	while (true) {
+		ret = fscanf(f, "%llx %c %499s%*[^\n]\n",
+			     &sym_addr, &sym_type, sym_name);
+		if (ret == EOF && feof(f))
+			break;
+		if (ret != 3) {
+			pr_warn("failed to read kallsyms entry: %d\n", ret);
+			err = -EINVAL;
+			break;
+		}
+
+		err = cb(sym_addr, sym_type, sym_name, ctx);
+		if (err)
+			break;
+	}
+
+	fclose(f);
+	return err;
+}
+
+static int kallsyms_cb(unsigned long long sym_addr, char sym_type,
+		       const char *sym_name, void *ctx)
+{
+	struct bpf_object *obj = ctx;
+	const struct btf_type *t;
+	struct extern_desc *ext;
+
+	ext = find_extern_by_name(obj, sym_name);
+	if (!ext || ext->type != EXT_KSYM)
+		return 0;
+
+	t = btf__type_by_id(obj->btf, ext->btf_id);
+	if (!btf_is_var(t))
+		return 0;
+
+	if (ext->is_set && ext->ksym.addr != sym_addr) {
+		pr_warn("extern (ksym) '%s': resolution is ambiguous: 0x%llx or 0x%llx\n",
+			sym_name, ext->ksym.addr, sym_addr);
+		return -EINVAL;
+	}
+	if (!ext->is_set) {
+		ext->is_set = true;
+		ext->ksym.addr = sym_addr;
+		pr_debug("extern (ksym) '%s': set to 0x%llx\n", sym_name, sym_addr);
+	}
+	return 0;
+}
