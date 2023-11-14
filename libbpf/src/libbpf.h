@@ -87,3 +87,63 @@ extern "C"
     LIBBPF_API struct bpf_object *bpf_object__open(const char *path);
     LIBBPF_API struct bpf_object *
     bpf_object__open_file(const char *path, const struct bpf_object_open_opts *opts);
+
+    LIBBPF_API struct bpf_object *
+    bpf_object__open_mem(const void *obj_buf, size_t obj_buf_sz,
+                         const struct bpf_object_open_opts *opts);
+    LIBBPF_API int bpf_object__load(struct bpf_object *obj);
+    LIBBPF_API void bpf_object__close(struct bpf_object *obj);
+    LIBBPF_API int bpf_object__pin_maps(struct bpf_object *obj, const char *path);
+
+    LIBBPF_API int bpf_object__unpin_maps(struct bpf_object *obj,
+                                          const char *path);
+    LIBBPF_API int bpf_object__pin_programs(struct bpf_object *obj,
+                                            const char *path);
+    LIBBPF_API int bpf_object__unpin_programs(struct bpf_object *obj,
+                                              const char *path);
+    LIBBPF_API int bpf_object__pin(struct bpf_object *object, const char *path);
+
+    LIBBPF_API const char *bpf_object__name(const struct bpf_object *obj);
+    LIBBPF_API unsigned int bpf_object__kversion(const struct bpf_object *obj);
+    LIBBPF_API int bpf_object__set_kversion(struct bpf_object *obj, __u32 kern_version);
+
+    struct btf;
+    LIBBPF_API struct btf *bpf_object__btf(const struct bpf_object *obj);
+    LIBBPF_API int bpf_object__btf_fd(const struct bpf_object *obj);
+
+    LIBBPF_API struct bpf_program *
+    bpf_object__find_program_by_name(const struct bpf_object *obj,
+                                     const char *name);
+
+    LIBBPF_API int
+    libbpf_prog_type_by_name(const char *name, enum bpf_prog_type *prog_type,
+                             enum bpf_attach_type *expected_attach_type);
+    LIBBPF_API int libbpf_attach_type_by_name(const char *name,
+                                              enum bpf_attach_type *attach_type);
+    LIBBPF_API int libbpf_find_vmlinux_btf_id(const char *name,
+                                              enum bpf_attach_type attach_type);
+
+    /* Accessors of bpf_program */
+    struct bpf_program;
+    LIBBPF_API struct bpf_program *
+    bpf_object__next_program(const struct bpf_object *obj, struct bpf_program *prog);
+
+#define bpf_object__for_each_program(pos, obj)          \
+    for ((pos) = bpf_object__next_program((obj), NULL); \
+         (pos) != NULL;                                 \
+         (pos) = bpf_object__next_program((obj), (pos)))
+
+    LIBBPF_API struct bpf_program *
+    bpf_object__prev_program(const struct bpf_object *obj, struct bpf_program *prog);
+
+    LIBBPF_API void bpf_program__set_ifindex(struct bpf_program *prog,
+                                             __u32 ifindex);
+
+    LIBBPF_API const char *bpf_program__name(const struct bpf_program *prog);
+    LIBBPF_API const char *bpf_program__section_name(const struct bpf_program *prog);
+    LIBBPF_API bool bpf_program__autoload(const struct bpf_program *prog);
+    LIBBPF_API int bpf_program__set_autoload(struct bpf_program *prog, bool autoload);
+    LIBBPF_API bool bpf_program__autoattach(const struct bpf_program *prog);
+    LIBBPF_API void bpf_program__set_autoattach(struct bpf_program *prog, bool autoattach);
+
+    struct bpf_insn;
