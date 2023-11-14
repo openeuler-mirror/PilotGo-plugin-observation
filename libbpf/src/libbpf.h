@@ -267,3 +267,72 @@ extern "C"
         size_t : 0;
     };
 #define bpf_ksyscall_opts__last_field retprobe
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_ksyscall(const struct bpf_program *prog,
+                                 const char *syscall_name,
+                                 const struct bpf_ksyscall_opts *opts);
+
+    struct bpf_uprobe_opts
+    {
+        size_t sz;
+        size_t ref_ctr_offset;
+        __u64 bpf_cookie;
+        bool retprobe;
+        const char *func_name;
+        enum probe_attach_mode attach_mode;
+        size_t : 0;
+    };
+#define bpf_uprobe_opts__last_field attach_mode
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_uprobe(const struct bpf_program *prog, bool retprobe,
+                               pid_t pid, const char *binary_path,
+                               size_t func_offset);
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_uprobe_opts(const struct bpf_program *prog, pid_t pid,
+                                    const char *binary_path, size_t func_offset,
+                                    const struct bpf_uprobe_opts *opts);
+
+    struct bpf_usdt_opts
+    {
+        size_t sz;
+        __u64 usdt_cookie;
+        size_t : 0;
+    };
+#define bpf_usdt_opts__last_field usdt_cookie
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_usdt(const struct bpf_program *prog,
+                             pid_t pid, const char *binary_path,
+                             const char *usdt_provider, const char *usdt_name,
+                             const struct bpf_usdt_opts *opts);
+
+    struct bpf_tracepoint_opts
+    {
+        size_t sz;
+        __u64 bpf_cookie;
+    };
+#define bpf_tracepoint_opts__last_field bpf_cookie
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_tracepoint(const struct bpf_program *prog,
+                                   const char *tp_category,
+                                   const char *tp_name);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_tracepoint_opts(const struct bpf_program *prog,
+                                        const char *tp_category,
+                                        const char *tp_name,
+                                        const struct bpf_tracepoint_opts *opts);
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_raw_tracepoint(const struct bpf_program *prog,
+                                       const char *tp_name);
+
+    struct bpf_trace_opts
+    {
+        size_t sz;
+        __u64 cookie;
+    };
+#define bpf_trace_opts__last_field cookie
