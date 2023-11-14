@@ -6652,3 +6652,42 @@ static bool insn_is_helper_call(struct bpf_insn *insn, enum bpf_func_id *func_id
 	}
 	return false;
 }
+
+static int bpf_object__sanitize_prog(struct bpf_object *obj, struct bpf_program *prog)
+{
+	struct bpf_insn *insn = prog->insns;
+	enum bpf_func_id func_id;
+	int i;
+
+	if (obj->gen_loader)
+		return 0;
+
+	for (i = 0; i < prog->insns_cnt; i++, insn++) {
+		if (!insn_is_helper_call(insn, &func_id))
+			continue;
+
+		/* on kernels that don't yet support
+		 * bpf_probe_read_{kernel,user}[_str] helpers, fall back
+		 * to bpf_probe_read() which works well for old kernels
+		 */
+		switch (func_id) {
+		case BPF_FUNC_probe_read_kernel:
+		case BPF_FUNC_probe_read_user:
+			if (!kernel_supports(obj, FEAT_PROBE_READ_KERN))
+				insn->imm = BPF_FUNC_probe_read;
+			break;
+		case BPF_FUNC_probe_read_kernel_str:
+		case BPF_FUNC_probe_read_user_str:
+			if (!kernel_supports(obj, FEAT_PROBE_READ_KERN))
+				insn->imm = BPF_FUNC_probe_read_str;
+			break;
+		default:
+			break;
+		}
+	}
+	return 0;
+}
+
+static int libbpf_find_attach_btf_id(struct bpf_program *prog, const char *attach_name,
+				     int *btf_obj_fd, int *btf_type_id);
+
