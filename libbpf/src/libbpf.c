@@ -6603,3 +6603,52 @@ static int bpf_object__collect_map_relos(struct bpf_object *obj,
 
 	return 0;
 }
+
+static int bpf_object__collect_relos(struct bpf_object *obj)
+{
+	int i, err;
+
+	for (i = 0; i < obj->efile.sec_cnt; i++) {
+		struct elf_sec_desc *sec_desc = &obj->efile.secs[i];
+		Elf64_Shdr *shdr;
+		Elf_Data *data;
+		int idx;
+
+		if (sec_desc->sec_type != SEC_RELO)
+			continue;
+
+		shdr = sec_desc->shdr;
+		data = sec_desc->data;
+		idx = shdr->sh_info;
+
+		if (shdr->sh_type != SHT_REL) {
+			pr_warn("internal error at %d\n", __LINE__);
+			return -LIBBPF_ERRNO__INTERNAL;
+		}
+
+		if (idx == obj->efile.st_ops_shndx || idx == obj->efile.st_ops_link_shndx)
+			err = bpf_object__collect_st_ops_relos(obj, shdr, data);
+		else if (idx == obj->efile.btf_maps_shndx)
+			err = bpf_object__collect_map_relos(obj, shdr, data);
+		else
+			err = bpf_object__collect_prog_relos(obj, shdr, data);
+		if (err)
+			return err;
+	}
+
+	bpf_object__sort_relos(obj);
+	return 0;
+}
+
+static bool insn_is_helper_call(struct bpf_insn *insn, enum bpf_func_id *func_id)
+{
+	if (BPF_CLASS(insn->code) == BPF_JMP &&
+	    BPF_OP(insn->code) == BPF_CALL &&
+	    BPF_SRC(insn->code) == BPF_K &&
+	    insn->src_reg == 0 &&
+	    insn->dst_reg == 0) {
+		    *func_id = insn->imm;
+		    return true;
+	}
+	return false;
+}
