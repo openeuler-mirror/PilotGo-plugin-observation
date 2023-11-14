@@ -385,3 +385,67 @@ extern "C"
 
     LIBBPF_API __u32 bpf_program__flags(const struct bpf_program *prog);
     LIBBPF_API int bpf_program__set_flags(struct bpf_program *prog, __u32 flags);
+
+    LIBBPF_API __u32 bpf_program__log_level(const struct bpf_program *prog);
+    LIBBPF_API int bpf_program__set_log_level(struct bpf_program *prog, __u32 log_level);
+    LIBBPF_API const char *bpf_program__log_buf(const struct bpf_program *prog, size_t *log_size);
+    LIBBPF_API int bpf_program__set_log_buf(struct bpf_program *prog, char *log_buf, size_t log_size);
+
+    LIBBPF_API int
+    bpf_program__set_attach_target(struct bpf_program *prog, int attach_prog_fd,
+                                   const char *attach_func_name);
+    LIBBPF_API struct bpf_map *
+    bpf_object__find_map_by_name(const struct bpf_object *obj, const char *name);
+
+    LIBBPF_API int
+    bpf_object__find_map_fd_by_name(const struct bpf_object *obj, const char *name);
+
+    LIBBPF_API struct bpf_map *
+    bpf_object__next_map(const struct bpf_object *obj, const struct bpf_map *map);
+
+#define bpf_object__for_each_map(pos, obj)          \
+    for ((pos) = bpf_object__next_map((obj), NULL); \
+         (pos) != NULL;                             \
+         (pos) = bpf_object__next_map((obj), (pos)))
+#define bpf_map__for_each bpf_object__for_each_map
+
+    LIBBPF_API struct bpf_map *
+    bpf_object__prev_map(const struct bpf_object *obj, const struct bpf_map *map);
+
+    LIBBPF_API int bpf_map__set_autocreate(struct bpf_map *map, bool autocreate);
+    LIBBPF_API bool bpf_map__autocreate(const struct bpf_map *map);
+
+    LIBBPF_API int bpf_map__fd(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__reuse_fd(struct bpf_map *map, int fd);
+    LIBBPF_API const char *bpf_map__name(const struct bpf_map *map);
+    /* get/set map type */
+    LIBBPF_API enum bpf_map_type bpf_map__type(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_type(struct bpf_map *map, enum bpf_map_type type);
+    /* get/set map size (max_entries) */
+    LIBBPF_API __u32 bpf_map__max_entries(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_max_entries(struct bpf_map *map, __u32 max_entries);
+    /* get/set map flags */
+    LIBBPF_API __u32 bpf_map__map_flags(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_map_flags(struct bpf_map *map, __u32 flags);
+    /* get/set map NUMA node */
+    LIBBPF_API __u32 bpf_map__numa_node(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_numa_node(struct bpf_map *map, __u32 numa_node);
+    /* get/set map key size */
+    LIBBPF_API __u32 bpf_map__key_size(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_key_size(struct bpf_map *map, __u32 size);
+    /* get/set map value size */
+    LIBBPF_API __u32 bpf_map__value_size(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_value_size(struct bpf_map *map, __u32 size);
+    /* get map key/value BTF type IDs */
+    LIBBPF_API __u32 bpf_map__btf_key_type_id(const struct bpf_map *map);
+    LIBBPF_API __u32 bpf_map__btf_value_type_id(const struct bpf_map *map);
+    /* get/set map if_index */
+    LIBBPF_API __u32 bpf_map__ifindex(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_ifindex(struct bpf_map *map, __u32 ifindex);
+    /* get/set map map_extra flags */
+    LIBBPF_API __u64 bpf_map__map_extra(const struct bpf_map *map);
+    LIBBPF_API int bpf_map__set_map_extra(struct bpf_map *map, __u64 map_extra);
+
+    LIBBPF_API int bpf_map__set_initial_value(struct bpf_map *map,
+                                              const void *data, size_t size);
+    LIBBPF_API const void *bpf_map__initial_value(struct bpf_map *map, size_t *psize);
