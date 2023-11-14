@@ -6385,3 +6385,81 @@ static int cmp_relocs(const void *_a, const void *_b)
 
 	return 0;
 }
+
+static void bpf_object__sort_relos(struct bpf_object *obj)
+{
+	int i;
+
+	for (i = 0; i < obj->nr_programs; i++) {
+		struct bpf_program *p = &obj->programs[i];
+
+		if (!p->nr_reloc)
+			continue;
+
+		qsort(p->reloc_desc, p->nr_reloc, sizeof(*p->reloc_desc), cmp_relocs);
+	}
+}
+
+static int
+bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
+{
+	struct bpf_program *prog;
+	size_t i, j;
+	int err;
+
+	if (obj->btf_ext) {
+		err = bpf_object__relocate_core(obj, targ_btf_path);
+		if (err) {
+			pr_warn("failed to perform CO-RE relocations: %d\n",
+				err);
+			return err;
+		}
+		bpf_object__sort_relos(obj);
+	}
+
+	for (i = 0; i < obj->nr_programs; i++) {
+		prog = &obj->programs[i];
+		for (j = 0; j < prog->nr_reloc; j++) {
+			struct reloc_desc *relo = &prog->reloc_desc[j];
+			struct bpf_insn *insn = &prog->insns[relo->insn_idx];
+
+			/* mark the insn, so it's recognized by insn_is_pseudo_func() */
+			if (relo->type == RELO_SUBPROG_ADDR)
+				insn[0].src_reg = BPF_PSEUDO_FUNC;
+		}
+	}
+
+	for (i = 0; i < obj->nr_programs; i++) {
+		prog = &obj->programs[i];
+		/* sub-program's sub-calls are relocated within the context of
+		 * its main program only
+		 */
+		if (prog_is_subprog(obj, prog))
+			continue;
+		if (!prog->autoload)
+			continue;
+
+		err = bpf_object__relocate_calls(obj, prog);
+		if (err) {
+			pr_warn("prog '%s': failed to relocate calls: %d\n",
+				prog->name, err);
+			return err;
+		}
+	}
+	/* Process data relos for main programs */
+	for (i = 0; i < obj->nr_programs; i++) {
+		prog = &obj->programs[i];
+		if (prog_is_subprog(obj, prog))
+			continue;
+		if (!prog->autoload)
+			continue;
+		err = bpf_object__relocate_data(obj, prog);
+		if (err) {
+			pr_warn("prog '%s': failed to relocate data references: %d\n",
+				prog->name, err);
+			return err;
+		}
+	}
+
+	return 0;
+}
