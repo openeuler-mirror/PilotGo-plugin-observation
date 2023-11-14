@@ -147,3 +147,51 @@ extern "C"
     LIBBPF_API void bpf_program__set_autoattach(struct bpf_program *prog, bool autoattach);
 
     struct bpf_insn;
+
+    LIBBPF_API const struct bpf_insn *bpf_program__insns(const struct bpf_program *prog);
+
+    LIBBPF_API int bpf_program__set_insns(struct bpf_program *prog,
+                                          struct bpf_insn *new_insns, size_t new_insn_cnt);
+
+    LIBBPF_API size_t bpf_program__insn_cnt(const struct bpf_program *prog);
+
+    LIBBPF_API int bpf_program__fd(const struct bpf_program *prog);
+    LIBBPF_API int bpf_program__pin(struct bpf_program *prog, const char *path);
+
+    LIBBPF_API int bpf_program__unpin(struct bpf_program *prog, const char *path);
+    LIBBPF_API void bpf_program__unload(struct bpf_program *prog);
+
+    struct bpf_link;
+
+    LIBBPF_API struct bpf_link *bpf_link__open(const char *path);
+    LIBBPF_API int bpf_link__fd(const struct bpf_link *link);
+    LIBBPF_API const char *bpf_link__pin_path(const struct bpf_link *link);
+    LIBBPF_API int bpf_link__pin(struct bpf_link *link, const char *path);
+    LIBBPF_API int bpf_link__unpin(struct bpf_link *link);
+    LIBBPF_API int bpf_link__update_program(struct bpf_link *link,
+                                            struct bpf_program *prog);
+    LIBBPF_API void bpf_link__disconnect(struct bpf_link *link);
+    LIBBPF_API int bpf_link__detach(struct bpf_link *link);
+    LIBBPF_API int bpf_link__destroy(struct bpf_link *link);
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach(const struct bpf_program *prog);
+
+    struct bpf_perf_event_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+        /* custom user-provided value fetchable through bpf_get_attach_cookie() */
+        __u64 bpf_cookie;
+        /* don't use BPF link when attach BPF program */
+        bool force_ioctl_attach;
+        size_t : 0;
+    };
+#define bpf_perf_event_opts__last_field force_ioctl_attach
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_perf_event(const struct bpf_program *prog, int pfd);
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_perf_event_opts(const struct bpf_program *prog, int pfd,
+                                        const struct bpf_perf_event_opts *opts);
