@@ -336,3 +336,52 @@ extern "C"
         __u64 cookie;
     };
 #define bpf_trace_opts__last_field cookie
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_trace(const struct bpf_program *prog);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_trace_opts(const struct bpf_program *prog, const struct bpf_trace_opts *opts);
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_lsm(const struct bpf_program *prog);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_cgroup(const struct bpf_program *prog, int cgroup_fd);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_netns(const struct bpf_program *prog, int netns_fd);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_xdp(const struct bpf_program *prog, int ifindex);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_freplace(const struct bpf_program *prog,
+                                 int target_fd, const char *attach_func_name);
+
+    struct bpf_map;
+
+    LIBBPF_API struct bpf_link *bpf_map__attach_struct_ops(const struct bpf_map *map);
+    LIBBPF_API int bpf_link__update_map(struct bpf_link *link, const struct bpf_map *map);
+
+    struct bpf_iter_attach_opts
+    {
+        size_t sz; /* size of this struct for forward/backward compatibility */
+        union bpf_iter_link_info *link_info;
+        __u32 link_info_len;
+    };
+#define bpf_iter_attach_opts__last_field link_info_len
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_iter(const struct bpf_program *prog,
+                             const struct bpf_iter_attach_opts *opts);
+
+    LIBBPF_API enum bpf_prog_type bpf_program__type(const struct bpf_program *prog);
+
+    LIBBPF_API int bpf_program__set_type(struct bpf_program *prog,
+                                         enum bpf_prog_type type);
+
+    LIBBPF_API enum bpf_attach_type
+    bpf_program__expected_attach_type(const struct bpf_program *prog);
+
+    LIBBPF_API int
+    bpf_program__set_expected_attach_type(struct bpf_program *prog,
+                                          enum bpf_attach_type type);
+
+    LIBBPF_API __u32 bpf_program__flags(const struct bpf_program *prog);
+    LIBBPF_API int bpf_program__set_flags(struct bpf_program *prog, __u32 flags);
