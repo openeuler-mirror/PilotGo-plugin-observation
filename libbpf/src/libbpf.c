@@ -7163,3 +7163,38 @@ bpf_object__load_progs(struct bpf_object *obj, int log_level)
 	bpf_object__free_relocs(obj);
 	return 0;
 }
+
+static const struct bpf_sec_def *find_sec_def(const char *sec_name);
+
+static int bpf_object_init_progs(struct bpf_object *obj, const struct bpf_object_open_opts *opts)
+{
+	struct bpf_program *prog;
+	int err;
+
+	bpf_object__for_each_program(prog, obj) {
+		prog->sec_def = find_sec_def(prog->sec_name);
+		if (!prog->sec_def) {
+			/* couldn't guess, but user might manually specify */
+			pr_debug("prog '%s': unrecognized ELF section name '%s'\n",
+				prog->name, prog->sec_name);
+			continue;
+		}
+
+		prog->type = prog->sec_def->prog_type;
+		prog->expected_attach_type = prog->sec_def->expected_attach_type;
+
+		/* sec_def can have custom callback which should be called
+		 * after bpf_program is initialized to adjust its properties
+		 */
+		if (prog->sec_def->prog_setup_fn) {
+			err = prog->sec_def->prog_setup_fn(prog, prog->sec_def->cookie);
+			if (err < 0) {
+				pr_warn("prog '%s': failed to initialize: %d\n",
+					prog->name, err);
+				return err;
+			}
+		}
+	}
+
+	return 0;
+}
