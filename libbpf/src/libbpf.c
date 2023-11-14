@@ -6691,3 +6691,49 @@ static int bpf_object__sanitize_prog(struct bpf_object *obj, struct bpf_program 
 static int libbpf_find_attach_btf_id(struct bpf_program *prog, const char *attach_name,
 				     int *btf_obj_fd, int *btf_type_id);
 
+/* this is called as prog->sec_def->prog_prepare_load_fn for libbpf-supported sec_defs */
+static int libbpf_prepare_prog_load(struct bpf_program *prog,
+				    struct bpf_prog_load_opts *opts, long cookie)
+{
+	enum sec_def_flags def = cookie;
+
+	/* old kernels might not support specifying expected_attach_type */
+	if ((def & SEC_EXP_ATTACH_OPT) && !kernel_supports(prog->obj, FEAT_EXP_ATTACH_TYPE))
+		opts->expected_attach_type = 0;
+
+	if (def & SEC_SLEEPABLE)
+		opts->prog_flags |= BPF_F_SLEEPABLE;
+
+	if (prog->type == BPF_PROG_TYPE_XDP && (def & SEC_XDP_FRAGS))
+		opts->prog_flags |= BPF_F_XDP_HAS_FRAGS;
+
+	if ((def & SEC_ATTACH_BTF) && !prog->attach_btf_id) {
+		int btf_obj_fd = 0, btf_type_id = 0, err;
+		const char *attach_name;
+
+		attach_name = strchr(prog->sec_name, '/');
+		if (!attach_name) {
+			pr_warn("prog '%s': no BTF-based attach target is specified, use bpf_program__set_attach_target()\n",
+				prog->name);
+			return -EINVAL;
+		}
+		attach_name++; /* skip over / */
+
+		err = libbpf_find_attach_btf_id(prog, attach_name, &btf_obj_fd, &btf_type_id);
+		if (err)
+			return err;
+
+		/* cache resolved BTF FD and BTF type ID in the prog */
+		prog->attach_btf_obj_fd = btf_obj_fd;
+		prog->attach_btf_id = btf_type_id;
+
+		/* but by now libbpf common logic is not utilizing
+		 * prog->atach_btf_obj_fd/prog->attach_btf_id anymore because
+		 * this callback is called after opts were populated by
+		 * libbpf, so this callback has to update opts explicitly here
+		 */
+		opts->attach_btf_obj_fd = btf_obj_fd;
+		opts->attach_btf_id = btf_type_id;
+	}
+	return 0;
+}
