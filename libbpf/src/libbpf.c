@@ -6332,3 +6332,56 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 
 	return 0;
 }
+
+static int
+bpf_object__relocate_calls(struct bpf_object *obj, struct bpf_program *prog)
+{
+	struct bpf_program *subprog;
+	int i, err;
+
+	/* mark all subprogs as not relocated (yet) within the context of
+	 * current main program
+	 */
+	for (i = 0; i < obj->nr_programs; i++) {
+		subprog = &obj->programs[i];
+		if (!prog_is_subprog(obj, subprog))
+			continue;
+
+		subprog->sub_insn_off = 0;
+	}
+
+	err = bpf_object__reloc_code(obj, prog, prog);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static void
+bpf_object__free_relocs(struct bpf_object *obj)
+{
+	struct bpf_program *prog;
+	int i;
+
+	/* free up relocation descriptors */
+	for (i = 0; i < obj->nr_programs; i++) {
+		prog = &obj->programs[i];
+		zfree(&prog->reloc_desc);
+		prog->nr_reloc = 0;
+	}
+}
+
+static int cmp_relocs(const void *_a, const void *_b)
+{
+	const struct reloc_desc *a = _a;
+	const struct reloc_desc *b = _b;
+
+	if (a->insn_idx != b->insn_idx)
+		return a->insn_idx < b->insn_idx ? -1 : 1;
+
+	/* no two relocations should have the same insn_idx, but ... */
+	if (a->type != b->type)
+		return a->type < b->type ? -1 : 1;
+
+	return 0;
+}
