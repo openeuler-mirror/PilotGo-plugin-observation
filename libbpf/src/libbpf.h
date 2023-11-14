@@ -515,3 +515,60 @@ extern "C"
                                   const struct bpf_xdp_attach_opts *opts);
     LIBBPF_API int bpf_xdp_query(int ifindex, int flags, struct bpf_xdp_query_opts *opts);
     LIBBPF_API int bpf_xdp_query_id(int ifindex, int flags, __u32 *prog_id);
+
+    enum bpf_tc_attach_point
+    {
+        BPF_TC_INGRESS = 1 << 0,
+        BPF_TC_EGRESS = 1 << 1,
+        BPF_TC_CUSTOM = 1 << 2,
+    };
+
+#define BPF_TC_PARENT(a, b) \
+    ((((a) << 16) & 0xFFFF0000U) | ((b)&0x0000FFFFU))
+
+    enum bpf_tc_flags
+    {
+        BPF_TC_F_REPLACE = 1 << 0,
+    };
+
+    struct bpf_tc_hook
+    {
+        size_t sz;
+        int ifindex;
+        enum bpf_tc_attach_point attach_point;
+        __u32 parent;
+        size_t : 0;
+    };
+#define bpf_tc_hook__last_field parent
+
+    struct bpf_tc_opts
+    {
+        size_t sz;
+        int prog_fd;
+        __u32 flags;
+        __u32 prog_id;
+        __u32 handle;
+        __u32 priority;
+        size_t : 0;
+    };
+#define bpf_tc_opts__last_field priority
+
+    LIBBPF_API int bpf_tc_hook_create(struct bpf_tc_hook *hook);
+    LIBBPF_API int bpf_tc_hook_destroy(struct bpf_tc_hook *hook);
+    LIBBPF_API int bpf_tc_attach(const struct bpf_tc_hook *hook,
+                                 struct bpf_tc_opts *opts);
+    LIBBPF_API int bpf_tc_detach(const struct bpf_tc_hook *hook,
+                                 const struct bpf_tc_opts *opts);
+    LIBBPF_API int bpf_tc_query(const struct bpf_tc_hook *hook,
+                                struct bpf_tc_opts *opts);
+
+    /* Ring buffer APIs */
+    struct ring_buffer;
+    struct user_ring_buffer;
+
+    typedef int (*ring_buffer_sample_fn)(void *ctx, void *data, size_t size);
+
+    struct ring_buffer_opts
+    {
+        size_t sz; /* size of this struct, for forward/backward compatibility */
+    };
