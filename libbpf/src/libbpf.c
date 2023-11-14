@@ -6737,3 +6737,185 @@ static int libbpf_prepare_prog_load(struct bpf_program *prog,
 	}
 	return 0;
 }
+
+static void fixup_verifier_log(struct bpf_program *prog, char *buf, size_t buf_sz);
+
+static int bpf_object_load_prog(struct bpf_object *obj, struct bpf_program *prog,
+				struct bpf_insn *insns, int insns_cnt,
+				const char *license, __u32 kern_version, int *prog_fd)
+{
+	LIBBPF_OPTS(bpf_prog_load_opts, load_attr);
+	const char *prog_name = NULL;
+	char *cp, errmsg[STRERR_BUFSIZE];
+	size_t log_buf_size = 0;
+	char *log_buf = NULL, *tmp;
+	int btf_fd, ret, err;
+	bool own_log_buf = true;
+	__u32 log_level = prog->log_level;
+
+	if (prog->type == BPF_PROG_TYPE_UNSPEC) {
+		/*
+		 * The program type must be set.  Most likely we couldn't find a proper
+		 * section definition at load time, and thus we didn't infer the type.
+		 */
+		pr_warn("prog '%s': missing BPF prog type, check ELF section name '%s'\n",
+			prog->name, prog->sec_name);
+		return -EINVAL;
+	}
+
+	if (!insns || !insns_cnt)
+		return -EINVAL;
+
+	load_attr.expected_attach_type = prog->expected_attach_type;
+	if (kernel_supports(obj, FEAT_PROG_NAME))
+		prog_name = prog->name;
+	load_attr.attach_prog_fd = prog->attach_prog_fd;
+	load_attr.attach_btf_obj_fd = prog->attach_btf_obj_fd;
+	load_attr.attach_btf_id = prog->attach_btf_id;
+	load_attr.kern_version = kern_version;
+	load_attr.prog_ifindex = prog->prog_ifindex;
+
+	/* specify func_info/line_info only if kernel supports them */
+	btf_fd = bpf_object__btf_fd(obj);
+	if (btf_fd >= 0 && kernel_supports(obj, FEAT_BTF_FUNC)) {
+		load_attr.prog_btf_fd = btf_fd;
+		load_attr.func_info = prog->func_info;
+		load_attr.func_info_rec_size = prog->func_info_rec_size;
+		load_attr.func_info_cnt = prog->func_info_cnt;
+		load_attr.line_info = prog->line_info;
+		load_attr.line_info_rec_size = prog->line_info_rec_size;
+		load_attr.line_info_cnt = prog->line_info_cnt;
+	}
+	load_attr.log_level = log_level;
+	load_attr.prog_flags = prog->prog_flags;
+	load_attr.fd_array = obj->fd_array;
+
+	/* adjust load_attr if sec_def provides custom preload callback */
+	if (prog->sec_def && prog->sec_def->prog_prepare_load_fn) {
+		err = prog->sec_def->prog_prepare_load_fn(prog, &load_attr, prog->sec_def->cookie);
+		if (err < 0) {
+			pr_warn("prog '%s': failed to prepare load attributes: %d\n",
+				prog->name, err);
+			return err;
+		}
+		insns = prog->insns;
+		insns_cnt = prog->insns_cnt;
+	}
+
+	if (obj->gen_loader) {
+		bpf_gen__prog_load(obj->gen_loader, prog->type, prog->name,
+				   license, insns, insns_cnt, &load_attr,
+				   prog - obj->programs);
+		*prog_fd = -1;
+		return 0;
+	}
+
+retry_load:
+	/* if log_level is zero, we don't request logs initially even if
+	 * custom log_buf is specified; if the program load fails, then we'll
+	 * bump log_level to 1 and use either custom log_buf or we'll allocate
+	 * our own and retry the load to get details on what failed
+	 */
+	if (log_level) {
+		if (prog->log_buf) {
+			log_buf = prog->log_buf;
+			log_buf_size = prog->log_size;
+			own_log_buf = false;
+		} else if (obj->log_buf) {
+			log_buf = obj->log_buf;
+			log_buf_size = obj->log_size;
+			own_log_buf = false;
+		} else {
+			log_buf_size = max((size_t)BPF_LOG_BUF_SIZE, log_buf_size * 2);
+			tmp = realloc(log_buf, log_buf_size);
+			if (!tmp) {
+				ret = -ENOMEM;
+				goto out;
+			}
+			log_buf = tmp;
+			log_buf[0] = '\0';
+			own_log_buf = true;
+		}
+	}
+
+	load_attr.log_buf = log_buf;
+	load_attr.log_size = log_buf_size;
+	load_attr.log_level = log_level;
+
+	ret = bpf_prog_load(prog->type, prog_name, license, insns, insns_cnt, &load_attr);
+	if (ret >= 0) {
+		if (log_level && own_log_buf) {
+			pr_debug("prog '%s': -- BEGIN PROG LOAD LOG --\n%s-- END PROG LOAD LOG --\n",
+				 prog->name, log_buf);
+		}
+
+		if (obj->has_rodata && kernel_supports(obj, FEAT_PROG_BIND_MAP)) {
+			struct bpf_map *map;
+			int i;
+
+			for (i = 0; i < obj->nr_maps; i++) {
+				map = &prog->obj->maps[i];
+				if (map->libbpf_type != LIBBPF_MAP_RODATA)
+					continue;
+
+				if (bpf_prog_bind_map(ret, bpf_map__fd(map), NULL)) {
+					cp = libbpf_strerror_r(errno, errmsg, sizeof(errmsg));
+					pr_warn("prog '%s': failed to bind map '%s': %s\n",
+						prog->name, map->real_name, cp);
+					/* Don't fail hard if can't bind rodata. */
+				}
+			}
+		}
+
+		*prog_fd = ret;
+		ret = 0;
+		goto out;
+	}
+
+	if (log_level == 0) {
+		log_level = 1;
+		goto retry_load;
+	}
+	/* On ENOSPC, increase log buffer size and retry, unless custom
+	 * log_buf is specified.
+	 * Be careful to not overflow u32, though. Kernel's log buf size limit
+	 * isn't part of UAPI so it can always be bumped to full 4GB. So don't
+	 * multiply by 2 unless we are sure we'll fit within 32 bits.
+	 * Currently, we'll get -EINVAL when we reach (UINT_MAX >> 2).
+	 */
+	if (own_log_buf && errno == ENOSPC && log_buf_size <= UINT_MAX / 2)
+		goto retry_load;
+
+	ret = -errno;
+
+	/* post-process verifier log to improve error descriptions */
+	fixup_verifier_log(prog, log_buf, log_buf_size);
+
+	cp = libbpf_strerror_r(errno, errmsg, sizeof(errmsg));
+	pr_warn("prog '%s': BPF program load failed: %s\n", prog->name, cp);
+	pr_perm_msg(ret);
+
+	if (own_log_buf && log_buf && log_buf[0] != '\0') {
+		pr_warn("prog '%s': -- BEGIN PROG LOAD LOG --\n%s-- END PROG LOAD LOG --\n",
+			prog->name, log_buf);
+	}
+
+out:
+	if (own_log_buf)
+		free(log_buf);
+	return ret;
+}
+
+static char *find_prev_line(char *buf, char *cur)
+{
+	char *p;
+
+	if (cur == buf) /* end of a log buf */
+		return NULL;
+
+	p = cur - 1;
+	while (p - 1 >= buf && *(p - 1) != '\n')
+		p--;
+
+	return p;
+}
