@@ -195,3 +195,75 @@ extern "C"
     LIBBPF_API struct bpf_link *
     bpf_program__attach_perf_event_opts(const struct bpf_program *prog, int pfd,
                                         const struct bpf_perf_event_opts *opts);
+
+    enum probe_attach_mode
+    {
+        /* attach probe in latest supported mode by kernel */
+        PROBE_ATTACH_MODE_DEFAULT = 0,
+        /* attach probe in legacy mode, using debugfs/tracefs */
+        PROBE_ATTACH_MODE_LEGACY,
+        /* create perf event with perf_event_open() syscall */
+        PROBE_ATTACH_MODE_PERF,
+        /* attach probe with BPF link */
+        PROBE_ATTACH_MODE_LINK,
+    };
+
+    struct bpf_kprobe_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+        /* custom user-provided value fetchable through bpf_get_attach_cookie() */
+        __u64 bpf_cookie;
+        /* function's offset to install kprobe to */
+        size_t offset;
+        /* kprobe is return probe */
+        bool retprobe;
+        /* kprobe attach mode */
+        enum probe_attach_mode attach_mode;
+        size_t : 0;
+    };
+#define bpf_kprobe_opts__last_field attach_mode
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_kprobe(const struct bpf_program *prog, bool retprobe,
+                               const char *func_name);
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_kprobe_opts(const struct bpf_program *prog,
+                                    const char *func_name,
+                                    const struct bpf_kprobe_opts *opts);
+
+    struct bpf_kprobe_multi_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+        /* array of function symbols to attach */
+        const char **syms;
+        /* array of function addresses to attach */
+        const unsigned long *addrs;
+        /* array of user-provided values fetchable through bpf_get_attach_cookie */
+        const __u64 *cookies;
+        /* number of elements in syms/addrs/cookies arrays */
+        size_t cnt;
+        /* create return kprobes */
+        bool retprobe;
+        size_t : 0;
+    };
+
+#define bpf_kprobe_multi_opts__last_field retprobe
+
+    LIBBPF_API struct bpf_link *
+    bpf_program__attach_kprobe_multi_opts(const struct bpf_program *prog,
+                                          const char *pattern,
+                                          struct bpf_kprobe_multi_opts *opts);
+
+    struct bpf_ksyscall_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+        /* custom user-provided value fetchable through bpf_get_attach_cookie() */
+        __u64 bpf_cookie;
+        /* attach as return probe? */
+        bool retprobe;
+        size_t : 0;
+    };
+#define bpf_ksyscall_opts__last_field retprobe
