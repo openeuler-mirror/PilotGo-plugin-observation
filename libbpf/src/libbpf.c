@@ -8269,3 +8269,49 @@ void bpf_object__close(struct bpf_object *obj)
 
 	free(obj);
 }
+
+const char *bpf_object__name(const struct bpf_object *obj)
+{
+	return obj ? obj->name : libbpf_err_ptr(-EINVAL);
+}
+
+unsigned int bpf_object__kversion(const struct bpf_object *obj)
+{
+	return obj ? obj->kern_version : 0;
+}
+
+struct btf *bpf_object__btf(const struct bpf_object *obj)
+{
+	return obj ? obj->btf : NULL;
+}
+
+int bpf_object__btf_fd(const struct bpf_object *obj)
+{
+	return obj->btf ? btf__fd(obj->btf) : -1;
+}
+
+int bpf_object__set_kversion(struct bpf_object *obj, __u32 kern_version)
+{
+	if (obj->loaded)
+		return libbpf_err(-EINVAL);
+
+	obj->kern_version = kern_version;
+
+	return 0;
+}
+
+int bpf_object__gen_loader(struct bpf_object *obj, struct gen_loader_opts *opts)
+{
+	struct bpf_gen *gen;
+
+	if (!opts)
+		return -EFAULT;
+	if (!OPTS_VALID(opts, gen_loader_opts))
+		return -EINVAL;
+	gen = calloc(sizeof(*gen), 1);
+	if (!gen)
+		return -ENOMEM;
+	gen->opts = opts;
+	obj->gen_loader = gen;
+	return 0;
+}
