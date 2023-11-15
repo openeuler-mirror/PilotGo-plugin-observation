@@ -7806,3 +7806,60 @@ out:
 	pr_warn("failed to load object '%s'\n", obj->path);
 	return libbpf_err(err);
 }
+
+int bpf_object__load(struct bpf_object *obj)
+{
+	return bpf_object_load(obj, 0, NULL);
+}
+
+static int make_parent_dir(const char *path)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	char *dname, *dir;
+	int err = 0;
+
+	dname = strdup(path);
+	if (dname == NULL)
+		return -ENOMEM;
+
+	dir = dirname(dname);
+	if (mkdir(dir, 0700) && errno != EEXIST)
+		err = -errno;
+
+	free(dname);
+	if (err) {
+		cp = libbpf_strerror_r(-err, errmsg, sizeof(errmsg));
+		pr_warn("failed to mkdir %s: %s\n", path, cp);
+	}
+	return err;
+}
+
+static int check_path(const char *path)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	struct statfs st_fs;
+	char *dname, *dir;
+	int err = 0;
+
+	if (path == NULL)
+		return -EINVAL;
+
+	dname = strdup(path);
+	if (dname == NULL)
+		return -ENOMEM;
+
+	dir = dirname(dname);
+	if (statfs(dir, &st_fs)) {
+		cp = libbpf_strerror_r(errno, errmsg, sizeof(errmsg));
+		pr_warn("failed to statfs %s: %s\n", dir, cp);
+		err = -errno;
+	}
+	free(dname);
+
+	if (!err && st_fs.f_type != BPF_FS_MAGIC) {
+		pr_warn("specified path %s is not on BPF FS\n", path);
+		err = -EINVAL;
+	}
+
+	return err;
+}
