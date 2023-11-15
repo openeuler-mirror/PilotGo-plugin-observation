@@ -7974,3 +7974,54 @@ out_err:
 	pr_warn("failed to pin map: %s\n", cp);
 	return libbpf_err(err);
 }
+
+int bpf_map__unpin(struct bpf_map *map, const char *path)
+{
+	int err;
+
+	if (map == NULL) {
+		pr_warn("invalid map pointer\n");
+		return libbpf_err(-EINVAL);
+	}
+
+	if (map->pin_path) {
+		if (path && strcmp(path, map->pin_path)) {
+			pr_warn("map '%s' already has pin path '%s' different from '%s'\n",
+				bpf_map__name(map), map->pin_path, path);
+			return libbpf_err(-EINVAL);
+		}
+		path = map->pin_path;
+	} else if (!path) {
+		pr_warn("no path to unpin map '%s' from\n",
+			bpf_map__name(map));
+		return libbpf_err(-EINVAL);
+	}
+
+	err = check_path(path);
+	if (err)
+		return libbpf_err(err);
+
+	err = unlink(path);
+	if (err != 0)
+		return libbpf_err(-errno);
+
+	map->pinned = false;
+	pr_debug("unpinned map '%s' from '%s'\n", bpf_map__name(map), path);
+
+	return 0;
+}
+
+int bpf_map__set_pin_path(struct bpf_map *map, const char *path)
+{
+	char *new = NULL;
+
+	if (path) {
+		new = strdup(path);
+		if (!new)
+			return libbpf_err(-errno);
+	}
+
+	free(map->pin_path);
+	map->pin_path = new;
+	return 0;
+}
