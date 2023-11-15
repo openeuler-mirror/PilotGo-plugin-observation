@@ -8163,3 +8163,43 @@ err_unpin_programs:
 
 	return libbpf_err(err);
 }
+
+int bpf_object__unpin_programs(struct bpf_object *obj, const char *path)
+{
+	struct bpf_program *prog;
+	int err;
+
+	if (!obj)
+		return libbpf_err(-ENOENT);
+
+	bpf_object__for_each_program(prog, obj) {
+		char buf[PATH_MAX];
+
+		err = pathname_concat(buf, sizeof(buf), path, prog->name);
+		if (err)
+			return libbpf_err(err);
+
+		err = bpf_program__unpin(prog, buf);
+		if (err)
+			return libbpf_err(err);
+	}
+
+	return 0;
+}
+
+int bpf_object__pin(struct bpf_object *obj, const char *path)
+{
+	int err;
+
+	err = bpf_object__pin_maps(obj, path);
+	if (err)
+		return libbpf_err(err);
+
+	err = bpf_object__pin_programs(obj, path);
+	if (err) {
+		bpf_object__unpin_maps(obj, path);
+		return libbpf_err(err);
+	}
+
+	return 0;
+}
