@@ -7568,3 +7568,51 @@ static int bpf_object__resolve_ksym_func_btf_id(struct bpf_object *obj,
 
 	return 0;
 }
+
+static int bpf_object__resolve_ksyms_btf_id(struct bpf_object *obj)
+{
+	const struct btf_type *t;
+	struct extern_desc *ext;
+	int i, err;
+
+	for (i = 0; i < obj->nr_extern; i++) {
+		ext = &obj->externs[i];
+		if (ext->type != EXT_KSYM || !ext->ksym.type_id)
+			continue;
+
+		if (obj->gen_loader) {
+			ext->is_set = true;
+			ext->ksym.kernel_btf_obj_fd = 0;
+			ext->ksym.kernel_btf_id = 0;
+			continue;
+		}
+		t = btf__type_by_id(obj->btf, ext->btf_id);
+		if (btf_is_var(t))
+			err = bpf_object__resolve_ksym_var_btf_id(obj, ext);
+		else
+			err = bpf_object__resolve_ksym_func_btf_id(obj, ext);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static void bpf_map_prepare_vdata(const struct bpf_map *map)
+{
+	struct bpf_struct_ops *st_ops;
+	__u32 i;
+
+	st_ops = map->st_ops;
+	for (i = 0; i < btf_vlen(st_ops->type); i++) {
+		struct bpf_program *prog = st_ops->progs[i];
+		void *kern_data;
+		int prog_fd;
+
+		if (!prog)
+			continue;
+
+		prog_fd = bpf_program__fd(prog);
+		kern_data = st_ops->kern_vdata + st_ops->kern_func_off[i];
+		*(unsigned long *)kern_data = prog_fd;
+	}
+}
