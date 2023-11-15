@@ -7863,3 +7863,53 @@ static int check_path(const char *path)
 
 	return err;
 }
+
+int bpf_program__pin(struct bpf_program *prog, const char *path)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	int err;
+
+	if (prog->fd < 0) {
+		pr_warn("prog '%s': can't pin program that wasn't loaded\n", prog->name);
+		return libbpf_err(-EINVAL);
+	}
+
+	err = make_parent_dir(path);
+	if (err)
+		return libbpf_err(err);
+
+	err = check_path(path);
+	if (err)
+		return libbpf_err(err);
+
+	if (bpf_obj_pin(prog->fd, path)) {
+		err = -errno;
+		cp = libbpf_strerror_r(err, errmsg, sizeof(errmsg));
+		pr_warn("prog '%s': failed to pin at '%s': %s\n", prog->name, path, cp);
+		return libbpf_err(err);
+	}
+
+	pr_debug("prog '%s': pinned at '%s'\n", prog->name, path);
+	return 0;
+}
+
+int bpf_program__unpin(struct bpf_program *prog, const char *path)
+{
+	int err;
+
+	if (prog->fd < 0) {
+		pr_warn("prog '%s': can't unpin program that wasn't loaded\n", prog->name);
+		return libbpf_err(-EINVAL);
+	}
+
+	err = check_path(path);
+	if (err)
+		return libbpf_err(err);
+
+	err = unlink(path);
+	if (err)
+		return libbpf_err(-errno);
+
+	pr_debug("prog '%s': unpinned from '%s'\n", prog->name, path);
+	return 0;
+}
