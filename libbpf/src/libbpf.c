@@ -8096,3 +8096,70 @@ err_unpin_maps:
 
 	return libbpf_err(err);
 }
+
+int bpf_object__unpin_maps(struct bpf_object *obj, const char *path)
+{
+	struct bpf_map *map;
+	int err;
+
+	if (!obj)
+		return libbpf_err(-ENOENT);
+
+	bpf_object__for_each_map(map, obj) {
+		char *pin_path = NULL;
+		char buf[PATH_MAX];
+
+		if (path) {
+			err = pathname_concat(buf, sizeof(buf), path, bpf_map__name(map));
+			if (err)
+				return libbpf_err(err);
+			sanitize_pin_path(buf);
+			pin_path = buf;
+		} else if (!map->pin_path) {
+			continue;
+		}
+
+		err = bpf_map__unpin(map, pin_path);
+		if (err)
+			return libbpf_err(err);
+	}
+
+	return 0;
+}
+
+int bpf_object__pin_programs(struct bpf_object *obj, const char *path)
+{
+	struct bpf_program *prog;
+	char buf[PATH_MAX];
+	int err;
+
+	if (!obj)
+		return libbpf_err(-ENOENT);
+
+	if (!obj->loaded) {
+		pr_warn("object not yet loaded; load it first\n");
+		return libbpf_err(-ENOENT);
+	}
+
+	bpf_object__for_each_program(prog, obj) {
+		err = pathname_concat(buf, sizeof(buf), path, prog->name);
+		if (err)
+			goto err_unpin_programs;
+
+		err = bpf_program__pin(prog, buf);
+		if (err)
+			goto err_unpin_programs;
+	}
+
+	return 0;
+
+err_unpin_programs:
+	while ((prog = bpf_object__prev_program(obj, prog))) {
+		if (pathname_concat(buf, sizeof(buf), path, prog->name))
+			continue;
+
+		bpf_program__unpin(prog, buf);
+	}
+
+	return libbpf_err(err);
+}
