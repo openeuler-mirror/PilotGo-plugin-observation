@@ -618,3 +618,61 @@ extern "C"
         size_t : 0;
     };
 #define perf_buffer_opts__last_field sample_period
+
+    LIBBPF_API struct perf_buffer *
+    perf_buffer__new(int map_fd, size_t page_cnt,
+                     perf_buffer_sample_fn sample_cb, perf_buffer_lost_fn lost_cb, void *ctx,
+                     const struct perf_buffer_opts *opts);
+
+    enum bpf_perf_event_ret
+    {
+        LIBBPF_PERF_EVENT_DONE = 0,
+        LIBBPF_PERF_EVENT_ERROR = -1,
+        LIBBPF_PERF_EVENT_CONT = -2,
+    };
+
+    struct perf_event_header;
+
+    typedef enum bpf_perf_event_ret (*perf_buffer_event_fn)(void *ctx, int cpu, struct perf_event_header *event);
+
+    struct perf_buffer_raw_opts
+    {
+        size_t sz;
+        long : 0;
+        long : 0;
+
+        int cpu_cnt;
+        int *cpus;
+        int *map_keys;
+    };
+#define perf_buffer_raw_opts__last_field map_keys
+
+    struct perf_event_attr;
+
+    LIBBPF_API struct perf_buffer *
+    perf_buffer__new_raw(int map_fd, size_t page_cnt, struct perf_event_attr *attr,
+                         perf_buffer_event_fn event_cb, void *ctx,
+                         const struct perf_buffer_raw_opts *opts);
+
+    LIBBPF_API void perf_buffer__free(struct perf_buffer *pb);
+    LIBBPF_API int perf_buffer__epoll_fd(const struct perf_buffer *pb);
+    LIBBPF_API int perf_buffer__poll(struct perf_buffer *pb, int timeout_ms);
+    LIBBPF_API int perf_buffer__consume(struct perf_buffer *pb);
+    LIBBPF_API int perf_buffer__consume_buffer(struct perf_buffer *pb, size_t buf_idx);
+    LIBBPF_API size_t perf_buffer__buffer_cnt(const struct perf_buffer *pb);
+    LIBBPF_API int perf_buffer__buffer_fd(const struct perf_buffer *pb, size_t buf_idx);
+    LIBBPF_API int perf_buffer__buffer(struct perf_buffer *pb, int buf_idx, void **buf,
+                                       size_t *buf_size);
+
+    struct bpf_prog_linfo;
+    struct bpf_prog_info;
+
+    LIBBPF_API void bpf_prog_linfo__free(struct bpf_prog_linfo *prog_linfo);
+    LIBBPF_API struct bpf_prog_linfo *
+    bpf_prog_linfo__new(const struct bpf_prog_info *info);
+    LIBBPF_API const struct bpf_line_info *
+    bpf_prog_linfo__lfind_addr_func(const struct bpf_prog_linfo *prog_linfo,
+                                    __u64 addr, __u32 func_idx, __u32 nr_skip);
+    LIBBPF_API const struct bpf_line_info *
+    bpf_prog_linfo__lfind(const struct bpf_prog_linfo *prog_linfo,
+                          __u32 insn_off, __u32 nr_skip);
