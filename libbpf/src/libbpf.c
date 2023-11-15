@@ -7500,3 +7500,71 @@ static int bpf_object__resolve_ksym_var_btf_id(struct bpf_object *obj,
 
 	return 0;
 }
+
+static int bpf_object__resolve_ksym_func_btf_id(struct bpf_object *obj,
+						struct extern_desc *ext)
+{
+	int local_func_proto_id, kfunc_proto_id, kfunc_id;
+	struct module_btf *mod_btf = NULL;
+	const struct btf_type *kern_func;
+	struct btf *kern_btf = NULL;
+	int ret;
+
+	local_func_proto_id = ext->ksym.type_id;
+
+	kfunc_id = find_ksym_btf_id(obj, ext->name, BTF_KIND_FUNC, &kern_btf, &mod_btf);
+	if (kfunc_id < 0) {
+		if (kfunc_id == -ESRCH && ext->is_weak)
+			return 0;
+		pr_warn("extern (func ksym) '%s': not found in kernel or module BTFs\n",
+			ext->name);
+		return kfunc_id;
+	}
+
+	kern_func = btf__type_by_id(kern_btf, kfunc_id);
+	kfunc_proto_id = kern_func->type;
+
+	ret = bpf_core_types_are_compat(obj->btf, local_func_proto_id,
+					kern_btf, kfunc_proto_id);
+	if (ret <= 0) {
+		pr_warn("extern (func ksym) '%s': func_proto [%d] incompatible with %s [%d]\n",
+			ext->name, local_func_proto_id,
+			mod_btf ? mod_btf->name : "vmlinux", kfunc_proto_id);
+		return -EINVAL;
+	}
+
+	/* set index for module BTF fd in fd_array, if unset */
+	if (mod_btf && !mod_btf->fd_array_idx) {
+		/* insn->off is s16 */
+		if (obj->fd_array_cnt == INT16_MAX) {
+			pr_warn("extern (func ksym) '%s': module BTF fd index %d too big to fit in bpf_insn offset\n",
+				ext->name, mod_btf->fd_array_idx);
+			return -E2BIG;
+		}
+		/* Cannot use index 0 for module BTF fd */
+		if (!obj->fd_array_cnt)
+			obj->fd_array_cnt = 1;
+
+		ret = libbpf_ensure_mem((void **)&obj->fd_array, &obj->fd_array_cap, sizeof(int),
+					obj->fd_array_cnt + 1);
+		if (ret)
+			return ret;
+		mod_btf->fd_array_idx = obj->fd_array_cnt;
+		/* we assume module BTF FD is always >0 */
+		obj->fd_array[obj->fd_array_cnt++] = mod_btf->fd;
+	}
+
+	ext->is_set = true;
+	ext->ksym.kernel_btf_id = kfunc_id;
+	ext->ksym.btf_fd_idx = mod_btf ? mod_btf->fd_array_idx : 0;
+	/* Also set kernel_btf_obj_fd to make sure that bpf_object__relocate_data()
+	 * populates FD into ld_imm64 insn when it's used to point to kfunc.
+	 * {kernel_btf_id, btf_fd_idx} -> fixup bpf_call.
+	 * {kernel_btf_id, kernel_btf_obj_fd} -> fixup ld_imm64.
+	 */
+	ext->ksym.kernel_btf_obj_fd = mod_btf ? mod_btf->fd : 0;
+	pr_debug("extern (func ksym) '%s': resolved to %s [%d]\n",
+		 ext->name, mod_btf ? mod_btf->name : "vmlinux", kfunc_id);
+
+	return 0;
+}
