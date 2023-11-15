@@ -7726,3 +7726,83 @@ static void bpf_map_prepare_vdata(const struct bpf_map *map)
 		*(unsigned long *)kern_data = prog_fd;
 	}
 }
+
+static int bpf_object_prepare_struct_ops(struct bpf_object *obj)
+{
+	int i;
+
+	for (i = 0; i < obj->nr_maps; i++)
+		if (bpf_map__is_struct_ops(&obj->maps[i]))
+			bpf_map_prepare_vdata(&obj->maps[i]);
+
+	return 0;
+}
+
+static int bpf_object_load(struct bpf_object *obj, int extra_log_level, const char *target_btf_path)
+{
+	int err, i;
+
+	if (!obj)
+		return libbpf_err(-EINVAL);
+
+	if (obj->loaded) {
+		pr_warn("object '%s': load can't be attempted twice\n", obj->name);
+		return libbpf_err(-EINVAL);
+	}
+
+	if (obj->gen_loader)
+		bpf_gen__init(obj->gen_loader, extra_log_level, obj->nr_programs, obj->nr_maps);
+
+	err = bpf_object__probe_loading(obj);
+	err = err ? : bpf_object__load_vmlinux_btf(obj, false);
+	err = err ? : bpf_object__resolve_externs(obj, obj->kconfig);
+	err = err ? : bpf_object__sanitize_and_load_btf(obj);
+	err = err ? : bpf_object__sanitize_maps(obj);
+	err = err ? : bpf_object__init_kern_struct_ops_maps(obj);
+	err = err ? : bpf_object__create_maps(obj);
+	err = err ? : bpf_object__relocate(obj, obj->btf_custom_path ? : target_btf_path);
+	err = err ? : bpf_object__load_progs(obj, extra_log_level);
+	err = err ? : bpf_object_init_prog_arrays(obj);
+	err = err ? : bpf_object_prepare_struct_ops(obj);
+
+	if (obj->gen_loader) {
+		/* reset FDs */
+		if (obj->btf)
+			btf__set_fd(obj->btf, -1);
+		for (i = 0; i < obj->nr_maps; i++)
+			obj->maps[i].fd = -1;
+		if (!err)
+			err = bpf_gen__finish(obj->gen_loader, obj->nr_programs, obj->nr_maps);
+	}
+
+	/* clean up fd_array */
+	zfree(&obj->fd_array);
+
+	/* clean up module BTFs */
+	for (i = 0; i < obj->btf_module_cnt; i++) {
+		close(obj->btf_modules[i].fd);
+		btf__free(obj->btf_modules[i].btf);
+		free(obj->btf_modules[i].name);
+	}
+	free(obj->btf_modules);
+
+	/* clean up vmlinux BTF */
+	btf__free(obj->btf_vmlinux);
+	obj->btf_vmlinux = NULL;
+
+	obj->loaded = true; /* doesn't matter if successfully or not */
+
+	if (err)
+		goto out;
+
+	return 0;
+out:
+	/* unpin any maps that were auto-pinned during load */
+	for (i = 0; i < obj->nr_maps; i++)
+		if (obj->maps[i].pinned && !obj->maps[i].reused)
+			bpf_map__unpin(&obj->maps[i], NULL);
+
+	bpf_object_unload(obj);
+	pr_warn("failed to load object '%s'\n", obj->path);
+	return libbpf_err(err);
+}
