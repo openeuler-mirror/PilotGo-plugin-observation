@@ -7913,3 +7913,64 @@ int bpf_program__unpin(struct bpf_program *prog, const char *path)
 	pr_debug("prog '%s': unpinned from '%s'\n", prog->name, path);
 	return 0;
 }
+
+int bpf_map__pin(struct bpf_map *map, const char *path)
+{
+	char *cp, errmsg[STRERR_BUFSIZE];
+	int err;
+
+	if (map == NULL) {
+		pr_warn("invalid map pointer\n");
+		return libbpf_err(-EINVAL);
+	}
+
+	if (map->pin_path) {
+		if (path && strcmp(path, map->pin_path)) {
+			pr_warn("map '%s' already has pin path '%s' different from '%s'\n",
+				bpf_map__name(map), map->pin_path, path);
+			return libbpf_err(-EINVAL);
+		} else if (map->pinned) {
+			pr_debug("map '%s' already pinned at '%s'; not re-pinning\n",
+				 bpf_map__name(map), map->pin_path);
+			return 0;
+		}
+	} else {
+		if (!path) {
+			pr_warn("missing a path to pin map '%s' at\n",
+				bpf_map__name(map));
+			return libbpf_err(-EINVAL);
+		} else if (map->pinned) {
+			pr_warn("map '%s' already pinned\n", bpf_map__name(map));
+			return libbpf_err(-EEXIST);
+		}
+
+		map->pin_path = strdup(path);
+		if (!map->pin_path) {
+			err = -errno;
+			goto out_err;
+		}
+	}
+
+	err = make_parent_dir(map->pin_path);
+	if (err)
+		return libbpf_err(err);
+
+	err = check_path(map->pin_path);
+	if (err)
+		return libbpf_err(err);
+
+	if (bpf_obj_pin(map->fd, map->pin_path)) {
+		err = -errno;
+		goto out_err;
+	}
+
+	map->pinned = true;
+	pr_debug("pinned map '%s'\n", map->pin_path);
+
+	return 0;
+
+out_err:
+	cp = libbpf_strerror_r(-err, errmsg, sizeof(errmsg));
+	pr_warn("failed to pin map: %s\n", cp);
+	return libbpf_err(err);
+}
