@@ -7597,6 +7597,116 @@ static int bpf_object__resolve_ksyms_btf_id(struct bpf_object *obj)
 	return 0;
 }
 
+static int bpf_object__resolve_externs(struct bpf_object *obj,
+				       const char *extra_kconfig)
+{
+	bool need_config = false, need_kallsyms = false;
+	bool need_vmlinux_btf = false;
+	struct extern_desc *ext;
+	void *kcfg_data = NULL;
+	int err, i;
+
+	if (obj->nr_extern == 0)
+		return 0;
+
+	if (obj->kconfig_map_idx >= 0)
+		kcfg_data = obj->maps[obj->kconfig_map_idx].mmaped;
+
+	for (i = 0; i < obj->nr_extern; i++) {
+		ext = &obj->externs[i];
+
+		if (ext->type == EXT_KSYM) {
+			if (ext->ksym.type_id)
+				need_vmlinux_btf = true;
+			else
+				need_kallsyms = true;
+			continue;
+		} else if (ext->type == EXT_KCFG) {
+			void *ext_ptr = kcfg_data + ext->kcfg.data_off;
+			__u64 value = 0;
+
+			/* Kconfig externs need actual /proc/config.gz */
+			if (str_has_pfx(ext->name, "CONFIG_")) {
+				need_config = true;
+				continue;
+			}
+
+			/* Virtual kcfg externs are customly handled by libbpf */
+			if (strcmp(ext->name, "LINUX_KERNEL_VERSION") == 0) {
+				value = get_kernel_version();
+				if (!value) {
+					pr_warn("extern (kcfg) '%s': failed to get kernel version\n", ext->name);
+					return -EINVAL;
+				}
+			} else if (strcmp(ext->name, "LINUX_HAS_BPF_COOKIE") == 0) {
+				value = kernel_supports(obj, FEAT_BPF_COOKIE);
+			} else if (strcmp(ext->name, "LINUX_HAS_SYSCALL_WRAPPER") == 0) {
+				value = kernel_supports(obj, FEAT_SYSCALL_WRAPPER);
+			} else if (!str_has_pfx(ext->name, "LINUX_") || !ext->is_weak) {
+				/* Currently libbpf supports only CONFIG_ and LINUX_ prefixed
+				 * __kconfig externs, where LINUX_ ones are virtual and filled out
+				 * customly by libbpf (their values don't come from Kconfig).
+				 * If LINUX_xxx variable is not recognized by libbpf, but is marked
+				 * __weak, it defaults to zero value, just like for CONFIG_xxx
+				 * externs.
+				 */
+				pr_warn("extern (kcfg) '%s': unrecognized virtual extern\n", ext->name);
+				return -EINVAL;
+			}
+
+			err = set_kcfg_value_num(ext, ext_ptr, value);
+			if (err)
+				return err;
+			pr_debug("extern (kcfg) '%s': set to 0x%llx\n",
+				 ext->name, (long long)value);
+		} else {
+			pr_warn("extern '%s': unrecognized extern kind\n", ext->name);
+			return -EINVAL;
+		}
+	}
+	if (need_config && extra_kconfig) {
+		err = bpf_object__read_kconfig_mem(obj, extra_kconfig, kcfg_data);
+		if (err)
+			return -EINVAL;
+		need_config = false;
+		for (i = 0; i < obj->nr_extern; i++) {
+			ext = &obj->externs[i];
+			if (ext->type == EXT_KCFG && !ext->is_set) {
+				need_config = true;
+				break;
+			}
+		}
+	}
+	if (need_config) {
+		err = bpf_object__read_kconfig_file(obj, kcfg_data);
+		if (err)
+			return -EINVAL;
+	}
+	if (need_kallsyms) {
+		err = bpf_object__read_kallsyms_file(obj);
+		if (err)
+			return -EINVAL;
+	}
+	if (need_vmlinux_btf) {
+		err = bpf_object__resolve_ksyms_btf_id(obj);
+		if (err)
+			return -EINVAL;
+	}
+	for (i = 0; i < obj->nr_extern; i++) {
+		ext = &obj->externs[i];
+
+		if (!ext->is_set && !ext->is_weak) {
+			pr_warn("extern '%s' (strong): not resolved\n", ext->name);
+			return -ESRCH;
+		} else if (!ext->is_set) {
+			pr_debug("extern '%s' (weak): not resolved, defaulting to zero\n",
+				 ext->name);
+		}
+	}
+
+	return 0;
+}
+
 static void bpf_map_prepare_vdata(const struct bpf_map *map)
 {
 	struct bpf_struct_ops *st_ops;
