@@ -10116,3 +10116,54 @@ struct ptr_ring {
 	long: 64;
 	long: 64;
 };
+
+
+struct page_pool {
+	struct page_pool_params p;
+	struct delayed_work release_dw;
+	void (*disconnect)(void *);
+	long unsigned int defer_start;
+	long unsigned int defer_warn;
+	u32 pages_state_hold_cnt;
+	unsigned int frag_offset;
+	struct page *frag_page;
+	long int frag_users;
+	u32 xdp_mem_id;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct pp_alloc_cache alloc;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct ptr_ring ring;
+	atomic_t pages_state_release_cnt;
+	refcount_t user_cnt;
+	u64 destroy_cnt;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+enum irq_domain_bus_token {
+	DOMAIN_BUS_ANY = 0,
+	DOMAIN_BUS_WIRED = 1,
+	DOMAIN_BUS_GENERIC_MSI = 2,
+	DOMAIN_BUS_PCI_MSI = 3,
+	DOMAIN_BUS_PLATFORM_MSI = 4,
+	DOMAIN_BUS_NEXUS = 5,
+	DOMAIN_BUS_IPI = 6,
+	DOMAIN_BUS_FSL_MC_MSI = 7,
+	DOMAIN_BUS_TI_SCI_INTA_MSI = 8,
+	DOMAIN_BUS_WAKEUP = 9,
+	DOMAIN_BUS_VMD_MSI = 10,
+};
