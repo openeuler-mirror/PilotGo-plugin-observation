@@ -292,3 +292,155 @@ static Elf64_Sym *add_new_sym(struct bpf_linker *linker, size_t *sym_idx)
 
     return sym;
 }
+
+static int init_output_elf(struct bpf_linker *linker, const char *file)
+{
+    int err, str_off;
+    Elf64_Sym *init_sym;
+    struct dst_sec *sec;
+
+    linker->filename = strdup(file);
+    if (!linker->filename)
+        return -ENOMEM;
+
+    linker->fd = open(file, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (linker->fd < 0)
+    {
+        err = -errno;
+        pr_warn("failed to create '%s': %d\n", file, err);
+        return err;
+    }
+
+    linker->elf = elf_begin(linker->fd, ELF_C_WRITE, NULL);
+    if (!linker->elf)
+    {
+        pr_warn_elf("failed to create ELF object");
+        return -EINVAL;
+    }
+
+    /* ELF header */
+    linker->elf_hdr = elf64_newehdr(linker->elf);
+    if (!linker->elf_hdr)
+    {
+        pr_warn_elf("failed to create ELF header");
+        return -EINVAL;
+    }
+
+    linker->elf_hdr->e_machine = EM_BPF;
+    linker->elf_hdr->e_type = ET_REL;
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    linker->elf_hdr->e_ident[EI_DATA] = ELFDATA2LSB;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    linker->elf_hdr->e_ident[EI_DATA] = ELFDATA2MSB;
+#else
+#error "Unknown __BYTE_ORDER__"
+#endif
+
+    /* STRTAB */
+    /* initialize strset with an empty string to conform to ELF */
+    linker->strtab_strs = strset__new(INT_MAX, "", sizeof(""));
+    if (libbpf_get_error(linker->strtab_strs))
+        return libbpf_get_error(linker->strtab_strs);
+
+    sec = add_dst_sec(linker, ".strtab");
+    if (!sec)
+        return -ENOMEM;
+
+    sec->scn = elf_newscn(linker->elf);
+    if (!sec->scn)
+    {
+        pr_warn_elf("failed to create STRTAB section");
+        return -EINVAL;
+    }
+
+    sec->shdr = elf64_getshdr(sec->scn);
+    if (!sec->shdr)
+        return -EINVAL;
+
+    sec->data = elf_newdata(sec->scn);
+    if (!sec->data)
+    {
+        pr_warn_elf("failed to create STRTAB data");
+        return -EINVAL;
+    }
+
+    str_off = strset__add_str(linker->strtab_strs, sec->sec_name);
+    if (str_off < 0)
+        return str_off;
+
+    sec->sec_idx = elf_ndxscn(sec->scn);
+    linker->elf_hdr->e_shstrndx = sec->sec_idx;
+    linker->strtab_sec_idx = sec->sec_idx;
+
+    sec->shdr->sh_name = str_off;
+    sec->shdr->sh_type = SHT_STRTAB;
+    sec->shdr->sh_flags = SHF_STRINGS;
+    sec->shdr->sh_offset = 0;
+    sec->shdr->sh_link = 0;
+    sec->shdr->sh_info = 0;
+    sec->shdr->sh_addralign = 1;
+    sec->shdr->sh_size = sec->sec_sz = 0;
+    sec->shdr->sh_entsize = 0;
+
+    /* SYMTAB */
+    sec = add_dst_sec(linker, ".symtab");
+    if (!sec)
+        return -ENOMEM;
+
+    sec->scn = elf_newscn(linker->elf);
+    if (!sec->scn)
+    {
+        pr_warn_elf("failed to create SYMTAB section");
+        return -EINVAL;
+    }
+
+    sec->shdr = elf64_getshdr(sec->scn);
+    if (!sec->shdr)
+        return -EINVAL;
+
+    sec->data = elf_newdata(sec->scn);
+    if (!sec->data)
+    {
+        pr_warn_elf("failed to create SYMTAB data");
+        return -EINVAL;
+    }
+
+    str_off = strset__add_str(linker->strtab_strs, sec->sec_name);
+    if (str_off < 0)
+        return str_off;
+
+    sec->sec_idx = elf_ndxscn(sec->scn);
+    linker->symtab_sec_idx = sec->sec_idx;
+
+    sec->shdr->sh_name = str_off;
+    sec->shdr->sh_type = SHT_SYMTAB;
+    sec->shdr->sh_flags = 0;
+    sec->shdr->sh_offset = 0;
+    sec->shdr->sh_link = linker->strtab_sec_idx;
+    /* sh_info should be one greater than the index of the last local
+     * symbol (i.e., binding is STB_LOCAL). But why and who cares?
+     */
+    sec->shdr->sh_info = 0;
+    sec->shdr->sh_addralign = 8;
+    sec->shdr->sh_entsize = sizeof(Elf64_Sym);
+
+    /* .BTF */
+    linker->btf = btf__new_empty();
+    err = libbpf_get_error(linker->btf);
+    if (err)
+        return err;
+
+    /* add the special all-zero symbol */
+    init_sym = add_new_sym(linker, NULL);
+    if (!init_sym)
+        return -EINVAL;
+
+    init_sym->st_name = 0;
+    init_sym->st_info = 0;
+    init_sym->st_other = 0;
+    init_sym->st_shndx = SHN_UNDEF;
+    init_sym->st_value = 0;
+    init_sym->st_size = 0;
+
+    return 0;
+}
