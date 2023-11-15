@@ -8203,3 +8203,69 @@ int bpf_object__pin(struct bpf_object *obj, const char *path)
 
 	return 0;
 }
+
+static void bpf_map__destroy(struct bpf_map *map)
+{
+	if (map->inner_map) {
+		bpf_map__destroy(map->inner_map);
+		zfree(&map->inner_map);
+	}
+
+	zfree(&map->init_slots);
+	map->init_slots_sz = 0;
+
+	if (map->mmaped) {
+		munmap(map->mmaped, bpf_map_mmap_sz(map));
+		map->mmaped = NULL;
+	}
+
+	if (map->st_ops) {
+		zfree(&map->st_ops->data);
+		zfree(&map->st_ops->progs);
+		zfree(&map->st_ops->kern_func_off);
+		zfree(&map->st_ops);
+	}
+
+	zfree(&map->name);
+	zfree(&map->real_name);
+	zfree(&map->pin_path);
+
+	if (map->fd >= 0)
+		zclose(map->fd);
+}
+
+void bpf_object__close(struct bpf_object *obj)
+{
+	size_t i;
+
+	if (IS_ERR_OR_NULL(obj))
+		return;
+
+	usdt_manager_free(obj->usdt_man);
+	obj->usdt_man = NULL;
+
+	bpf_gen__free(obj->gen_loader);
+	bpf_object__elf_finish(obj);
+	bpf_object_unload(obj);
+	btf__free(obj->btf);
+	btf_ext__free(obj->btf_ext);
+
+	for (i = 0; i < obj->nr_maps; i++)
+		bpf_map__destroy(&obj->maps[i]);
+
+	zfree(&obj->btf_custom_path);
+	zfree(&obj->kconfig);
+	zfree(&obj->externs);
+	obj->nr_extern = 0;
+
+	zfree(&obj->maps);
+	obj->nr_maps = 0;
+
+	if (obj->programs && obj->nr_programs) {
+		for (i = 0; i < obj->nr_programs; i++)
+			bpf_program__exit(&obj->programs[i]);
+	}
+	zfree(&obj->programs);
+
+	free(obj);
+}
