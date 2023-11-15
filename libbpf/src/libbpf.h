@@ -676,3 +676,57 @@ extern "C"
     LIBBPF_API const struct bpf_line_info *
     bpf_prog_linfo__lfind(const struct bpf_prog_linfo *prog_linfo,
                           __u32 insn_off, __u32 nr_skip);
+
+    LIBBPF_API int libbpf_probe_bpf_prog_type(enum bpf_prog_type prog_type, const void *opts);
+    LIBBPF_API int libbpf_probe_bpf_map_type(enum bpf_map_type map_type, const void *opts);
+
+    LIBBPF_API int libbpf_probe_bpf_helper(enum bpf_prog_type prog_type,
+                                           enum bpf_func_id helper_id, const void *opts);
+    LIBBPF_API int libbpf_num_possible_cpus(void);
+
+    struct bpf_map_skeleton
+    {
+        const char *name;
+        struct bpf_map **map;
+        void **mmaped;
+    };
+
+    struct bpf_prog_skeleton
+    {
+        const char *name;
+        struct bpf_program **prog;
+        struct bpf_link **link;
+    };
+
+    struct bpf_object_skeleton
+    {
+        size_t sz; /* size of this struct, for forward/backward compatibility */
+
+        const char *name;
+        const void *data;
+        size_t data_sz;
+
+        struct bpf_object **obj;
+
+        int map_cnt;
+        int map_skel_sz; /* sizeof(struct bpf_map_skeleton) */
+        struct bpf_map_skeleton *maps;
+
+        int prog_cnt;
+        int prog_skel_sz; /* sizeof(struct bpf_prog_skeleton) */
+        struct bpf_prog_skeleton *progs;
+    };
+    LIBBPF_API int
+    bpf_object__open_skeleton(struct bpf_object_skeleton *s,
+                              const struct bpf_object_open_opts *opts);
+    LIBBPF_API int bpf_object__load_skeleton(struct bpf_object_skeleton *s);
+    LIBBPF_API int bpf_object__attach_skeleton(struct bpf_object_skeleton *s);
+    LIBBPF_API void bpf_object__detach_skeleton(struct bpf_object_skeleton *s);
+    LIBBPF_API void bpf_object__destroy_skeleton(struct bpf_object_skeleton *s);
+
+    struct bpf_var_skeleton
+    {
+        const char *name;
+        struct bpf_map **map;
+        void **addr;
+    };
