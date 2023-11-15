@@ -176,3 +176,72 @@ static int linker_append_btf_ext(struct bpf_linker *linker, struct src_obj *obj)
 
 static int finalize_btf(struct bpf_linker *linker);
 static int finalize_btf_ext(struct bpf_linker *linker);
+
+void bpf_linker__free(struct bpf_linker *linker)
+{
+    int i;
+
+    if (!linker)
+        return;
+
+    free(linker->filename);
+
+    if (linker->elf)
+        elf_end(linker->elf);
+
+    if (linker->fd >= 0)
+        close(linker->fd);
+
+    strset__free(linker->strtab_strs);
+
+    btf__free(linker->btf);
+    btf_ext__free(linker->btf_ext);
+
+    for (i = 1; i < linker->sec_cnt; i++)
+    {
+        struct dst_sec *sec = &linker->secs[i];
+
+        free(sec->sec_name);
+        free(sec->raw_data);
+        free(sec->sec_vars);
+
+        free(sec->func_info.recs);
+        free(sec->line_info.recs);
+        free(sec->core_relo_info.recs);
+    }
+    free(linker->secs);
+
+    free(linker->glob_syms);
+    free(linker);
+}
+
+struct bpf_linker *bpf_linker__new(const char *filename, struct bpf_linker_opts *opts)
+{
+    struct bpf_linker *linker;
+    int err;
+
+    if (!OPTS_VALID(opts, bpf_linker_opts))
+        return errno = EINVAL, NULL;
+
+    if (elf_version(EV_CURRENT) == EV_NONE)
+    {
+        pr_warn_elf("libelf initialization failed");
+        return errno = EINVAL, NULL;
+    }
+
+    linker = calloc(1, sizeof(*linker));
+    if (!linker)
+        return errno = ENOMEM, NULL;
+
+    linker->fd = -1;
+
+    err = init_output_elf(linker, filename);
+    if (err)
+        goto err_out;
+
+    return linker;
+
+err_out:
+    bpf_linker__free(linker);
+    return errno = -err, NULL;
+}
