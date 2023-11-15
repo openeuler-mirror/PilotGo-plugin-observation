@@ -245,3 +245,50 @@ err_out:
     bpf_linker__free(linker);
     return errno = -err, NULL;
 }
+static struct dst_sec *add_dst_sec(struct bpf_linker *linker, const char *sec_name)
+{
+    struct dst_sec *secs = linker->secs, *sec;
+    size_t new_cnt = linker->sec_cnt ? linker->sec_cnt + 1 : 2;
+
+    secs = libbpf_reallocarray(secs, new_cnt, sizeof(*secs));
+    if (!secs)
+        return NULL;
+
+    /* zero out newly allocated memory */
+    memset(secs + linker->sec_cnt, 0, (new_cnt - linker->sec_cnt) * sizeof(*secs));
+
+    linker->secs = secs;
+    linker->sec_cnt = new_cnt;
+
+    sec = &linker->secs[new_cnt - 1];
+    sec->id = new_cnt - 1;
+    sec->sec_name = strdup(sec_name);
+    if (!sec->sec_name)
+        return NULL;
+
+    return sec;
+}
+
+static Elf64_Sym *add_new_sym(struct bpf_linker *linker, size_t *sym_idx)
+{
+    struct dst_sec *symtab = &linker->secs[linker->symtab_sec_idx];
+    Elf64_Sym *syms, *sym;
+    size_t sym_cnt = symtab->sec_sz / sizeof(*sym);
+
+    syms = libbpf_reallocarray(symtab->raw_data, sym_cnt + 1, sizeof(*sym));
+    if (!syms)
+        return NULL;
+
+    sym = &syms[sym_cnt];
+    memset(sym, 0, sizeof(*sym));
+
+    symtab->raw_data = syms;
+    symtab->sec_sz += sizeof(*sym);
+    symtab->shdr->sh_size += sizeof(*sym);
+    symtab->data->d_size += sizeof(*sym);
+
+    if (sym_idx)
+        *sym_idx = sym_cnt;
+
+    return sym;
+}
