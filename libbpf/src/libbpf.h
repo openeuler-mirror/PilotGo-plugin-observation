@@ -524,7 +524,7 @@ extern "C"
     };
 
 #define BPF_TC_PARENT(a, b) \
-    ((((a) << 16) & 0xFFFF0000U) | ((b)&0x0000FFFFU))
+    ((((a) << 16) & 0xFFFF0000U) | ((b) & 0x0000FFFFU))
 
     enum bpf_tc_flags
     {
@@ -572,3 +572,49 @@ extern "C"
     {
         size_t sz; /* size of this struct, for forward/backward compatibility */
     };
+#define ring_buffer_opts__last_field sz
+
+    LIBBPF_API struct ring_buffer *
+    ring_buffer__new(int map_fd, ring_buffer_sample_fn sample_cb, void *ctx,
+                     const struct ring_buffer_opts *opts);
+    LIBBPF_API void ring_buffer__free(struct ring_buffer *rb);
+    LIBBPF_API int ring_buffer__add(struct ring_buffer *rb, int map_fd,
+                                    ring_buffer_sample_fn sample_cb, void *ctx);
+    LIBBPF_API int ring_buffer__poll(struct ring_buffer *rb, int timeout_ms);
+    LIBBPF_API int ring_buffer__consume(struct ring_buffer *rb);
+    LIBBPF_API int ring_buffer__epoll_fd(const struct ring_buffer *rb);
+
+    struct user_ring_buffer_opts
+    {
+        size_t sz; /* size of this struct, for forward/backward compatibility */
+    };
+
+#define user_ring_buffer_opts__last_field sz
+
+    LIBBPF_API struct user_ring_buffer *
+    user_ring_buffer__new(int map_fd, const struct user_ring_buffer_opts *opts);
+
+    LIBBPF_API void *user_ring_buffer__reserve(struct user_ring_buffer *rb, __u32 size);
+
+    LIBBPF_API void *user_ring_buffer__reserve_blocking(struct user_ring_buffer *rb,
+                                                        __u32 size,
+                                                        int timeout_ms);
+    LIBBPF_API void user_ring_buffer__submit(struct user_ring_buffer *rb, void *sample);
+    LIBBPF_API void user_ring_buffer__discard(struct user_ring_buffer *rb, void *sample);
+
+    LIBBPF_API void user_ring_buffer__free(struct user_ring_buffer *rb);
+
+    struct perf_buffer;
+
+    typedef void (*perf_buffer_sample_fn)(void *ctx, int cpu,
+                                          void *data, __u32 size);
+    typedef void (*perf_buffer_lost_fn)(void *ctx, int cpu, __u64 cnt);
+
+    /* common use perf buffer options */
+    struct perf_buffer_opts
+    {
+        size_t sz;
+        __u32 sample_period;
+        size_t : 0;
+    };
+#define perf_buffer_opts__last_field sample_period
