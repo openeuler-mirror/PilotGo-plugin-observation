@@ -730,3 +730,107 @@ extern "C"
         struct bpf_map **map;
         void **addr;
     };
+
+    struct bpf_object_subskeleton
+    {
+        size_t sz; /* size of this struct, for forward/backward compatibility */
+
+        const struct bpf_object *obj;
+
+        int map_cnt;
+        int map_skel_sz; /* sizeof(struct bpf_map_skeleton) */
+        struct bpf_map_skeleton *maps;
+
+        int prog_cnt;
+        int prog_skel_sz; /* sizeof(struct bpf_prog_skeleton) */
+        struct bpf_prog_skeleton *progs;
+
+        int var_cnt;
+        int var_skel_sz; /* sizeof(struct bpf_var_skeleton) */
+        struct bpf_var_skeleton *vars;
+    };
+
+    LIBBPF_API int
+    bpf_object__open_subskeleton(struct bpf_object_subskeleton *s);
+    LIBBPF_API void
+    bpf_object__destroy_subskeleton(struct bpf_object_subskeleton *s);
+
+    struct gen_loader_opts
+    {
+        size_t sz; /* size of this struct, for forward/backward compatibility */
+        const char *data;
+        const char *insns;
+        __u32 data_sz;
+        __u32 insns_sz;
+    };
+
+#define gen_loader_opts__last_field insns_sz
+    LIBBPF_API int bpf_object__gen_loader(struct bpf_object *obj,
+                                          struct gen_loader_opts *opts);
+
+    enum libbpf_tristate
+    {
+        TRI_NO = 0,
+        TRI_YES = 1,
+        TRI_MODULE = 2,
+    };
+
+    struct bpf_linker_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+    };
+#define bpf_linker_opts__last_field sz
+
+    struct bpf_linker_file_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+    };
+#define bpf_linker_file_opts__last_field sz
+
+    struct bpf_linker;
+
+    LIBBPF_API struct bpf_linker *bpf_linker__new(const char *filename, struct bpf_linker_opts *opts);
+    LIBBPF_API int bpf_linker__add_file(struct bpf_linker *linker,
+                                        const char *filename,
+                                        const struct bpf_linker_file_opts *opts);
+    LIBBPF_API int bpf_linker__finalize(struct bpf_linker *linker);
+    LIBBPF_API void bpf_linker__free(struct bpf_linker *linker);
+    struct bpf_prog_load_opts; /* defined in bpf.h */
+
+    typedef int (*libbpf_prog_setup_fn_t)(struct bpf_program *prog, long cookie);
+
+    typedef int (*libbpf_prog_prepare_load_fn_t)(struct bpf_program *prog,
+                                                 struct bpf_prog_load_opts *opts, long cookie);
+
+    typedef int (*libbpf_prog_attach_fn_t)(const struct bpf_program *prog, long cookie,
+                                           struct bpf_link **link);
+
+    struct libbpf_prog_handler_opts
+    {
+        /* size of this struct, for forward/backward compatibility */
+        size_t sz;
+
+        long cookie;
+
+        libbpf_prog_setup_fn_t prog_setup_fn;
+
+        libbpf_prog_prepare_load_fn_t prog_prepare_load_fn;
+
+        libbpf_prog_attach_fn_t prog_attach_fn;
+    };
+#define libbpf_prog_handler_opts__last_field prog_attach_fn
+
+    LIBBPF_API int libbpf_register_prog_handler(const char *sec,
+                                                enum bpf_prog_type prog_type,
+                                                enum bpf_attach_type exp_attach_type,
+                                                const struct libbpf_prog_handler_opts *opts);
+
+    LIBBPF_API int libbpf_unregister_prog_handler(int handler_id);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* __LIBBPF_LIBBPF_H */
