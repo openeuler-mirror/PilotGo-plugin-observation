@@ -8025,3 +8025,74 @@ int bpf_map__set_pin_path(struct bpf_map *map, const char *path)
 	map->pin_path = new;
 	return 0;
 }
+
+__alias(bpf_map__pin_path)
+const char *bpf_map__get_pin_path(const struct bpf_map *map);
+
+const char *bpf_map__pin_path(const struct bpf_map *map)
+{
+	return map->pin_path;
+}
+
+bool bpf_map__is_pinned(const struct bpf_map *map)
+{
+	return map->pinned;
+}
+
+static void sanitize_pin_path(char *s)
+{
+	/* bpffs disallows periods in path names */
+	while (*s) {
+		if (*s == '.')
+			*s = '_';
+		s++;
+	}
+}
+
+int bpf_object__pin_maps(struct bpf_object *obj, const char *path)
+{
+	struct bpf_map *map;
+	int err;
+
+	if (!obj)
+		return libbpf_err(-ENOENT);
+
+	if (!obj->loaded) {
+		pr_warn("object not yet loaded; load it first\n");
+		return libbpf_err(-ENOENT);
+	}
+
+	bpf_object__for_each_map(map, obj) {
+		char *pin_path = NULL;
+		char buf[PATH_MAX];
+
+		if (!map->autocreate)
+			continue;
+
+		if (path) {
+			err = pathname_concat(buf, sizeof(buf), path, bpf_map__name(map));
+			if (err)
+				goto err_unpin_maps;
+			sanitize_pin_path(buf);
+			pin_path = buf;
+		} else if (!map->pin_path) {
+			continue;
+		}
+
+		err = bpf_map__pin(map, pin_path);
+		if (err)
+			goto err_unpin_maps;
+	}
+
+	return 0;
+
+err_unpin_maps:
+	while ((map = bpf_object__prev_map(obj, map))) {
+		if (!map->pin_path)
+			continue;
+
+		bpf_map__unpin(map, NULL);
+	}
+
+	return libbpf_err(err);
+}
