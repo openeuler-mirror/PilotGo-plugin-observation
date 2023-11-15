@@ -10032,3 +10032,29 @@ struct pci_driver {
 	struct pci_dynids dynids;
 	bool driver_managed_dma;
 };
+struct pci_ops {
+	int (*add_bus)(struct pci_bus *);
+	void (*remove_bus)(struct pci_bus *);
+	void * (*map_bus)(struct pci_bus *, unsigned int, int);
+	int (*read)(struct pci_bus *, unsigned int, int, int, u32 *);
+	int (*write)(struct pci_bus *, unsigned int, int, int, u32);
+};
+
+typedef unsigned int pci_ers_result_t;
+
+struct pci_error_handlers {
+	pci_ers_result_t (*error_detected)(struct pci_dev *, pci_channel_state_t);
+	pci_ers_result_t (*mmio_enabled)(struct pci_dev *);
+	pci_ers_result_t (*slot_reset)(struct pci_dev *);
+	void (*reset_prepare)(struct pci_dev *);
+	void (*reset_done)(struct pci_dev *);
+	void (*resume)(struct pci_dev *);
+};
+
+typedef __u16 __be16;
+
+typedef __u32 __be32;
+
+typedef __u32 __wsum;
+
+typedef long unsigned int irq_hw_number_t;
