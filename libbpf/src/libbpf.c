@@ -8365,3 +8365,52 @@ bpf_object__prev_program(const struct bpf_object *obj, struct bpf_program *next)
 
 	return prog;
 }
+
+void bpf_program__set_ifindex(struct bpf_program *prog, __u32 ifindex)
+{
+	prog->prog_ifindex = ifindex;
+}
+
+const char *bpf_program__name(const struct bpf_program *prog)
+{
+	return prog->name;
+}
+
+const char *bpf_program__section_name(const struct bpf_program *prog)
+{
+	return prog->sec_name;
+}
+
+bool bpf_program__autoload(const struct bpf_program *prog)
+{
+	return prog->autoload;
+}
+
+int bpf_program__set_autoload(struct bpf_program *prog, bool autoload)
+{
+	if (prog->obj->loaded)
+		return libbpf_err(-EINVAL);
+
+	prog->autoload = autoload;
+	return 0;
+}
+
+bool bpf_program__autoattach(const struct bpf_program *prog)
+{
+	return prog->autoattach;
+}
+
+void bpf_program__set_autoattach(struct bpf_program *prog, bool autoattach)
+{
+	prog->autoattach = autoattach;
+}
+
+const struct bpf_insn *bpf_program__insns(const struct bpf_program *prog)
+{
+	return prog->insns;
+}
+
+size_t bpf_program__insn_cnt(const struct bpf_program *prog)
+{
+	return prog->insns_cnt;
+}
