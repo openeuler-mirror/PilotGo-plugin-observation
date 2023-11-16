@@ -8509,3 +8509,43 @@ int bpf_program__set_log_level(struct bpf_program *prog, __u32 log_level)
 	prog->log_level = log_level;
 	return 0;
 }
+
+const char *bpf_program__log_buf(const struct bpf_program *prog, size_t *log_size)
+{
+	*log_size = prog->log_size;
+	return prog->log_buf;
+}
+
+int bpf_program__set_log_buf(struct bpf_program *prog, char *log_buf, size_t log_size)
+{
+	if (log_size && !log_buf)
+		return -EINVAL;
+	if (prog->log_size > UINT_MAX)
+		return -EINVAL;
+	if (prog->obj->loaded)
+		return -EBUSY;
+
+	prog->log_buf = log_buf;
+	prog->log_size = log_size;
+	return 0;
+}
+
+#define SEC_DEF(sec_pfx, ptype, atype, flags, ...) {			    \
+	.sec = (char *)sec_pfx,						    \
+	.prog_type = BPF_PROG_TYPE_##ptype,				    \
+	.expected_attach_type = atype,					    \
+	.cookie = (long)(flags),					    \
+	.prog_prepare_load_fn = libbpf_prepare_prog_load,		    \
+	__VA_ARGS__							    \
+}
+
+static int attach_kprobe(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_uprobe(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_ksyscall(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_usdt(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_tp(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_raw_tp(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_trace(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_kprobe_multi(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_lsm(const struct bpf_program *prog, long cookie, struct bpf_link **link);
+static int attach_iter(const struct bpf_program *prog, long cookie, struct bpf_link **link);
