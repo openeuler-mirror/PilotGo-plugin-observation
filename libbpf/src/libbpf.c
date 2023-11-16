@@ -8872,3 +8872,142 @@ const char *libbpf_bpf_prog_type_str(enum bpf_prog_type t)
 
 	return prog_type_name[t];
 }
+
+static struct bpf_map *find_struct_ops_map_by_offset(struct bpf_object *obj,
+						     int sec_idx,
+						     size_t offset)
+{
+	struct bpf_map *map;
+	size_t i;
+
+	for (i = 0; i < obj->nr_maps; i++) {
+		map = &obj->maps[i];
+		if (!bpf_map__is_struct_ops(map))
+			continue;
+		if (map->sec_idx == sec_idx &&
+		    map->sec_offset <= offset &&
+		    offset - map->sec_offset < map->def.value_size)
+			return map;
+	}
+
+	return NULL;
+}
+
+/* Collect the reloc from ELF and populate the st_ops->progs[] */
+static int bpf_object__collect_st_ops_relos(struct bpf_object *obj,
+					    Elf64_Shdr *shdr, Elf_Data *data)
+{
+	const struct btf_member *member;
+	struct bpf_struct_ops *st_ops;
+	struct bpf_program *prog;
+	unsigned int shdr_idx;
+	const struct btf *btf;
+	struct bpf_map *map;
+	unsigned int moff, insn_idx;
+	const char *name;
+	__u32 member_idx;
+	Elf64_Sym *sym;
+	Elf64_Rel *rel;
+	int i, nrels;
+
+	btf = obj->btf;
+	nrels = shdr->sh_size / shdr->sh_entsize;
+	for (i = 0; i < nrels; i++) {
+		rel = elf_rel_by_idx(data, i);
+		if (!rel) {
+			pr_warn("struct_ops reloc: failed to get %d reloc\n", i);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		sym = elf_sym_by_idx(obj, ELF64_R_SYM(rel->r_info));
+		if (!sym) {
+			pr_warn("struct_ops reloc: symbol %zx not found\n",
+				(size_t)ELF64_R_SYM(rel->r_info));
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+
+		name = elf_sym_str(obj, sym->st_name) ?: "<?>";
+		map = find_struct_ops_map_by_offset(obj, shdr->sh_info, rel->r_offset);
+		if (!map) {
+			pr_warn("struct_ops reloc: cannot find map at rel->r_offset %zu\n",
+				(size_t)rel->r_offset);
+			return -EINVAL;
+		}
+
+		moff = rel->r_offset - map->sec_offset;
+		shdr_idx = sym->st_shndx;
+		st_ops = map->st_ops;
+		pr_debug("struct_ops reloc %s: for %lld value %lld shdr_idx %u rel->r_offset %zu map->sec_offset %zu name %d (\'%s\')\n",
+			 map->name,
+			 (long long)(rel->r_info >> 32),
+			 (long long)sym->st_value,
+			 shdr_idx, (size_t)rel->r_offset,
+			 map->sec_offset, sym->st_name, name);
+
+		if (shdr_idx >= SHN_LORESERVE) {
+			pr_warn("struct_ops reloc %s: rel->r_offset %zu shdr_idx %u unsupported non-static function\n",
+				map->name, (size_t)rel->r_offset, shdr_idx);
+			return -LIBBPF_ERRNO__RELOC;
+		}
+		if (sym->st_value % BPF_INSN_SZ) {
+			pr_warn("struct_ops reloc %s: invalid target program offset %llu\n",
+				map->name, (unsigned long long)sym->st_value);
+			return -LIBBPF_ERRNO__FORMAT;
+		}
+		insn_idx = sym->st_value / BPF_INSN_SZ;
+
+		member = find_member_by_offset(st_ops->type, moff * 8);
+		if (!member) {
+			pr_warn("struct_ops reloc %s: cannot find member at moff %u\n",
+				map->name, moff);
+			return -EINVAL;
+		}
+		member_idx = member - btf_members(st_ops->type);
+		name = btf__name_by_offset(btf, member->name_off);
+
+		if (!resolve_func_ptr(btf, member->type, NULL)) {
+			pr_warn("struct_ops reloc %s: cannot relocate non func ptr %s\n",
+				map->name, name);
+			return -EINVAL;
+		}
+
+		prog = find_prog_by_sec_insn(obj, shdr_idx, insn_idx);
+		if (!prog) {
+			pr_warn("struct_ops reloc %s: cannot find prog at shdr_idx %u to relocate func ptr %s\n",
+				map->name, shdr_idx, name);
+			return -EINVAL;
+		}
+
+		/* prevent the use of BPF prog with invalid type */
+		if (prog->type != BPF_PROG_TYPE_STRUCT_OPS) {
+			pr_warn("struct_ops reloc %s: prog %s is not struct_ops BPF program\n",
+				map->name, prog->name);
+			return -EINVAL;
+		}
+
+		/* if we haven't yet processed this BPF program, record proper
+		 * attach_btf_id and member_idx
+		 */
+		if (!prog->attach_btf_id) {
+			prog->attach_btf_id = st_ops->type_id;
+			prog->expected_attach_type = member_idx;
+		}
+
+		/* struct_ops BPF prog can be re-used between multiple
+		 * .struct_ops & .struct_ops.link as long as it's the
+		 * same struct_ops struct definition and the same
+		 * function pointer field
+		 */
+		if (prog->attach_btf_id != st_ops->type_id ||
+		    prog->expected_attach_type != member_idx) {
+			pr_warn("struct_ops reloc %s: cannot use prog %s in sec %s with type %u attach_btf_id %u expected_attach_type %u for func ptr %s\n",
+				map->name, prog->name, prog->sec_name, prog->type,
+				prog->attach_btf_id, prog->expected_attach_type, name);
+			return -EINVAL;
+		}
+
+		st_ops->progs[member_idx] = prog;
+	}
+
+	return 0;
+}
