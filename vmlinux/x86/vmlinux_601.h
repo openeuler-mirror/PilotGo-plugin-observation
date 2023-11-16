@@ -10383,3 +10383,31 @@ struct acpi_device_pnp {
 	acpi_device_class device_class;
 	union acpi_object *str_obj;
 };
+
+struct acpi_device_power_flags {
+	u32 explicit_get: 1;
+	u32 power_resources: 1;
+	u32 inrush_current: 1;
+	u32 power_removed: 1;
+	u32 ignore_parent: 1;
+	u32 dsw_present: 1;
+	u32 reserved: 26;
+};
+
+struct acpi_device_power_state {
+	struct {
+		u8 valid: 1;
+		u8 explicit_set: 1;
+		u8 reserved: 6;
+	} flags;
+	int power;
+	int latency;
+	struct list_head resources;
+};
+
+struct acpi_device_power {
+	int state;
+	struct acpi_device_power_flags flags;
+	struct acpi_device_power_state states[5];
+	u8 state_for_enumeration;
+};
