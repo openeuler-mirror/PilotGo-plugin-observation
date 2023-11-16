@@ -8463,3 +8463,49 @@ int bpf_program__set_type(struct bpf_program *prog, enum bpf_prog_type type)
 	prog->sec_def = NULL;
 	return 0;
 }
+
+__alias(bpf_program__expected_attach_type)
+enum bpf_attach_type bpf_program__get_expected_attach_type(const struct bpf_program *prog);
+
+enum bpf_attach_type bpf_program__expected_attach_type(const struct bpf_program *prog)
+{
+	return prog->expected_attach_type;
+}
+
+int bpf_program__set_expected_attach_type(struct bpf_program *prog,
+					   enum bpf_attach_type type)
+{
+	if (prog->obj->loaded)
+		return libbpf_err(-EBUSY);
+
+	prog->expected_attach_type = type;
+	return 0;
+}
+
+__u32 bpf_program__flags(const struct bpf_program *prog)
+{
+	return prog->prog_flags;
+}
+
+int bpf_program__set_flags(struct bpf_program *prog, __u32 flags)
+{
+	if (prog->obj->loaded)
+		return libbpf_err(-EBUSY);
+
+	prog->prog_flags = flags;
+	return 0;
+}
+
+__u32 bpf_program__log_level(const struct bpf_program *prog)
+{
+	return prog->log_level;
+}
+
+int bpf_program__set_log_level(struct bpf_program *prog, __u32 log_level)
+{
+	if (prog->obj->loaded)
+		return libbpf_err(-EBUSY);
+
+	prog->log_level = log_level;
+	return 0;
+}
