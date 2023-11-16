@@ -9011,3 +9011,58 @@ static int bpf_object__collect_st_ops_relos(struct bpf_object *obj,
 
 	return 0;
 }
+
+#define BTF_TRACE_PREFIX "btf_trace_"
+#define BTF_LSM_PREFIX "bpf_lsm_"
+#define BTF_ITER_PREFIX "bpf_iter_"
+#define BTF_MAX_NAME_SIZE 128
+
+void btf_get_kernel_prefix_kind(enum bpf_attach_type attach_type,
+				const char **prefix, int *kind)
+{
+	switch (attach_type) {
+	case BPF_TRACE_RAW_TP:
+		*prefix = BTF_TRACE_PREFIX;
+		*kind = BTF_KIND_TYPEDEF;
+		break;
+	case BPF_LSM_MAC:
+	case BPF_LSM_CGROUP:
+		*prefix = BTF_LSM_PREFIX;
+		*kind = BTF_KIND_FUNC;
+		break;
+	case BPF_TRACE_ITER:
+		*prefix = BTF_ITER_PREFIX;
+		*kind = BTF_KIND_FUNC;
+		break;
+	default:
+		*prefix = "";
+		*kind = BTF_KIND_FUNC;
+	}
+}
+
+static int find_btf_by_prefix_kind(const struct btf *btf, const char *prefix,
+				   const char *name, __u32 kind)
+{
+	char btf_type_name[BTF_MAX_NAME_SIZE];
+	int ret;
+
+	ret = snprintf(btf_type_name, sizeof(btf_type_name),
+		       "%s%s", prefix, name);
+	/* snprintf returns the number of characters written excluding the
+	 * terminating null. So, if >= BTF_MAX_NAME_SIZE are written, it
+	 * indicates truncation.
+	 */
+	if (ret < 0 || ret >= sizeof(btf_type_name))
+		return -ENAMETOOLONG;
+	return btf__find_by_name_kind(btf, btf_type_name, kind);
+}
+
+static inline int find_attach_btf_id(struct btf *btf, const char *name,
+				     enum bpf_attach_type attach_type)
+{
+	const char *prefix;
+	int kind;
+
+	btf_get_kernel_prefix_kind(attach_type, &prefix, &kind);
+	return find_btf_by_prefix_kind(btf, prefix, name, kind);
+}
