@@ -8414,3 +8414,52 @@ size_t bpf_program__insn_cnt(const struct bpf_program *prog)
 {
 	return prog->insns_cnt;
 }
+
+int bpf_program__set_insns(struct bpf_program *prog,
+			   struct bpf_insn *new_insns, size_t new_insn_cnt)
+{
+	struct bpf_insn *insns;
+
+	if (prog->obj->loaded)
+		return -EBUSY;
+
+	insns = libbpf_reallocarray(prog->insns, new_insn_cnt, sizeof(*insns));
+	if (!insns) {
+		pr_warn("prog '%s': failed to realloc prog code\n", prog->name);
+		return -ENOMEM;
+	}
+	memcpy(insns, new_insns, new_insn_cnt * sizeof(*insns));
+
+	prog->insns = insns;
+	prog->insns_cnt = new_insn_cnt;
+	return 0;
+}
+
+int bpf_program__fd(const struct bpf_program *prog)
+{
+	if (!prog)
+		return libbpf_err(-EINVAL);
+
+	if (prog->fd < 0)
+		return libbpf_err(-ENOENT);
+
+	return prog->fd;
+}
+
+__alias(bpf_program__type)
+enum bpf_prog_type bpf_program__get_type(const struct bpf_program *prog);
+
+enum bpf_prog_type bpf_program__type(const struct bpf_program *prog)
+{
+	return prog->type;
+}
+
+int bpf_program__set_type(struct bpf_program *prog, enum bpf_prog_type type)
+{
+	if (prog->obj->loaded)
+		return libbpf_err(-EBUSY);
+
+	prog->type = type;
+	prog->sec_def = NULL;
+	return 0;
+}
