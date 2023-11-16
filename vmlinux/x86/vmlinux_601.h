@@ -10280,3 +10280,52 @@ typedef u64 acpi_io_address;
 typedef void *acpi_handle;
 
 typedef u32 acpi_object_type;
+
+union acpi_object {
+	acpi_object_type type;
+	struct {
+		acpi_object_type type;
+		u64 value;
+	} integer;
+	struct {
+		acpi_object_type type;
+		u32 length;
+		char *pointer;
+	} string;
+	struct {
+		acpi_object_type type;
+		u32 length;
+		u8 *pointer;
+	} buffer;
+	struct {
+		acpi_object_type type;
+		u32 count;
+		union acpi_object *elements;
+	} package;
+	struct {
+		acpi_object_type type;
+		acpi_object_type actual_type;
+		acpi_handle handle;
+	} reference;
+	struct {
+		acpi_object_type type;
+		u32 proc_id;
+		acpi_io_address pblk_address;
+		u32 pblk_length;
+	} processor;
+	struct {
+		acpi_object_type type;
+		u32 system_level;
+		u32 resource_order;
+	} power_resource;
+};
+
+struct acpi_device;
+
+struct acpi_hotplug_profile {
+	struct kobject kobj;
+	int (*scan_dependent)(struct acpi_device *);
+	void (*notify_online)(struct acpi_device *);
+	bool enabled: 1;
+	bool demand_offline: 1;
+};
