@@ -8634,3 +8634,60 @@ static const struct bpf_sec_def section_defs[] = {
 	SEC_DEF("struct_ops.s+",	STRUCT_OPS, 0, SEC_SLEEPABLE),
 	SEC_DEF("sk_lookup",		SK_LOOKUP, BPF_SK_LOOKUP, SEC_ATTACHABLE),
 };
+
+static size_t custom_sec_def_cnt;
+static struct bpf_sec_def *custom_sec_defs;
+static struct bpf_sec_def custom_fallback_def;
+static bool has_custom_fallback_def;
+
+static int last_custom_sec_def_handler_id;
+
+int libbpf_register_prog_handler(const char *sec,
+				 enum bpf_prog_type prog_type,
+				 enum bpf_attach_type exp_attach_type,
+				 const struct libbpf_prog_handler_opts *opts)
+{
+	struct bpf_sec_def *sec_def;
+
+	if (!OPTS_VALID(opts, libbpf_prog_handler_opts))
+		return libbpf_err(-EINVAL);
+
+	if (last_custom_sec_def_handler_id == INT_MAX) /* prevent overflow */
+		return libbpf_err(-E2BIG);
+
+	if (sec) {
+		sec_def = libbpf_reallocarray(custom_sec_defs, custom_sec_def_cnt + 1,
+					      sizeof(*sec_def));
+		if (!sec_def)
+			return libbpf_err(-ENOMEM);
+
+		custom_sec_defs = sec_def;
+		sec_def = &custom_sec_defs[custom_sec_def_cnt];
+	} else {
+		if (has_custom_fallback_def)
+			return libbpf_err(-EBUSY);
+
+		sec_def = &custom_fallback_def;
+	}
+
+	sec_def->sec = sec ? strdup(sec) : NULL;
+	if (sec && !sec_def->sec)
+		return libbpf_err(-ENOMEM);
+
+	sec_def->prog_type = prog_type;
+	sec_def->expected_attach_type = exp_attach_type;
+	sec_def->cookie = OPTS_GET(opts, cookie, 0);
+
+	sec_def->prog_setup_fn = OPTS_GET(opts, prog_setup_fn, NULL);
+	sec_def->prog_prepare_load_fn = OPTS_GET(opts, prog_prepare_load_fn, NULL);
+	sec_def->prog_attach_fn = OPTS_GET(opts, prog_attach_fn, NULL);
+
+	sec_def->handler_id = ++last_custom_sec_def_handler_id;
+
+	if (sec)
+		custom_sec_def_cnt++;
+	else
+		has_custom_fallback_def = true;
+
+	return sec_def->handler_id;
+}
