@@ -10439,3 +10439,27 @@ struct acpi_device_perf_flags {
 };
 
 struct acpi_device_perf_state;
+
+struct acpi_device_perf {
+	int state;
+	struct acpi_device_perf_flags flags;
+	int state_count;
+	struct acpi_device_perf_state *states;
+};
+
+struct acpi_device_dir {
+	struct proc_dir_entry *entry;
+};
+
+struct acpi_device_data {
+	const union acpi_object *pointer;
+	struct list_head properties;
+	const union acpi_object *of_compatible;
+	struct list_head subnodes;
+};
+
+struct acpi_scan_handler;
+
+struct acpi_hotplug_context;
+
+struct acpi_gpio_mapping;
