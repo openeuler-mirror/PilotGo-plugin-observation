@@ -10167,3 +10167,41 @@ enum irq_domain_bus_token {
 	DOMAIN_BUS_WAKEUP = 9,
 	DOMAIN_BUS_VMD_MSI = 10,
 };
+struct irq_domain_ops;
+
+struct irq_domain_chip_generic;
+
+struct irq_data;
+
+struct irq_domain {
+	struct list_head link;
+	const char *name;
+	const struct irq_domain_ops *ops;
+	void *host_data;
+	unsigned int flags;
+	unsigned int mapcount;
+	struct fwnode_handle *fwnode;
+	enum irq_domain_bus_token bus_token;
+	struct irq_domain_chip_generic *gc;
+	struct device *dev;
+	struct irq_domain *parent;
+	irq_hw_number_t hwirq_max;
+	unsigned int revmap_size;
+	struct xarray revmap_tree;
+	struct mutex revmap_mutex;
+	struct irq_data *revmap[0];
+};
+
+struct rhashtable;
+
+struct rhashtable_compare_arg {
+	struct rhashtable *ht;
+	const void *key;
+};
+
+typedef u32 (*rht_hashfn_t)(const void *, u32, u32);
+
+typedef u32 (*rht_obj_hashfn_t)(const void *, u32, u32);
+
+typedef int (*rht_obj_cmpfn_t)(struct rhashtable_compare_arg *, const void *);
+
