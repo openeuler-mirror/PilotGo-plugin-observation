@@ -8691,3 +8691,66 @@ int libbpf_register_prog_handler(const char *sec,
 
 	return sec_def->handler_id;
 }
+
+int libbpf_unregister_prog_handler(int handler_id)
+{
+	struct bpf_sec_def *sec_defs;
+	int i;
+
+	if (handler_id <= 0)
+		return libbpf_err(-EINVAL);
+
+	if (has_custom_fallback_def && custom_fallback_def.handler_id == handler_id) {
+		memset(&custom_fallback_def, 0, sizeof(custom_fallback_def));
+		has_custom_fallback_def = false;
+		return 0;
+	}
+
+	for (i = 0; i < custom_sec_def_cnt; i++) {
+		if (custom_sec_defs[i].handler_id == handler_id)
+			break;
+	}
+
+	if (i == custom_sec_def_cnt)
+		return libbpf_err(-ENOENT);
+
+	free(custom_sec_defs[i].sec);
+	for (i = i + 1; i < custom_sec_def_cnt; i++)
+		custom_sec_defs[i - 1] = custom_sec_defs[i];
+	custom_sec_def_cnt--;
+
+	/* try to shrink the array, but it's ok if we couldn't */
+	sec_defs = libbpf_reallocarray(custom_sec_defs, custom_sec_def_cnt, sizeof(*sec_defs));
+	if (sec_defs)
+		custom_sec_defs = sec_defs;
+
+	return 0;
+}
+
+static bool sec_def_matches(const struct bpf_sec_def *sec_def, const char *sec_name)
+{
+	size_t len = strlen(sec_def->sec);
+
+	/* "type/" always has to have proper SEC("type/extras") form */
+	if (sec_def->sec[len - 1] == '/') {
+		if (str_has_pfx(sec_name, sec_def->sec))
+			return true;
+		return false;
+	}
+
+	/* "type+" means it can be either exact SEC("type") or
+	 * well-formed SEC("type/extras") with proper '/' separator
+	 */
+	if (sec_def->sec[len - 1] == '+') {
+		len--;
+		/* not even a prefix */
+		if (strncmp(sec_name, sec_def->sec, len) != 0)
+			return false;
+		/* exact match or has '/' separator */
+		if (sec_name[len] == '\0' || sec_name[len] == '/')
+			return true;
+		return false;
+	}
+
+	return strcmp(sec_name, sec_def->sec) == 0;
+}
