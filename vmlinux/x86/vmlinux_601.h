@@ -10329,3 +10329,30 @@ struct acpi_hotplug_profile {
 	bool enabled: 1;
 	bool demand_offline: 1;
 };
+
+struct acpi_device_status {
+	u32 present: 1;
+	u32 enabled: 1;
+	u32 show_in_ui: 1;
+	u32 functional: 1;
+	u32 battery_present: 1;
+	u32 reserved: 27;
+};
+
+struct acpi_device_flags {
+	u32 dynamic_status: 1;
+	u32 removable: 1;
+	u32 ejectable: 1;
+	u32 power_manageable: 1;
+	u32 match_driver: 1;
+	u32 initialized: 1;
+	u32 visited: 1;
+	u32 hotplug_notify: 1;
+	u32 is_dock_station: 1;
+	u32 of_compatible_ok: 1;
+	u32 coherent_dma: 1;
+	u32 cca_seen: 1;
+	u32 enumeration_by_parent: 1;
+	u32 honor_deps: 1;
+	u32 reserved: 18;
+};
