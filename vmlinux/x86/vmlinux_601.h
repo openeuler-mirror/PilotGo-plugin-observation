@@ -10356,3 +10356,30 @@ struct acpi_device_flags {
 	u32 honor_deps: 1;
 	u32 reserved: 18;
 };
+
+typedef char acpi_bus_id[8];
+
+struct acpi_pnp_type {
+	u32 hardware_id: 1;
+	u32 bus_address: 1;
+	u32 platform_id: 1;
+	u32 reserved: 29;
+};
+
+typedef u64 acpi_bus_address;
+
+typedef char acpi_device_name[40];
+
+typedef char acpi_device_class[20];
+
+struct acpi_device_pnp {
+	acpi_bus_id bus_id;
+	int instance_no;
+	struct acpi_pnp_type type;
+	acpi_bus_address bus_address;
+	char *unique_id;
+	struct list_head ids;
+	acpi_device_name device_name;
+	acpi_device_class device_class;
+	union acpi_object *str_obj;
+};
