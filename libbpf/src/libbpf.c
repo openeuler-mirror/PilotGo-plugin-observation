@@ -8315,3 +8315,53 @@ int bpf_object__gen_loader(struct bpf_object *obj, struct gen_loader_opts *opts)
 	obj->gen_loader = gen;
 	return 0;
 }
+
+static struct bpf_program *
+__bpf_program__iter(const struct bpf_program *p, const struct bpf_object *obj,
+		    bool forward)
+{
+	size_t nr_programs = obj->nr_programs;
+	ssize_t idx;
+
+	if (!nr_programs)
+		return NULL;
+
+	if (!p)
+		/* Iter from the beginning */
+		return forward ? &obj->programs[0] :
+			&obj->programs[nr_programs - 1];
+
+	if (p->obj != obj) {
+		pr_warn("error: program handler doesn't match object\n");
+		return errno = EINVAL, NULL;
+	}
+
+	idx = (p - obj->programs) + (forward ? 1 : -1);
+	if (idx >= obj->nr_programs || idx < 0)
+		return NULL;
+	return &obj->programs[idx];
+}
+
+struct bpf_program *
+bpf_object__next_program(const struct bpf_object *obj, struct bpf_program *prev)
+{
+	struct bpf_program *prog = prev;
+
+	do {
+		prog = __bpf_program__iter(prog, obj, true);
+	} while (prog && prog_is_subprog(obj, prog));
+
+	return prog;
+}
+
+struct bpf_program *
+bpf_object__prev_program(const struct bpf_object *obj, struct bpf_program *next)
+{
+	struct bpf_program *prog = next;
+
+	do {
+		prog = __bpf_program__iter(prog, obj, false);
+	} while (prog && prog_is_subprog(obj, prog));
+
+	return prog;
+}
