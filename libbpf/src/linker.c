@@ -520,3 +520,202 @@ static bool is_ignored_sec(struct src_sec *sec)
 
     return false;
 }
+
+static struct src_sec *add_src_sec(struct src_obj *obj, const char *sec_name)
+{
+    struct src_sec *secs = obj->secs, *sec;
+    size_t new_cnt = obj->sec_cnt ? obj->sec_cnt + 1 : 2;
+
+    secs = libbpf_reallocarray(secs, new_cnt, sizeof(*secs));
+    if (!secs)
+        return NULL;
+
+    /* zero out newly allocated memory */
+    memset(secs + obj->sec_cnt, 0, (new_cnt - obj->sec_cnt) * sizeof(*secs));
+
+    obj->secs = secs;
+    obj->sec_cnt = new_cnt;
+
+    sec = &obj->secs[new_cnt - 1];
+    sec->id = new_cnt - 1;
+    sec->sec_name = sec_name;
+
+    return sec;
+}
+
+static int linker_load_obj_file(struct bpf_linker *linker, const char *filename,
+                                const struct bpf_linker_file_opts *opts,
+                                struct src_obj *obj)
+{
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    const int host_endianness = ELFDATA2LSB;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    const int host_endianness = ELFDATA2MSB;
+#else
+#error "Unknown __BYTE_ORDER__"
+#endif
+    int err = 0;
+    Elf_Scn *scn;
+    Elf_Data *data;
+    Elf64_Ehdr *ehdr;
+    Elf64_Shdr *shdr;
+    struct src_sec *sec;
+
+    pr_debug("linker: adding object file '%s'...\n", filename);
+
+    obj->filename = filename;
+
+    obj->fd = open(filename, O_RDONLY | O_CLOEXEC);
+    if (obj->fd < 0)
+    {
+        err = -errno;
+        pr_warn("failed to open file '%s': %d\n", filename, err);
+        return err;
+    }
+    obj->elf = elf_begin(obj->fd, ELF_C_READ_MMAP, NULL);
+    if (!obj->elf)
+    {
+        err = -errno;
+        pr_warn_elf("failed to parse ELF file '%s'", filename);
+        return err;
+    }
+
+    /* Sanity check ELF file high-level properties */
+    ehdr = elf64_getehdr(obj->elf);
+    if (!ehdr)
+    {
+        err = -errno;
+        pr_warn_elf("failed to get ELF header for %s", filename);
+        return err;
+    }
+    if (ehdr->e_ident[EI_DATA] != host_endianness)
+    {
+        err = -EOPNOTSUPP;
+        pr_warn_elf("unsupported byte order of ELF file %s", filename);
+        return err;
+    }
+    if (ehdr->e_type != ET_REL || ehdr->e_machine != EM_BPF || ehdr->e_ident[EI_CLASS] != ELFCLASS64)
+    {
+        err = -EOPNOTSUPP;
+        pr_warn_elf("unsupported kind of ELF file %s", filename);
+        return err;
+    }
+
+    if (elf_getshdrstrndx(obj->elf, &obj->shstrs_sec_idx))
+    {
+        err = -errno;
+        pr_warn_elf("failed to get SHSTRTAB section index for %s", filename);
+        return err;
+    }
+
+    scn = NULL;
+    while ((scn = elf_nextscn(obj->elf, scn)) != NULL)
+    {
+        size_t sec_idx = elf_ndxscn(scn);
+        const char *sec_name;
+
+        shdr = elf64_getshdr(scn);
+        if (!shdr)
+        {
+            err = -errno;
+            pr_warn_elf("failed to get section #%zu header for %s",
+                        sec_idx, filename);
+            return err;
+        }
+
+        sec_name = elf_strptr(obj->elf, obj->shstrs_sec_idx, shdr->sh_name);
+        if (!sec_name)
+        {
+            err = -errno;
+            pr_warn_elf("failed to get section #%zu name for %s",
+                        sec_idx, filename);
+            return err;
+        }
+
+        data = elf_getdata(scn, 0);
+        if (!data)
+        {
+            err = -errno;
+            pr_warn_elf("failed to get section #%zu (%s) data from %s",
+                        sec_idx, sec_name, filename);
+            return err;
+        }
+
+        sec = add_src_sec(obj, sec_name);
+        if (!sec)
+            return -ENOMEM;
+
+        sec->scn = scn;
+        sec->shdr = shdr;
+        sec->data = data;
+        sec->sec_idx = elf_ndxscn(scn);
+
+        if (is_ignored_sec(sec))
+        {
+            sec->skipped = true;
+            continue;
+        }
+
+        switch (shdr->sh_type)
+        {
+        case SHT_SYMTAB:
+            if (obj->symtab_sec_idx)
+            {
+                err = -EOPNOTSUPP;
+                pr_warn("multiple SYMTAB sections found, not supported\n");
+                return err;
+            }
+            obj->symtab_sec_idx = sec_idx;
+            break;
+        case SHT_STRTAB:
+            /* we'll construct our own string table */
+            break;
+        case SHT_PROGBITS:
+            if (strcmp(sec_name, BTF_ELF_SEC) == 0)
+            {
+                obj->btf = btf__new(data->d_buf, shdr->sh_size);
+                err = libbpf_get_error(obj->btf);
+                if (err)
+                {
+                    pr_warn("failed to parse .BTF from %s: %d\n", filename, err);
+                    return err;
+                }
+                sec->skipped = true;
+                continue;
+            }
+            if (strcmp(sec_name, BTF_EXT_ELF_SEC) == 0)
+            {
+                obj->btf_ext = btf_ext__new(data->d_buf, shdr->sh_size);
+                err = libbpf_get_error(obj->btf_ext);
+                if (err)
+                {
+                    pr_warn("failed to parse .BTF.ext from '%s': %d\n", filename, err);
+                    return err;
+                }
+                sec->skipped = true;
+                continue;
+            }
+
+            /* data & code */
+            break;
+        case SHT_NOBITS:
+            /* BSS */
+            break;
+        case SHT_REL:
+            /* relocations */
+            break;
+        default:
+            pr_warn("unrecognized section #%zu (%s) in %s\n",
+                    sec_idx, sec_name, filename);
+            err = -EINVAL;
+            return err;
+        }
+    }
+
+    err = err ?: linker_sanity_check_elf(obj);
+    err = err ?: linker_sanity_check_btf(obj);
+    err = err ?: linker_sanity_check_btf_ext(obj);
+    err = err ?: linker_fixup_btf(obj);
+
+    return err;
+}
