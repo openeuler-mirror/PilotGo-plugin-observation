@@ -8814,3 +8814,61 @@ static char *libbpf_get_type_names(bool attach_type)
 
 	return buf;
 }
+
+int libbpf_prog_type_by_name(const char *name, enum bpf_prog_type *prog_type,
+			     enum bpf_attach_type *expected_attach_type)
+{
+	const struct bpf_sec_def *sec_def;
+	char *type_names;
+
+	if (!name)
+		return libbpf_err(-EINVAL);
+
+	sec_def = find_sec_def(name);
+	if (sec_def) {
+		*prog_type = sec_def->prog_type;
+		*expected_attach_type = sec_def->expected_attach_type;
+		return 0;
+	}
+
+	pr_debug("failed to guess program type from ELF section '%s'\n", name);
+	type_names = libbpf_get_type_names(false);
+	if (type_names != NULL) {
+		pr_debug("supported section(type) names are:%s\n", type_names);
+		free(type_names);
+	}
+
+	return libbpf_err(-ESRCH);
+}
+
+const char *libbpf_bpf_attach_type_str(enum bpf_attach_type t)
+{
+	if (t < 0 || t >= ARRAY_SIZE(attach_type_name))
+		return NULL;
+
+	return attach_type_name[t];
+}
+
+const char *libbpf_bpf_link_type_str(enum bpf_link_type t)
+{
+	if (t < 0 || t >= ARRAY_SIZE(link_type_name))
+		return NULL;
+
+	return link_type_name[t];
+}
+
+const char *libbpf_bpf_map_type_str(enum bpf_map_type t)
+{
+	if (t < 0 || t >= ARRAY_SIZE(map_type_name))
+		return NULL;
+
+	return map_type_name[t];
+}
+
+const char *libbpf_bpf_prog_type_str(enum bpf_prog_type t)
+{
+	if (t < 0 || t >= ARRAY_SIZE(prog_type_name))
+		return NULL;
+
+	return prog_type_name[t];
+}
