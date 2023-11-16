@@ -9200,3 +9200,47 @@ static int libbpf_find_attach_btf_id(struct bpf_program *prog, const char *attac
 	}
 	return 0;
 }
+
+int libbpf_attach_type_by_name(const char *name,
+			       enum bpf_attach_type *attach_type)
+{
+	char *type_names;
+	const struct bpf_sec_def *sec_def;
+
+	if (!name)
+		return libbpf_err(-EINVAL);
+
+	sec_def = find_sec_def(name);
+	if (!sec_def) {
+		pr_debug("failed to guess attach type based on ELF section name '%s'\n", name);
+		type_names = libbpf_get_type_names(true);
+		if (type_names != NULL) {
+			pr_debug("attachable section(type) names are:%s\n", type_names);
+			free(type_names);
+		}
+
+		return libbpf_err(-EINVAL);
+	}
+
+	if (sec_def->prog_prepare_load_fn != libbpf_prepare_prog_load)
+		return libbpf_err(-EINVAL);
+	if (!(sec_def->cookie & SEC_ATTACHABLE))
+		return libbpf_err(-EINVAL);
+
+	*attach_type = sec_def->expected_attach_type;
+	return 0;
+}
+
+int bpf_map__fd(const struct bpf_map *map)
+{
+	return map ? map->fd : libbpf_err(-EINVAL);
+}
+
+static bool map_uses_real_name(const struct bpf_map *map)
+{
+	if (map->libbpf_type == LIBBPF_MAP_DATA && strcmp(map->real_name, DATA_SEC) != 0)
+		return true;
+	if (map->libbpf_type == LIBBPF_MAP_RODATA && strcmp(map->real_name, RODATA_SEC) != 0)
+		return true;
+	return false;
+}
