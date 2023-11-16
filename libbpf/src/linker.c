@@ -444,3 +444,79 @@ static int init_output_elf(struct bpf_linker *linker, const char *file)
 
     return 0;
 }
+int bpf_linker__add_file(struct bpf_linker *linker, const char *filename,
+                         const struct bpf_linker_file_opts *opts)
+{
+    struct src_obj obj = {};
+    int err = 0;
+
+    if (!OPTS_VALID(opts, bpf_linker_file_opts))
+        return libbpf_err(-EINVAL);
+
+    if (!linker->elf)
+        return libbpf_err(-EINVAL);
+
+    err = err ?: linker_load_obj_file(linker, filename, opts, &obj);
+    err = err ?: linker_append_sec_data(linker, &obj);
+    err = err ?: linker_append_elf_syms(linker, &obj);
+    err = err ?: linker_append_elf_relos(linker, &obj);
+    err = err ?: linker_append_btf(linker, &obj);
+    err = err ?: linker_append_btf_ext(linker, &obj);
+
+    /* free up src_obj resources */
+    free(obj.btf_type_map);
+    btf__free(obj.btf);
+    btf_ext__free(obj.btf_ext);
+    free(obj.secs);
+    free(obj.sym_map);
+    if (obj.elf)
+        elf_end(obj.elf);
+    if (obj.fd >= 0)
+        close(obj.fd);
+
+    return libbpf_err(err);
+}
+
+static bool is_dwarf_sec_name(const char *name)
+{
+    /* approximation, but the actual list is too long */
+    return strncmp(name, ".debug_", sizeof(".debug_") - 1) == 0;
+}
+
+static bool is_ignored_sec(struct src_sec *sec)
+{
+    Elf64_Shdr *shdr = sec->shdr;
+    const char *name = sec->sec_name;
+
+    /* no special handling of .strtab */
+    if (shdr->sh_type == SHT_STRTAB)
+        return true;
+
+    /* ignore .llvm_addrsig section as well */
+    if (shdr->sh_type == SHT_LLVM_ADDRSIG)
+        return true;
+
+    /* no subprograms will lead to an empty .text section, ignore it */
+    if (shdr->sh_type == SHT_PROGBITS && shdr->sh_size == 0 &&
+        strcmp(sec->sec_name, ".text") == 0)
+        return true;
+
+    /* DWARF sections */
+    if (is_dwarf_sec_name(sec->sec_name))
+        return true;
+
+    if (strncmp(name, ".rel", sizeof(".rel") - 1) == 0)
+    {
+        name += sizeof(".rel") - 1;
+        /* DWARF section relocations */
+        if (is_dwarf_sec_name(name))
+            return true;
+
+        /* .BTF and .BTF.ext don't need relocations */
+        if (strcmp(name, BTF_ELF_SEC) == 0 ||
+            strcmp(name, BTF_EXT_ELF_SEC) == 0)
+            return true;
+    }
+
+    return false;
+}
