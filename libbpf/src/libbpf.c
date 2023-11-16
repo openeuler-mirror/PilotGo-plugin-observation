@@ -9123,3 +9123,80 @@ static int libbpf_find_prog_btf_id(const char *name, __u32 attach_prog_fd)
 out:
 	return err;
 }
+
+static int find_kernel_btf_id(struct bpf_object *obj, const char *attach_name,
+			      enum bpf_attach_type attach_type,
+			      int *btf_obj_fd, int *btf_type_id)
+{
+	int ret, i;
+
+	ret = find_attach_btf_id(obj->btf_vmlinux, attach_name, attach_type);
+	if (ret > 0) {
+		*btf_obj_fd = 0; /* vmlinux BTF */
+		*btf_type_id = ret;
+		return 0;
+	}
+	if (ret != -ENOENT)
+		return ret;
+
+	ret = load_module_btfs(obj);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < obj->btf_module_cnt; i++) {
+		const struct module_btf *mod = &obj->btf_modules[i];
+
+		ret = find_attach_btf_id(mod->btf, attach_name, attach_type);
+		if (ret > 0) {
+			*btf_obj_fd = mod->fd;
+			*btf_type_id = ret;
+			return 0;
+		}
+		if (ret == -ENOENT)
+			continue;
+
+		return ret;
+	}
+
+	return -ESRCH;
+}
+
+static int libbpf_find_attach_btf_id(struct bpf_program *prog, const char *attach_name,
+				     int *btf_obj_fd, int *btf_type_id)
+{
+	enum bpf_attach_type attach_type = prog->expected_attach_type;
+	__u32 attach_prog_fd = prog->attach_prog_fd;
+	int err = 0;
+
+	/* BPF program's BTF ID */
+	if (prog->type == BPF_PROG_TYPE_EXT || attach_prog_fd) {
+		if (!attach_prog_fd) {
+			pr_warn("prog '%s': attach program FD is not set\n", prog->name);
+			return -EINVAL;
+		}
+		err = libbpf_find_prog_btf_id(attach_name, attach_prog_fd);
+		if (err < 0) {
+			pr_warn("prog '%s': failed to find BPF program (FD %d) BTF ID for '%s': %d\n",
+				 prog->name, attach_prog_fd, attach_name, err);
+			return err;
+		}
+		*btf_obj_fd = 0;
+		*btf_type_id = err;
+		return 0;
+	}
+
+	/* kernel/module BTF ID */
+	if (prog->obj->gen_loader) {
+		bpf_gen__record_attach_target(prog->obj->gen_loader, attach_name, attach_type);
+		*btf_obj_fd = 0;
+		*btf_type_id = 1;
+	} else {
+		err = find_kernel_btf_id(prog->obj, attach_name, attach_type, btf_obj_fd, btf_type_id);
+	}
+	if (err) {
+		pr_warn("prog '%s': failed to find kernel BTF type ID of '%s': %d\n",
+			prog->name, attach_name, err);
+		return err;
+	}
+	return 0;
+}
