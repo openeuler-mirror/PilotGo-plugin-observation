@@ -8754,3 +8754,63 @@ static bool sec_def_matches(const struct bpf_sec_def *sec_def, const char *sec_n
 
 	return strcmp(sec_name, sec_def->sec) == 0;
 }
+
+static const struct bpf_sec_def *find_sec_def(const char *sec_name)
+{
+	const struct bpf_sec_def *sec_def;
+	int i, n;
+
+	n = custom_sec_def_cnt;
+	for (i = 0; i < n; i++) {
+		sec_def = &custom_sec_defs[i];
+		if (sec_def_matches(sec_def, sec_name))
+			return sec_def;
+	}
+
+	n = ARRAY_SIZE(section_defs);
+	for (i = 0; i < n; i++) {
+		sec_def = &section_defs[i];
+		if (sec_def_matches(sec_def, sec_name))
+			return sec_def;
+	}
+
+	if (has_custom_fallback_def)
+		return &custom_fallback_def;
+
+	return NULL;
+}
+
+#define MAX_TYPE_NAME_SIZE 32
+
+static char *libbpf_get_type_names(bool attach_type)
+{
+	int i, len = ARRAY_SIZE(section_defs) * MAX_TYPE_NAME_SIZE;
+	char *buf;
+
+	buf = malloc(len);
+	if (!buf)
+		return NULL;
+
+	buf[0] = '\0';
+	/* Forge string buf with all available names */
+	for (i = 0; i < ARRAY_SIZE(section_defs); i++) {
+		const struct bpf_sec_def *sec_def = &section_defs[i];
+
+		if (attach_type) {
+			if (sec_def->prog_prepare_load_fn != libbpf_prepare_prog_load)
+				continue;
+
+			if (!(sec_def->cookie & SEC_ATTACHABLE))
+				continue;
+		}
+
+		if (strlen(buf) + strlen(section_defs[i].sec) + 2 > len) {
+			free(buf);
+			return NULL;
+		}
+		strcat(buf, " ");
+		strcat(buf, section_defs[i].sec);
+	}
+
+	return buf;
+}
