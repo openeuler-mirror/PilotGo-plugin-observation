@@ -10411,3 +10411,31 @@ struct acpi_device_power {
 	struct acpi_device_power_state states[5];
 	u8 state_for_enumeration;
 };
+
+struct acpi_device_wakeup_flags {
+	u8 valid: 1;
+	u8 notifier_present: 1;
+};
+
+struct acpi_device_wakeup_context {
+	void (*func)(struct acpi_device_wakeup_context *);
+	struct device *dev;
+};
+
+struct acpi_device_wakeup {
+	acpi_handle gpe_device;
+	u64 gpe_number;
+	u64 sleep_state;
+	struct list_head resources;
+	struct acpi_device_wakeup_flags flags;
+	struct acpi_device_wakeup_context context;
+	struct wakeup_source *ws;
+	int prepare_count;
+	int enable_count;
+};
+
+struct acpi_device_perf_flags {
+	u8 reserved: 8;
+};
+
+struct acpi_device_perf_state;
