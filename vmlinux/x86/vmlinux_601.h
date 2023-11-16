@@ -10205,3 +10205,31 @@ typedef u32 (*rht_obj_hashfn_t)(const void *, u32, u32);
 
 typedef int (*rht_obj_cmpfn_t)(struct rhashtable_compare_arg *, const void *);
 
+struct rhashtable_params {
+	u16 nelem_hint;
+	u16 key_len;
+	u16 key_offset;
+	u16 head_offset;
+	unsigned int max_size;
+	u16 min_size;
+	bool automatic_shrinking;
+	rht_hashfn_t hashfn;
+	rht_obj_hashfn_t obj_hashfn;
+	rht_obj_cmpfn_t obj_cmpfn;
+};
+
+struct bucket_table;
+
+struct rhashtable {
+	struct bucket_table *tbl;
+	unsigned int key_len;
+	unsigned int max_elems;
+	struct rhashtable_params p;
+	bool rhlist;
+	struct work_struct run_work;
+	struct mutex mutex;
+	spinlock_t lock;
+	atomic_t nelems;
+};
+
+struct pipe_buffer;
