@@ -9066,3 +9066,60 @@ static inline int find_attach_btf_id(struct btf *btf, const char *name,
 	btf_get_kernel_prefix_kind(attach_type, &prefix, &kind);
 	return find_btf_by_prefix_kind(btf, prefix, name, kind);
 }
+
+int libbpf_find_vmlinux_btf_id(const char *name,
+			       enum bpf_attach_type attach_type)
+{
+	struct btf *btf;
+	int err;
+
+	btf = btf__load_vmlinux_btf();
+	err = libbpf_get_error(btf);
+	if (err) {
+		pr_warn("vmlinux BTF is not found\n");
+		return libbpf_err(err);
+	}
+
+	err = find_attach_btf_id(btf, name, attach_type);
+	if (err <= 0)
+		pr_warn("%s is not found in vmlinux BTF\n", name);
+
+	btf__free(btf);
+	return libbpf_err(err);
+}
+
+static int libbpf_find_prog_btf_id(const char *name, __u32 attach_prog_fd)
+{
+	struct bpf_prog_info info;
+	__u32 info_len = sizeof(info);
+	struct btf *btf;
+	int err;
+
+	memset(&info, 0, info_len);
+	err = bpf_prog_get_info_by_fd(attach_prog_fd, &info, &info_len);
+	if (err) {
+		pr_warn("failed bpf_prog_get_info_by_fd for FD %d: %d\n",
+			attach_prog_fd, err);
+		return err;
+	}
+
+	err = -EINVAL;
+	if (!info.btf_id) {
+		pr_warn("The target program doesn't have BTF\n");
+		goto out;
+	}
+	btf = btf__load_from_kernel_by_id(info.btf_id);
+	err = libbpf_get_error(btf);
+	if (err) {
+		pr_warn("Failed to get BTF %d of the program: %d\n", info.btf_id, err);
+		goto out;
+	}
+	err = btf__find_by_name_kind(btf, name, BTF_KIND_FUNC);
+	btf__free(btf);
+	if (err <= 0) {
+		pr_warn("%s is not found in prog's BTF\n", name);
+		goto out;
+	}
+out:
+	return err;
+}
