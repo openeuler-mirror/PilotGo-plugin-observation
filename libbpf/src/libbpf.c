@@ -9517,3 +9517,66 @@ static int validate_map_op(const struct bpf_map *map, size_t key_sz,
 	}
 	return 0;
 }
+
+int bpf_map__lookup_elem(const struct bpf_map *map,
+			 const void *key, size_t key_sz,
+			 void *value, size_t value_sz, __u64 flags)
+{
+	int err;
+
+	err = validate_map_op(map, key_sz, value_sz, true);
+	if (err)
+		return libbpf_err(err);
+
+	return bpf_map_lookup_elem_flags(map->fd, key, value, flags);
+}
+
+int bpf_map__update_elem(const struct bpf_map *map,
+			 const void *key, size_t key_sz,
+			 const void *value, size_t value_sz, __u64 flags)
+{
+	int err;
+
+	err = validate_map_op(map, key_sz, value_sz, true);
+	if (err)
+		return libbpf_err(err);
+
+	return bpf_map_update_elem(map->fd, key, value, flags);
+}
+
+int bpf_map__delete_elem(const struct bpf_map *map,
+			 const void *key, size_t key_sz, __u64 flags)
+{
+	int err;
+
+	err = validate_map_op(map, key_sz, 0, false /* check_value_sz */);
+	if (err)
+		return libbpf_err(err);
+
+	return bpf_map_delete_elem_flags(map->fd, key, flags);
+}
+
+int bpf_map__lookup_and_delete_elem(const struct bpf_map *map,
+				    const void *key, size_t key_sz,
+				    void *value, size_t value_sz, __u64 flags)
+{
+	int err;
+
+	err = validate_map_op(map, key_sz, value_sz, true);
+	if (err)
+		return libbpf_err(err);
+
+	return bpf_map_lookup_and_delete_elem_flags(map->fd, key, value, flags);
+}
+
+int bpf_map__get_next_key(const struct bpf_map *map,
+			  const void *cur_key, void *next_key, size_t key_sz)
+{
+	int err;
+
+	err = validate_map_op(map, key_sz, 0, false /* check_value_sz */);
+	if (err)
+		return libbpf_err(err);
+
+	return bpf_map_get_next_key(map->fd, cur_key, next_key);
+}
