@@ -9967,3 +9967,61 @@ static int perf_event_open_probe(bool uprobe, bool retprobe, const char *name,
 		      -1 /* group_fd */, PERF_FLAG_FD_CLOEXEC);
 	return pfd >= 0 ? pfd : -errno;
 }
+
+static int append_to_file(const char *file, const char *fmt, ...)
+{
+	int fd, n, err = 0;
+	va_list ap;
+	char buf[1024];
+
+	va_start(ap, fmt);
+	n = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if (n < 0 || n >= sizeof(buf))
+		return -EINVAL;
+
+	fd = open(file, O_WRONLY | O_APPEND | O_CLOEXEC, 0);
+	if (fd < 0)
+		return -errno;
+
+	if (write(fd, buf, n) < 0)
+		err = -errno;
+
+	close(fd);
+	return err;
+}
+
+#define DEBUGFS "/sys/kernel/debug/tracing"
+#define TRACEFS "/sys/kernel/tracing"
+
+static bool use_debugfs(void)
+{
+	static int has_debugfs = -1;
+
+	if (has_debugfs < 0)
+		has_debugfs = faccessat(AT_FDCWD, DEBUGFS, F_OK, AT_EACCESS) == 0;
+
+	return has_debugfs == 1;
+}
+
+static const char *tracefs_path(void)
+{
+	return use_debugfs() ? DEBUGFS : TRACEFS;
+}
+
+static const char *tracefs_kprobe_events(void)
+{
+	return use_debugfs() ? DEBUGFS"/kprobe_events" : TRACEFS"/kprobe_events";
+}
+
+static const char *tracefs_uprobe_events(void)
+{
+	return use_debugfs() ? DEBUGFS"/uprobe_events" : TRACEFS"/uprobe_events";
+}
+
+static const char *tracefs_available_filter_functions(void)
+{
+	return use_debugfs() ? DEBUGFS"/available_filter_functions" :
+			       TRACEFS"/available_filter_functions";
+}
