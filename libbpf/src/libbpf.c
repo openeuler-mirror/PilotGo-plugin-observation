@@ -9354,3 +9354,71 @@ int bpf_map__set_initial_value(struct bpf_map *map,
 	memcpy(map->mmaped, data, size);
 	return 0;
 }
+
+const void *bpf_map__initial_value(struct bpf_map *map, size_t *psize)
+{
+	if (!map->mmaped)
+		return NULL;
+	*psize = map->def.value_size;
+	return map->mmaped;
+}
+
+bool bpf_map__is_internal(const struct bpf_map *map)
+{
+	return map->libbpf_type != LIBBPF_MAP_UNSPEC;
+}
+
+__u32 bpf_map__ifindex(const struct bpf_map *map)
+{
+	return map->map_ifindex;
+}
+
+int bpf_map__set_ifindex(struct bpf_map *map, __u32 ifindex)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->map_ifindex = ifindex;
+	return 0;
+}
+
+int bpf_map__set_inner_map_fd(struct bpf_map *map, int fd)
+{
+	if (!bpf_map_type__is_map_in_map(map->def.type)) {
+		pr_warn("error: unsupported map type\n");
+		return libbpf_err(-EINVAL);
+	}
+	if (map->inner_map_fd != -1) {
+		pr_warn("error: inner_map_fd already specified\n");
+		return libbpf_err(-EINVAL);
+	}
+	if (map->inner_map) {
+		bpf_map__destroy(map->inner_map);
+		zfree(&map->inner_map);
+	}
+	map->inner_map_fd = fd;
+	return 0;
+}
+
+static struct bpf_map *
+__bpf_map__iter(const struct bpf_map *m, const struct bpf_object *obj, int i)
+{
+	ssize_t idx;
+	struct bpf_map *s, *e;
+
+	if (!obj || !obj->maps)
+		return errno = EINVAL, NULL;
+
+	s = obj->maps;
+	e = obj->maps + obj->nr_maps;
+
+	if ((m < s) || (m >= e)) {
+		pr_warn("error in %s: map handler doesn't belong to object\n",
+			 __func__);
+		return errno = EINVAL, NULL;
+	}
+
+	idx = (m - obj->maps) + i;
+	if (idx >= obj->nr_maps || idx < 0)
+		return NULL;
+	return &obj->maps[idx];
+}
