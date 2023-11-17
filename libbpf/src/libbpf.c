@@ -9580,3 +9580,62 @@ int bpf_map__get_next_key(const struct bpf_map *map,
 
 	return bpf_map_get_next_key(map->fd, cur_key, next_key);
 }
+
+long libbpf_get_error(const void *ptr)
+{
+	if (!IS_ERR_OR_NULL(ptr))
+		return 0;
+
+	if (IS_ERR(ptr))
+		errno = -PTR_ERR(ptr);
+
+	/* If ptr == NULL, then errno should be already set by the failing
+	 * API, because libbpf never returns NULL on success and it now always
+	 * sets errno on error. So no extra errno handling for ptr == NULL
+	 * case.
+	 */
+	return -errno;
+}
+
+/* Replace link's underlying BPF program with the new one */
+int bpf_link__update_program(struct bpf_link *link, struct bpf_program *prog)
+{
+	int ret;
+
+	ret = bpf_link_update(bpf_link__fd(link), bpf_program__fd(prog), NULL);
+	return libbpf_err_errno(ret);
+}
+
+/* Release "ownership" of underlying BPF resource (typically, BPF program
+ * attached to some BPF hook, e.g., tracepoint, kprobe, etc). Disconnected
+ * link, when destructed through bpf_link__destroy() call won't attempt to
+ * detach/unregisted that BPF resource. This is useful in situations where,
+ * say, attached BPF program has to outlive userspace program that attached it
+ * in the system. Depending on type of BPF program, though, there might be
+ * additional steps (like pinning BPF program in BPF FS) necessary to ensure
+ * exit of userspace program doesn't trigger automatic detachment and clean up
+ * inside the kernel.
+ */
+void bpf_link__disconnect(struct bpf_link *link)
+{
+	link->disconnected = true;
+}
+
+int bpf_link__destroy(struct bpf_link *link)
+{
+	int err = 0;
+
+	if (IS_ERR_OR_NULL(link))
+		return 0;
+
+	if (!link->disconnected && link->detach)
+		err = link->detach(link);
+	if (link->pin_path)
+		free(link->pin_path);
+	if (link->dealloc)
+		link->dealloc(link);
+	else
+		free(link);
+
+	return libbpf_err(err);
+}
