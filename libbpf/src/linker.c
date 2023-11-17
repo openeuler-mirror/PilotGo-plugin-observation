@@ -1019,3 +1019,58 @@ static int linker_sanity_check_btf_ext(struct src_obj *obj)
 
     return 0;
 }
+static int init_sec(struct bpf_linker *linker, struct dst_sec *dst_sec, struct src_sec *src_sec)
+{
+    Elf_Scn *scn;
+    Elf_Data *data;
+    Elf64_Shdr *shdr;
+    int name_off;
+
+    dst_sec->sec_sz = 0;
+    dst_sec->sec_idx = 0;
+    dst_sec->ephemeral = src_sec->ephemeral;
+
+    /* ephemeral sections are just thin section shells lacking most parts */
+    if (src_sec->ephemeral)
+        return 0;
+
+    scn = elf_newscn(linker->elf);
+    if (!scn)
+        return -ENOMEM;
+    data = elf_newdata(scn);
+    if (!data)
+        return -ENOMEM;
+    shdr = elf64_getshdr(scn);
+    if (!shdr)
+        return -ENOMEM;
+
+    dst_sec->scn = scn;
+    dst_sec->shdr = shdr;
+    dst_sec->data = data;
+    dst_sec->sec_idx = elf_ndxscn(scn);
+
+    name_off = strset__add_str(linker->strtab_strs, src_sec->sec_name);
+    if (name_off < 0)
+        return name_off;
+
+    shdr->sh_name = name_off;
+    shdr->sh_type = src_sec->shdr->sh_type;
+    shdr->sh_flags = src_sec->shdr->sh_flags;
+    shdr->sh_size = 0;
+    /* sh_link and sh_info have different meaning for different types of
+     * sections, so we leave it up to the caller code to fill them in, if
+     * necessary
+     */
+    shdr->sh_link = 0;
+    shdr->sh_info = 0;
+    shdr->sh_addralign = src_sec->shdr->sh_addralign;
+    shdr->sh_entsize = src_sec->shdr->sh_entsize;
+
+    data->d_type = src_sec->data->d_type;
+    data->d_size = 0;
+    data->d_buf = NULL;
+    data->d_align = src_sec->data->d_align;
+    data->d_off = 0;
+
+    return 0;
+}
