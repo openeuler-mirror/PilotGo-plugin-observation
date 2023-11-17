@@ -9769,3 +9769,88 @@ static int bpf_link_perf_detach(struct bpf_link *link)
 
 	return err;
 }
+
+static void bpf_link_perf_dealloc(struct bpf_link *link)
+{
+	struct bpf_link_perf *perf_link = container_of(link, struct bpf_link_perf, link);
+
+	free(perf_link->legacy_probe_name);
+	free(perf_link);
+}
+
+struct bpf_link *bpf_program__attach_perf_event_opts(const struct bpf_program *prog, int pfd,
+						     const struct bpf_perf_event_opts *opts)
+{
+	char errmsg[STRERR_BUFSIZE];
+	struct bpf_link_perf *link;
+	int prog_fd, link_fd = -1, err;
+	bool force_ioctl_attach;
+
+	if (!OPTS_VALID(opts, bpf_perf_event_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	if (pfd < 0) {
+		pr_warn("prog '%s': invalid perf event FD %d\n",
+			prog->name, pfd);
+		return libbpf_err_ptr(-EINVAL);
+	}
+	prog_fd = bpf_program__fd(prog);
+	if (prog_fd < 0) {
+		pr_warn("prog '%s': can't attach BPF program w/o FD (did you load it?)\n",
+			prog->name);
+		return libbpf_err_ptr(-EINVAL);
+	}
+
+	link = calloc(1, sizeof(*link));
+	if (!link)
+		return libbpf_err_ptr(-ENOMEM);
+	link->link.detach = &bpf_link_perf_detach;
+	link->link.dealloc = &bpf_link_perf_dealloc;
+	link->perf_event_fd = pfd;
+
+	force_ioctl_attach = OPTS_GET(opts, force_ioctl_attach, false);
+	if (kernel_supports(prog->obj, FEAT_PERF_LINK) && !force_ioctl_attach) {
+		DECLARE_LIBBPF_OPTS(bpf_link_create_opts, link_opts,
+			.perf_event.bpf_cookie = OPTS_GET(opts, bpf_cookie, 0));
+
+		link_fd = bpf_link_create(prog_fd, pfd, BPF_PERF_EVENT, &link_opts);
+		if (link_fd < 0) {
+			err = -errno;
+			pr_warn("prog '%s': failed to create BPF link for perf_event FD %d: %d (%s)\n",
+				prog->name, pfd,
+				err, libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+			goto err_out;
+		}
+		link->link.fd = link_fd;
+	} else {
+		if (OPTS_GET(opts, bpf_cookie, 0)) {
+			pr_warn("prog '%s': user context value is not supported\n", prog->name);
+			err = -EOPNOTSUPP;
+			goto err_out;
+		}
+
+		if (ioctl(pfd, PERF_EVENT_IOC_SET_BPF, prog_fd) < 0) {
+			err = -errno;
+			pr_warn("prog '%s': failed to attach to perf_event FD %d: %s\n",
+				prog->name, pfd, libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+			if (err == -EPROTO)
+				pr_warn("prog '%s': try add PERF_SAMPLE_CALLCHAIN to or remove exclude_callchain_[kernel|user] from pfd %d\n",
+					prog->name, pfd);
+			goto err_out;
+		}
+		link->link.fd = pfd;
+	}
+	if (ioctl(pfd, PERF_EVENT_IOC_ENABLE, 0) < 0) {
+		err = -errno;
+		pr_warn("prog '%s': failed to enable perf_event FD %d: %s\n",
+			prog->name, pfd, libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		goto err_out;
+	}
+
+	return &link->link;
+err_out:
+	if (link_fd >= 0)
+		close(link_fd);
+	free(link);
+	return libbpf_err_ptr(err);
+}
