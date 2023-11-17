@@ -10501,3 +10501,29 @@ struct acpi_scan_handler {
 	void (*unbind)(struct device *);
 	struct acpi_hotplug_profile hotplug;
 };
+
+struct acpi_hotplug_context {
+	struct acpi_device *self;
+	int (*notify)(struct acpi_device *, u32);
+	void (*uevent)(struct acpi_device *, u32);
+	void (*fixup)(struct acpi_device *);
+};
+
+struct acpi_device_perf_state {
+	struct {
+		u8 valid: 1;
+		u8 reserved: 7;
+	} flags;
+	u8 power;
+	u8 performance;
+	int latency;
+};
+
+struct acpi_gpio_params;
+
+struct acpi_gpio_mapping {
+	const char *name;
+	const struct acpi_gpio_params *data;
+	unsigned int size;
+	unsigned int quirks;
+};
