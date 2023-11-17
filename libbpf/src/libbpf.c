@@ -9422,3 +9422,51 @@ __bpf_map__iter(const struct bpf_map *m, const struct bpf_object *obj, int i)
 		return NULL;
 	return &obj->maps[idx];
 }
+
+struct bpf_map *
+bpf_object__next_map(const struct bpf_object *obj, const struct bpf_map *prev)
+{
+	if (prev == NULL)
+		return obj->maps;
+
+	return __bpf_map__iter(prev, obj, 1);
+}
+
+struct bpf_map *
+bpf_object__prev_map(const struct bpf_object *obj, const struct bpf_map *next)
+{
+	if (next == NULL) {
+		if (!obj->nr_maps)
+			return NULL;
+		return obj->maps + obj->nr_maps - 1;
+	}
+
+	return __bpf_map__iter(next, obj, -1);
+}
+
+struct bpf_map *
+bpf_object__find_map_by_name(const struct bpf_object *obj, const char *name)
+{
+	struct bpf_map *pos;
+
+	bpf_object__for_each_map(pos, obj) {
+		/* if it's a special internal map name (which always starts
+		 * with dot) then check if that special name matches the
+		 * real map name (ELF section name)
+		 */
+		if (name[0] == '.') {
+			if (pos->real_name && strcmp(pos->real_name, name) == 0)
+				return pos;
+			continue;
+		}
+		/* otherwise map name has to be an exact match */
+		if (map_uses_real_name(pos)) {
+			if (strcmp(pos->real_name, name) == 0)
+				return pos;
+			continue;
+		}
+		if (strcmp(pos->name, name) == 0)
+			return pos;
+	}
+	return errno = ENOENT, NULL;
+}
