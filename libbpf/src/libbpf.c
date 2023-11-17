@@ -9470,3 +9470,50 @@ bpf_object__find_map_by_name(const struct bpf_object *obj, const char *name)
 	}
 	return errno = ENOENT, NULL;
 }
+
+int
+bpf_object__find_map_fd_by_name(const struct bpf_object *obj, const char *name)
+{
+	return bpf_map__fd(bpf_object__find_map_by_name(obj, name));
+}
+
+static int validate_map_op(const struct bpf_map *map, size_t key_sz,
+			   size_t value_sz, bool check_value_sz)
+{
+	if (map->fd <= 0)
+		return -ENOENT;
+
+	if (map->def.key_size != key_sz) {
+		pr_warn("map '%s': unexpected key size %zu provided, expected %u\n",
+			map->name, key_sz, map->def.key_size);
+		return -EINVAL;
+	}
+
+	if (!check_value_sz)
+		return 0;
+
+	switch (map->def.type) {
+	case BPF_MAP_TYPE_PERCPU_ARRAY:
+	case BPF_MAP_TYPE_PERCPU_HASH:
+	case BPF_MAP_TYPE_LRU_PERCPU_HASH:
+	case BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE: {
+		int num_cpu = libbpf_num_possible_cpus();
+		size_t elem_sz = roundup(map->def.value_size, 8);
+
+		if (value_sz != num_cpu * elem_sz) {
+			pr_warn("map '%s': unexpected value size %zu provided for per-CPU map, expected %d * %zu = %zd\n",
+				map->name, value_sz, num_cpu, elem_sz, num_cpu * elem_sz);
+			return -EINVAL;
+		}
+		break;
+	}
+	default:
+		if (map->def.value_size != value_sz) {
+			pr_warn("map '%s': unexpected value size %zu provided, expected %u\n",
+				map->name, value_sz, map->def.value_size);
+			return -EINVAL;
+		}
+		break;
+	}
+	return 0;
+}
