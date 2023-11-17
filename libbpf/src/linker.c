@@ -869,3 +869,89 @@ static int linker_sanity_check_elf_symtab(struct src_obj *obj, struct src_sec *s
 
     return 0;
 }
+
+static int linker_sanity_check_elf_relos(struct src_obj *obj, struct src_sec *sec)
+{
+    struct src_sec *link_sec, *sym_sec;
+    Elf64_Rel *relo;
+    int i, n;
+
+    if (sec->shdr->sh_entsize != sizeof(Elf64_Rel))
+        return -EINVAL;
+    if (sec->shdr->sh_size % sec->shdr->sh_entsize != 0)
+        return -EINVAL;
+
+    /* SHT_REL's sh_link should point to SYMTAB */
+    if (sec->shdr->sh_link != obj->symtab_sec_idx)
+    {
+        pr_warn("ELF relo section #%zu points to invalid SYMTAB section #%zu in %s\n",
+                sec->sec_idx, (size_t)sec->shdr->sh_link, obj->filename);
+        return -EINVAL;
+    }
+
+    /* SHT_REL's sh_info points to relocated section */
+    if (!sec->shdr->sh_info || sec->shdr->sh_info >= obj->sec_cnt)
+    {
+        pr_warn("ELF relo section #%zu points to missing section #%zu in %s\n",
+                sec->sec_idx, (size_t)sec->shdr->sh_info, obj->filename);
+        return -EINVAL;
+    }
+    link_sec = &obj->secs[sec->shdr->sh_info];
+
+    /* .rel<secname> -> <secname> pattern is followed */
+    if (strncmp(sec->sec_name, ".rel", sizeof(".rel") - 1) != 0 || strcmp(sec->sec_name + sizeof(".rel") - 1, link_sec->sec_name) != 0)
+    {
+        pr_warn("ELF relo section #%zu name has invalid name in %s\n",
+                sec->sec_idx, obj->filename);
+        return -EINVAL;
+    }
+
+    /* don't further validate relocations for ignored sections */
+    if (link_sec->skipped)
+        return 0;
+
+    /* relocatable section is data or instructions */
+    if (link_sec->shdr->sh_type != SHT_PROGBITS && link_sec->shdr->sh_type != SHT_NOBITS)
+    {
+        pr_warn("ELF relo section #%zu points to invalid section #%zu in %s\n",
+                sec->sec_idx, (size_t)sec->shdr->sh_info, obj->filename);
+        return -EINVAL;
+    }
+
+    /* check sanity of each relocation */
+    n = sec->shdr->sh_size / sec->shdr->sh_entsize;
+    relo = sec->data->d_buf;
+    sym_sec = &obj->secs[obj->symtab_sec_idx];
+    for (i = 0; i < n; i++, relo++)
+    {
+        size_t sym_idx = ELF64_R_SYM(relo->r_info);
+        size_t sym_type = ELF64_R_TYPE(relo->r_info);
+
+        if (sym_type != R_BPF_64_64 && sym_type != R_BPF_64_32 &&
+            sym_type != R_BPF_64_ABS64 && sym_type != R_BPF_64_ABS32)
+        {
+            pr_warn("ELF relo #%d in section #%zu has unexpected type %zu in %s\n",
+                    i, sec->sec_idx, sym_type, obj->filename);
+            return -EINVAL;
+        }
+
+        if (!sym_idx || sym_idx * sizeof(Elf64_Sym) >= sym_sec->shdr->sh_size)
+        {
+            pr_warn("ELF relo #%d in section #%zu points to invalid symbol #%zu in %s\n",
+                    i, sec->sec_idx, sym_idx, obj->filename);
+            return -EINVAL;
+        }
+
+        if (link_sec->shdr->sh_flags & SHF_EXECINSTR)
+        {
+            if (relo->r_offset % sizeof(struct bpf_insn) != 0)
+            {
+                pr_warn("ELF relo #%d in section #%zu points to missing symbol #%zu in %s\n",
+                        i, sec->sec_idx, sym_idx, obj->filename);
+                return -EINVAL;
+            }
+        }
+    }
+
+    return 0;
+}
