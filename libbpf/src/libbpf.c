@@ -9917,3 +9917,53 @@ static int determine_uprobe_retprobe_bit(void)
 
 	return parse_uint_from_file(file, "config:%d\n");
 }
+
+#define PERF_UPROBE_REF_CTR_OFFSET_BITS 32
+#define PERF_UPROBE_REF_CTR_OFFSET_SHIFT 32
+
+static int perf_event_open_probe(bool uprobe, bool retprobe, const char *name,
+				 uint64_t offset, int pid, size_t ref_ctr_off)
+{
+	const size_t attr_sz = sizeof(struct perf_event_attr);
+	struct perf_event_attr attr;
+	char errmsg[STRERR_BUFSIZE];
+	int type, pfd;
+
+	if ((__u64)ref_ctr_off >= (1ULL << PERF_UPROBE_REF_CTR_OFFSET_BITS))
+		return -EINVAL;
+
+	memset(&attr, 0, attr_sz);
+
+	type = uprobe ? determine_uprobe_perf_type()
+		      : determine_kprobe_perf_type();
+	if (type < 0) {
+		pr_warn("failed to determine %s perf type: %s\n",
+			uprobe ? "uprobe" : "kprobe",
+			libbpf_strerror_r(type, errmsg, sizeof(errmsg)));
+		return type;
+	}
+	if (retprobe) {
+		int bit = uprobe ? determine_uprobe_retprobe_bit()
+				 : determine_kprobe_retprobe_bit();
+
+		if (bit < 0) {
+			pr_warn("failed to determine %s retprobe bit: %s\n",
+				uprobe ? "uprobe" : "kprobe",
+				libbpf_strerror_r(bit, errmsg, sizeof(errmsg)));
+			return bit;
+		}
+		attr.config |= 1 << bit;
+	}
+	attr.size = attr_sz;
+	attr.type = type;
+	attr.config |= (__u64)ref_ctr_off << PERF_UPROBE_REF_CTR_OFFSET_SHIFT;
+	attr.config1 = ptr_to_u64(name); /* kprobe_func or uprobe_path */
+	attr.config2 = offset;		 /* kprobe_addr or probe_offset */
+
+	/* pid filter is meaningful only for uprobes */
+	pfd = syscall(__NR_perf_event_open, &attr,
+		      pid < 0 ? -1 : pid /* pid */,
+		      pid == -1 ? 0 : -1 /* cpu */,
+		      -1 /* group_fd */, PERF_FLAG_FD_CLOEXEC);
+	return pfd >= 0 ? pfd : -errno;
+}
