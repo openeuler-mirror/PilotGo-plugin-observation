@@ -9715,3 +9715,57 @@ int bpf_link__pin(struct bpf_link *link, const char *path)
 	pr_debug("link fd=%d: pinned at %s\n", link->fd, link->pin_path);
 	return 0;
 }
+
+int bpf_link__unpin(struct bpf_link *link)
+{
+	int err;
+
+	if (!link->pin_path)
+		return libbpf_err(-EINVAL);
+
+	err = unlink(link->pin_path);
+	if (err != 0)
+		return -errno;
+
+	pr_debug("link fd=%d: unpinned from %s\n", link->fd, link->pin_path);
+	zfree(&link->pin_path);
+	return 0;
+}
+
+struct bpf_link_perf {
+	struct bpf_link link;
+	int perf_event_fd;
+	/* legacy kprobe support: keep track of probe identifier and type */
+	char *legacy_probe_name;
+	bool legacy_is_kprobe;
+	bool legacy_is_retprobe;
+};
+
+static int remove_kprobe_event_legacy(const char *probe_name, bool retprobe);
+static int remove_uprobe_event_legacy(const char *probe_name, bool retprobe);
+
+static int bpf_link_perf_detach(struct bpf_link *link)
+{
+	struct bpf_link_perf *perf_link = container_of(link, struct bpf_link_perf, link);
+	int err = 0;
+
+	if (ioctl(perf_link->perf_event_fd, PERF_EVENT_IOC_DISABLE, 0) < 0)
+		err = -errno;
+
+	if (perf_link->perf_event_fd != link->fd)
+		close(perf_link->perf_event_fd);
+	close(link->fd);
+
+	/* legacy uprobe/kprobe needs to be removed after perf event fd closure */
+	if (perf_link->legacy_probe_name) {
+		if (perf_link->legacy_is_kprobe) {
+			err = remove_kprobe_event_legacy(perf_link->legacy_probe_name,
+							 perf_link->legacy_is_retprobe);
+		} else {
+			err = remove_uprobe_event_legacy(perf_link->legacy_probe_name,
+							 perf_link->legacy_is_retprobe);
+		}
+	}
+
+	return err;
+}
