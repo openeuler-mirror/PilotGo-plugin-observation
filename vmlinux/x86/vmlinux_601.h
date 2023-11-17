@@ -10463,3 +10463,41 @@ struct acpi_scan_handler;
 struct acpi_hotplug_context;
 
 struct acpi_gpio_mapping;
+
+struct acpi_device {
+	u32 pld_crc;
+	int device_type;
+	acpi_handle handle;
+	struct fwnode_handle fwnode;
+	struct list_head wakeup_list;
+	struct list_head del_list;
+	struct acpi_device_status status;
+	struct acpi_device_flags flags;
+	struct acpi_device_pnp pnp;
+	struct acpi_device_power power;
+	struct acpi_device_wakeup wakeup;
+	struct acpi_device_perf performance;
+	struct acpi_device_dir dir;
+	struct acpi_device_data data;
+	struct acpi_scan_handler *handler;
+	struct acpi_hotplug_context *hp;
+	const struct acpi_gpio_mapping *driver_gpios;
+	void *driver_data;
+	struct device dev;
+	unsigned int physical_node_count;
+	unsigned int dep_unmet;
+	struct list_head physical_node_list;
+	struct mutex physical_node_lock;
+	void (*remove)(struct acpi_device *);
+};
+
+struct acpi_scan_handler {
+	const struct acpi_device_id *ids;
+	struct list_head list_node;
+	bool (*match)(const char *, const struct acpi_device_id **);
+	int (*attach)(struct acpi_device *, const struct acpi_device_id *);
+	void (*detach)(struct acpi_device *);
+	void (*bind)(struct device *);
+	void (*unbind)(struct device *);
+	struct acpi_hotplug_profile hotplug;
+};
