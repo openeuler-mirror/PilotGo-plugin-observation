@@ -719,3 +719,71 @@ static int linker_load_obj_file(struct bpf_linker *linker, const char *filename,
 
     return err;
 }
+static int linker_sanity_check_elf(struct src_obj *obj)
+{
+    struct src_sec *sec;
+    int i, err;
+
+    if (!obj->symtab_sec_idx)
+    {
+        pr_warn("ELF is missing SYMTAB section in %s\n", obj->filename);
+        return -EINVAL;
+    }
+    if (!obj->shstrs_sec_idx)
+    {
+        pr_warn("ELF is missing section headers STRTAB section in %s\n", obj->filename);
+        return -EINVAL;
+    }
+
+    for (i = 1; i < obj->sec_cnt; i++)
+    {
+        sec = &obj->secs[i];
+
+        if (sec->sec_name[0] == '\0')
+        {
+            pr_warn("ELF section #%zu has empty name in %s\n", sec->sec_idx, obj->filename);
+            return -EINVAL;
+        }
+
+        if (sec->shdr->sh_addralign && !is_pow_of_2(sec->shdr->sh_addralign))
+            return -EINVAL;
+        if (sec->shdr->sh_addralign != sec->data->d_align)
+            return -EINVAL;
+
+        if (sec->shdr->sh_size != sec->data->d_size)
+            return -EINVAL;
+
+        switch (sec->shdr->sh_type)
+        {
+        case SHT_SYMTAB:
+            err = linker_sanity_check_elf_symtab(obj, sec);
+            if (err)
+                return err;
+            break;
+        case SHT_STRTAB:
+            break;
+        case SHT_PROGBITS:
+            if (sec->shdr->sh_flags & SHF_EXECINSTR)
+            {
+                if (sec->shdr->sh_size % sizeof(struct bpf_insn) != 0)
+                    return -EINVAL;
+            }
+            break;
+        case SHT_NOBITS:
+            break;
+        case SHT_REL:
+            err = linker_sanity_check_elf_relos(obj, sec);
+            if (err)
+                return err;
+            break;
+        case SHT_LLVM_ADDRSIG:
+            break;
+        default:
+            pr_warn("ELF section #%zu (%s) has unrecognized type %zu in %s\n",
+                    sec->sec_idx, sec->sec_name, (size_t)sec->shdr->sh_type, obj->filename);
+            return -EINVAL;
+        }
+    }
+
+    return 0;
+}
