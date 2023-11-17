@@ -9244,3 +9244,53 @@ static bool map_uses_real_name(const struct bpf_map *map)
 		return true;
 	return false;
 }
+
+const char *bpf_map__name(const struct bpf_map *map)
+{
+	if (!map)
+		return NULL;
+
+	if (map_uses_real_name(map))
+		return map->real_name;
+
+	return map->name;
+}
+
+enum bpf_map_type bpf_map__type(const struct bpf_map *map)
+{
+	return map->def.type;
+}
+
+int bpf_map__set_type(struct bpf_map *map, enum bpf_map_type type)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->def.type = type;
+	return 0;
+}
+
+__u32 bpf_map__map_flags(const struct bpf_map *map)
+{
+	return map->def.map_flags;
+}
+
+int bpf_map__set_map_flags(struct bpf_map *map, __u32 flags)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->def.map_flags = flags;
+	return 0;
+}
+
+__u64 bpf_map__map_extra(const struct bpf_map *map)
+{
+	return map->map_extra;
+}
+
+int bpf_map__set_map_extra(struct bpf_map *map, __u64 map_extra)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->map_extra = map_extra;
+	return 0;
+}
