@@ -10788,3 +10788,29 @@ struct netns_mib {
 	struct icmpv6msg_mib *icmpv6msg_statistics;
 	struct proc_dir_entry *proc_net_devsnmp6;
 };
+
+struct netns_packet {
+	struct mutex sklist_lock;
+	struct hlist_head sklist;
+};
+
+struct unix_table {
+	spinlock_t *locks;
+	struct hlist_head *buckets;
+};
+
+struct netns_unix {
+	struct unix_table table;
+	int sysctl_max_dgram_qlen;
+	struct ctl_table_header *ctl;
+};
+
+struct netns_nexthop {
+	struct rb_root rb_root;
+	struct hlist_head *devhash;
+	unsigned int seq;
+	u32 last_id_allocated;
+	struct blocking_notifier_head notifier_chain;
+};
+
+struct inet_hashinfo;
