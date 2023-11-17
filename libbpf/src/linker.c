@@ -787,3 +787,85 @@ static int linker_sanity_check_elf(struct src_obj *obj)
 
     return 0;
 }
+
+static int linker_sanity_check_elf_symtab(struct src_obj *obj, struct src_sec *sec)
+{
+    struct src_sec *link_sec;
+    Elf64_Sym *sym;
+    int i, n;
+
+    if (sec->shdr->sh_entsize != sizeof(Elf64_Sym))
+        return -EINVAL;
+    if (sec->shdr->sh_size % sec->shdr->sh_entsize != 0)
+        return -EINVAL;
+
+    if (!sec->shdr->sh_link || sec->shdr->sh_link >= obj->sec_cnt)
+    {
+        pr_warn("ELF SYMTAB section #%zu points to missing STRTAB section #%zu in %s\n",
+                sec->sec_idx, (size_t)sec->shdr->sh_link, obj->filename);
+        return -EINVAL;
+    }
+    link_sec = &obj->secs[sec->shdr->sh_link];
+    if (link_sec->shdr->sh_type != SHT_STRTAB)
+    {
+        pr_warn("ELF SYMTAB section #%zu points to invalid STRTAB section #%zu in %s\n",
+                sec->sec_idx, (size_t)sec->shdr->sh_link, obj->filename);
+        return -EINVAL;
+    }
+
+    n = sec->shdr->sh_size / sec->shdr->sh_entsize;
+    sym = sec->data->d_buf;
+    for (i = 0; i < n; i++, sym++)
+    {
+        int sym_type = ELF64_ST_TYPE(sym->st_info);
+        int sym_bind = ELF64_ST_BIND(sym->st_info);
+        int sym_vis = ELF64_ST_VISIBILITY(sym->st_other);
+
+        if (i == 0)
+        {
+            if (sym->st_name != 0 || sym->st_info != 0 || sym->st_other != 0 || sym->st_shndx != 0 || sym->st_value != 0 || sym->st_size != 0)
+            {
+                pr_warn("ELF sym #0 is invalid in %s\n", obj->filename);
+                return -EINVAL;
+            }
+            continue;
+        }
+        if (sym_bind != STB_LOCAL && sym_bind != STB_GLOBAL && sym_bind != STB_WEAK)
+        {
+            pr_warn("ELF sym #%d in section #%zu has unsupported symbol binding %d\n",
+                    i, sec->sec_idx, sym_bind);
+            return -EINVAL;
+        }
+        if (sym_vis != STV_DEFAULT && sym_vis != STV_HIDDEN)
+        {
+            pr_warn("ELF sym #%d in section #%zu has unsupported symbol visibility %d\n",
+                    i, sec->sec_idx, sym_vis);
+            return -EINVAL;
+        }
+        if (sym->st_shndx == 0)
+        {
+            if (sym_type != STT_NOTYPE || sym_bind == STB_LOCAL || sym->st_value != 0 || sym->st_size != 0)
+            {
+                pr_warn("ELF sym #%d is invalid extern symbol in %s\n",
+                        i, obj->filename);
+
+                return -EINVAL;
+            }
+            continue;
+        }
+        if (sym->st_shndx < SHN_LORESERVE && sym->st_shndx >= obj->sec_cnt)
+        {
+            pr_warn("ELF sym #%d in section #%zu points to missing section #%zu in %s\n",
+                    i, sec->sec_idx, (size_t)sym->st_shndx, obj->filename);
+            return -EINVAL;
+        }
+        if (sym_type == STT_SECTION)
+        {
+            if (sym->st_value != 0)
+                return -EINVAL;
+            continue;
+        }
+    }
+
+    return 0;
+}
