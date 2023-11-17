@@ -10814,3 +10814,37 @@ struct netns_nexthop {
 };
 
 struct inet_hashinfo;
+
+struct inet_timewait_death_row {
+	refcount_t tw_refcount;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct inet_hashinfo *hashinfo;
+	int sysctl_max_tw_buckets;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+struct local_ports {
+	seqlock_t lock;
+	int range[2];
+	bool warned;
+};
+
+struct ping_group_range {
+	seqlock_t lock;
+	kgid_t range[2];
+};
+
+typedef struct {
+	u64 key[2];
+} siphash_key_t;
