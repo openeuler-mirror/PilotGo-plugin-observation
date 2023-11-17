@@ -9639,3 +9639,79 @@ int bpf_link__destroy(struct bpf_link *link)
 
 	return libbpf_err(err);
 }
+
+int bpf_link__fd(const struct bpf_link *link)
+{
+	return link->fd;
+}
+
+const char *bpf_link__pin_path(const struct bpf_link *link)
+{
+	return link->pin_path;
+}
+
+static int bpf_link__detach_fd(struct bpf_link *link)
+{
+	return libbpf_err_errno(close(link->fd));
+}
+
+struct bpf_link *bpf_link__open(const char *path)
+{
+	struct bpf_link *link;
+	int fd;
+
+	fd = bpf_obj_get(path);
+	if (fd < 0) {
+		fd = -errno;
+		pr_warn("failed to open link at %s: %d\n", path, fd);
+		return libbpf_err_ptr(fd);
+	}
+
+	link = calloc(1, sizeof(*link));
+	if (!link) {
+		close(fd);
+		return libbpf_err_ptr(-ENOMEM);
+	}
+	link->detach = &bpf_link__detach_fd;
+	link->fd = fd;
+
+	link->pin_path = strdup(path);
+	if (!link->pin_path) {
+		bpf_link__destroy(link);
+		return libbpf_err_ptr(-ENOMEM);
+	}
+
+	return link;
+}
+
+int bpf_link__detach(struct bpf_link *link)
+{
+	return bpf_link_detach(link->fd) ? -errno : 0;
+}
+
+int bpf_link__pin(struct bpf_link *link, const char *path)
+{
+	int err;
+
+	if (link->pin_path)
+		return libbpf_err(-EBUSY);
+	err = make_parent_dir(path);
+	if (err)
+		return libbpf_err(err);
+	err = check_path(path);
+	if (err)
+		return libbpf_err(err);
+
+	link->pin_path = strdup(path);
+	if (!link->pin_path)
+		return libbpf_err(-ENOMEM);
+
+	if (bpf_obj_pin(link->fd, link->pin_path)) {
+		err = -errno;
+		zfree(&link->pin_path);
+		return libbpf_err(err);
+	}
+
+	pr_debug("link fd=%d: pinned at %s\n", link->fd, link->pin_path);
+	return 0;
+}
