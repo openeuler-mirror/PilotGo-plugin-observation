@@ -10066,3 +10066,50 @@ static int determine_kprobe_perf_type_legacy(const char *probe_name, bool retpro
 
 	return parse_uint_from_file(file, "%d\n");
 }
+
+static int perf_event_kprobe_open_legacy(const char *probe_name, bool retprobe,
+					 const char *kfunc_name, size_t offset, int pid)
+{
+	const size_t attr_sz = sizeof(struct perf_event_attr);
+	struct perf_event_attr attr;
+	char errmsg[STRERR_BUFSIZE];
+	int type, pfd, err;
+
+	err = add_kprobe_event_legacy(probe_name, retprobe, kfunc_name, offset);
+	if (err < 0) {
+		pr_warn("failed to add legacy kprobe event for '%s+0x%zx': %s\n",
+			kfunc_name, offset,
+			libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		return err;
+	}
+	type = determine_kprobe_perf_type_legacy(probe_name, retprobe);
+	if (type < 0) {
+		err = type;
+		pr_warn("failed to determine legacy kprobe event id for '%s+0x%zx': %s\n",
+			kfunc_name, offset,
+			libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		goto err_clean_legacy;
+	}
+
+	memset(&attr, 0, attr_sz);
+	attr.size = attr_sz;
+	attr.config = type;
+	attr.type = PERF_TYPE_TRACEPOINT;
+
+	pfd = syscall(__NR_perf_event_open, &attr,
+		      pid < 0 ? -1 : pid, /* pid */
+		      pid == -1 ? 0 : -1, /* cpu */
+		      -1 /* group_fd */,  PERF_FLAG_FD_CLOEXEC);
+	if (pfd < 0) {
+		err = -errno;
+		pr_warn("legacy kprobe perf_event_open() failed: %s\n",
+			libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		goto err_clean_legacy;
+	}
+	return pfd;
+
+err_clean_legacy:
+	/* Clear the newly added legacy kprobe_event */
+	remove_kprobe_event_legacy(probe_name, retprobe);
+	return err;
+}
