@@ -9294,3 +9294,63 @@ int bpf_map__set_map_extra(struct bpf_map *map, __u64 map_extra)
 	map->map_extra = map_extra;
 	return 0;
 }
+
+__u32 bpf_map__numa_node(const struct bpf_map *map)
+{
+	return map->numa_node;
+}
+
+int bpf_map__set_numa_node(struct bpf_map *map, __u32 numa_node)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->numa_node = numa_node;
+	return 0;
+}
+
+__u32 bpf_map__key_size(const struct bpf_map *map)
+{
+	return map->def.key_size;
+}
+
+int bpf_map__set_key_size(struct bpf_map *map, __u32 size)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->def.key_size = size;
+	return 0;
+}
+
+__u32 bpf_map__value_size(const struct bpf_map *map)
+{
+	return map->def.value_size;
+}
+
+int bpf_map__set_value_size(struct bpf_map *map, __u32 size)
+{
+	if (map->fd >= 0)
+		return libbpf_err(-EBUSY);
+	map->def.value_size = size;
+	return 0;
+}
+
+__u32 bpf_map__btf_key_type_id(const struct bpf_map *map)
+{
+	return map ? map->btf_key_type_id : 0;
+}
+
+__u32 bpf_map__btf_value_type_id(const struct bpf_map *map)
+{
+	return map ? map->btf_value_type_id : 0;
+}
+
+int bpf_map__set_initial_value(struct bpf_map *map,
+			       const void *data, size_t size)
+{
+	if (!map->mmaped || map->libbpf_type == LIBBPF_MAP_KCONFIG ||
+	    size != map->def.value_size || map->fd >= 0)
+		return libbpf_err(-EINVAL);
+
+	memcpy(map->mmaped, data, size);
+	return 0;
+}
