@@ -10025,3 +10025,44 @@ static const char *tracefs_available_filter_functions(void)
 	return use_debugfs() ? DEBUGFS"/available_filter_functions" :
 			       TRACEFS"/available_filter_functions";
 }
+
+static void gen_kprobe_legacy_event_name(char *buf, size_t buf_sz,
+					 const char *kfunc_name, size_t offset)
+{
+	static int index = 0;
+	int i;
+
+	snprintf(buf, buf_sz, "libbpf_%u_%s_0x%zx_%d", getpid(), kfunc_name, offset,
+		 __sync_fetch_and_add(&index, 1));
+
+	/* sanitize binary_path in the probe name */
+	for (i = 0; buf[i]; i++) {
+		if (!isalnum(buf[i]))
+			buf[i] = '_';
+	}
+}
+
+static int add_kprobe_event_legacy(const char *probe_name, bool retprobe,
+				   const char *kfunc_name, size_t offset)
+{
+	return append_to_file(tracefs_kprobe_events(), "%c:%s/%s %s+0x%zx",
+			      retprobe ? 'r' : 'p',
+			      retprobe ? "kretprobes" : "kprobes",
+			      probe_name, kfunc_name, offset);
+}
+
+static int remove_kprobe_event_legacy(const char *probe_name, bool retprobe)
+{
+	return append_to_file(tracefs_kprobe_events(), "-:%s/%s",
+			      retprobe ? "kretprobes" : "kprobes", probe_name);
+}
+
+static int determine_kprobe_perf_type_legacy(const char *probe_name, bool retprobe)
+{
+	char file[256];
+
+	snprintf(file, sizeof(file), "%s/events/%s/%s/id",
+		 tracefs_path(), retprobe ? "kretprobes" : "kprobes", probe_name);
+
+	return parse_uint_from_file(file, "%d\n");
+}
