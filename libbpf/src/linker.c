@@ -955,3 +955,67 @@ static int linker_sanity_check_elf_relos(struct src_obj *obj, struct src_sec *se
 
     return 0;
 }
+
+static int check_btf_type_id(__u32 *type_id, void *ctx)
+{
+    struct btf *btf = ctx;
+
+    if (*type_id >= btf__type_cnt(btf))
+        return -EINVAL;
+
+    return 0;
+}
+
+static int check_btf_str_off(__u32 *str_off, void *ctx)
+{
+    struct btf *btf = ctx;
+    const char *s;
+
+    s = btf__str_by_offset(btf, *str_off);
+
+    if (!s)
+        return -EINVAL;
+
+    return 0;
+}
+
+static int linker_sanity_check_btf(struct src_obj *obj)
+{
+    struct btf_type *t;
+    int i, n, err = 0;
+
+    if (!obj->btf)
+        return 0;
+
+    n = btf__type_cnt(obj->btf);
+    for (i = 1; i < n; i++)
+    {
+        t = btf_type_by_id(obj->btf, i);
+
+        err = err ?: btf_type_visit_type_ids(t, check_btf_type_id, obj->btf);
+        err = err ?: btf_type_visit_str_offs(t, check_btf_str_off, obj->btf);
+        if (err)
+            return err;
+    }
+
+    return 0;
+}
+
+static int linker_sanity_check_btf_ext(struct src_obj *obj)
+{
+    int err = 0;
+
+    if (!obj->btf_ext)
+        return 0;
+
+    /* can't use .BTF.ext without .BTF */
+    if (!obj->btf)
+        return -EINVAL;
+
+    err = err ?: btf_ext_visit_type_ids(obj->btf_ext, check_btf_type_id, obj->btf);
+    err = err ?: btf_ext_visit_str_offs(obj->btf_ext, check_btf_str_off, obj->btf);
+    if (err)
+        return err;
+
+    return 0;
+}
