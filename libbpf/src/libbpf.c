@@ -10113,3 +10113,61 @@ err_clean_legacy:
 	remove_kprobe_event_legacy(probe_name, retprobe);
 	return err;
 }
+
+static const char *arch_specific_syscall_pfx(void)
+{
+#if defined(__x86_64__)
+	return "x64";
+#elif defined(__i386__)
+	return "ia32";
+#elif defined(__s390x__)
+	return "s390x";
+#elif defined(__s390__)
+	return "s390";
+#elif defined(__arm__)
+	return "arm";
+#elif defined(__aarch64__)
+	return "arm64";
+#elif defined(__mips__)
+	return "mips";
+#elif defined(__riscv)
+	return "riscv";
+#elif defined(__powerpc__)
+	return "powerpc";
+#elif defined(__powerpc64__)
+	return "powerpc64";
+#else
+	return NULL;
+#endif
+}
+
+static int probe_kern_syscall_wrapper(void)
+{
+	char syscall_name[64];
+	const char *ksys_pfx;
+
+	ksys_pfx = arch_specific_syscall_pfx();
+	if (!ksys_pfx)
+		return 0;
+
+	snprintf(syscall_name, sizeof(syscall_name), "__%s_sys_bpf", ksys_pfx);
+
+	if (determine_kprobe_perf_type() >= 0) {
+		int pfd;
+
+		pfd = perf_event_open_probe(false, false, syscall_name, 0, getpid(), 0);
+		if (pfd >= 0)
+			close(pfd);
+
+		return pfd >= 0 ? 1 : 0;
+	} else { /* legacy mode */
+		char probe_name[128];
+
+		gen_kprobe_legacy_event_name(probe_name, sizeof(probe_name), syscall_name, 0);
+		if (add_kprobe_event_legacy(probe_name, false, syscall_name, 0) < 0)
+			return 0;
+
+		(void)remove_kprobe_event_legacy(probe_name, false);
+		return 1;
+	}
+}
