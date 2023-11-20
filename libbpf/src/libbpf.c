@@ -10521,3 +10521,40 @@ error:
 	kprobe_multi_resolve_free(&res);
 	return libbpf_err_ptr(err);
 }
+
+static int attach_kprobe(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	DECLARE_LIBBPF_OPTS(bpf_kprobe_opts, opts);
+	unsigned long offset = 0;
+	const char *func_name;
+	char *func;
+	int n;
+
+	*link = NULL;
+
+	/* no auto-attach for SEC("kprobe") and SEC("kretprobe") */
+	if (strcmp(prog->sec_name, "kprobe") == 0 || strcmp(prog->sec_name, "kretprobe") == 0)
+		return 0;
+
+	opts.retprobe = str_has_pfx(prog->sec_name, "kretprobe/");
+	if (opts.retprobe)
+		func_name = prog->sec_name + sizeof("kretprobe/") - 1;
+	else
+		func_name = prog->sec_name + sizeof("kprobe/") - 1;
+
+	n = sscanf(func_name, "%m[a-zA-Z0-9_.]+%li", &func, &offset);
+	if (n < 1) {
+		pr_warn("kprobe name is invalid: %s\n", func_name);
+		return -EINVAL;
+	}
+	if (opts.retprobe && offset != 0) {
+		free(func);
+		pr_warn("kretprobes do not support offset specification\n");
+		return -EINVAL;
+	}
+
+	opts.offset = offset;
+	*link = bpf_program__attach_kprobe_opts(prog, func, &opts);
+	free(func);
+	return libbpf_get_error(*link);
+}
