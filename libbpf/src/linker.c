@@ -1074,3 +1074,51 @@ static int init_sec(struct bpf_linker *linker, struct dst_sec *dst_sec, struct s
 
     return 0;
 }
+static struct dst_sec *find_dst_sec_by_name(struct bpf_linker *linker, const char *sec_name)
+{
+    struct dst_sec *sec;
+    int i;
+
+    for (i = 1; i < linker->sec_cnt; i++)
+    {
+        sec = &linker->secs[i];
+
+        if (strcmp(sec->sec_name, sec_name) == 0)
+            return sec;
+    }
+
+    return NULL;
+}
+
+static bool secs_match(struct dst_sec *dst, struct src_sec *src)
+{
+    if (dst->ephemeral || src->ephemeral)
+        return true;
+
+    if (dst->shdr->sh_type != src->shdr->sh_type)
+    {
+        pr_warn("sec %s types mismatch\n", dst->sec_name);
+        return false;
+    }
+    if (dst->shdr->sh_flags != src->shdr->sh_flags)
+    {
+        pr_warn("sec %s flags mismatch\n", dst->sec_name);
+        return false;
+    }
+    if (dst->shdr->sh_entsize != src->shdr->sh_entsize)
+    {
+        pr_warn("sec %s entsize mismatch\n", dst->sec_name);
+        return false;
+    }
+
+    return true;
+}
+
+static bool sec_content_is_same(struct dst_sec *dst_sec, struct src_sec *src_sec)
+{
+    if (dst_sec->sec_sz != src_sec->shdr->sh_size)
+        return false;
+    if (memcmp(dst_sec->raw_data, src_sec->data->d_buf, dst_sec->sec_sz) != 0)
+        return false;
+    return true;
+}
