@@ -10610,3 +10610,85 @@ static int attach_kprobe_multi(const struct bpf_program *prog, long cookie, stru
 	free(pattern);
 	return libbpf_get_error(*link);
 }
+
+static void gen_uprobe_legacy_event_name(char *buf, size_t buf_sz,
+					 const char *binary_path, uint64_t offset)
+{
+	int i;
+
+	snprintf(buf, buf_sz, "libbpf_%u_%s_0x%zx", getpid(), binary_path, (size_t)offset);
+
+	/* sanitize binary_path in the probe name */
+	for (i = 0; buf[i]; i++) {
+		if (!isalnum(buf[i]))
+			buf[i] = '_';
+	}
+}
+
+static inline int add_uprobe_event_legacy(const char *probe_name, bool retprobe,
+					  const char *binary_path, size_t offset)
+{
+	return append_to_file(tracefs_uprobe_events(), "%c:%s/%s %s:0x%zx",
+			      retprobe ? 'r' : 'p',
+			      retprobe ? "uretprobes" : "uprobes",
+			      probe_name, binary_path, offset);
+}
+
+static inline int remove_uprobe_event_legacy(const char *probe_name, bool retprobe)
+{
+	return append_to_file(tracefs_uprobe_events(), "-:%s/%s",
+			      retprobe ? "uretprobes" : "uprobes", probe_name);
+}
+
+static int determine_uprobe_perf_type_legacy(const char *probe_name, bool retprobe)
+{
+	char file[512];
+
+	snprintf(file, sizeof(file), "%s/events/%s/%s/id",
+		 tracefs_path(), retprobe ? "uretprobes" : "uprobes", probe_name);
+
+	return parse_uint_from_file(file, "%d\n");
+}
+
+static int perf_event_uprobe_open_legacy(const char *probe_name, bool retprobe,
+					 const char *binary_path, size_t offset, int pid)
+{
+	const size_t attr_sz = sizeof(struct perf_event_attr);
+	struct perf_event_attr attr;
+	int type, pfd, err;
+
+	err = add_uprobe_event_legacy(probe_name, retprobe, binary_path, offset);
+	if (err < 0) {
+		pr_warn("failed to add legacy uprobe event for %s:0x%zx: %d\n",
+			binary_path, (size_t)offset, err);
+		return err;
+	}
+	type = determine_uprobe_perf_type_legacy(probe_name, retprobe);
+	if (type < 0) {
+		err = type;
+		pr_warn("failed to determine legacy uprobe event id for %s:0x%zx: %d\n",
+			binary_path, offset, err);
+		goto err_clean_legacy;
+	}
+
+	memset(&attr, 0, attr_sz);
+	attr.size = attr_sz;
+	attr.config = type;
+	attr.type = PERF_TYPE_TRACEPOINT;
+
+	pfd = syscall(__NR_perf_event_open, &attr,
+		      pid < 0 ? -1 : pid, /* pid */
+		      pid == -1 ? 0 : -1, /* cpu */
+		      -1 /* group_fd */,  PERF_FLAG_FD_CLOEXEC);
+	if (pfd < 0) {
+		err = -errno;
+		pr_warn("legacy uprobe perf_event_open() failed: %d\n", err);
+		goto err_clean_legacy;
+	}
+	return pfd;
+
+err_clean_legacy:
+	/* Clear the newly added legacy uprobe_event */
+	remove_uprobe_event_legacy(probe_name, retprobe);
+	return err;
+}
