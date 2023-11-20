@@ -10558,3 +10558,55 @@ static int attach_kprobe(const struct bpf_program *prog, long cookie, struct bpf
 	free(func);
 	return libbpf_get_error(*link);
 }
+
+static int attach_ksyscall(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	LIBBPF_OPTS(bpf_ksyscall_opts, opts);
+	const char *syscall_name;
+
+	*link = NULL;
+
+	/* no auto-attach for SEC("ksyscall") and SEC("kretsyscall") */
+	if (strcmp(prog->sec_name, "ksyscall") == 0 || strcmp(prog->sec_name, "kretsyscall") == 0)
+		return 0;
+
+	opts.retprobe = str_has_pfx(prog->sec_name, "kretsyscall/");
+	if (opts.retprobe)
+		syscall_name = prog->sec_name + sizeof("kretsyscall/") - 1;
+	else
+		syscall_name = prog->sec_name + sizeof("ksyscall/") - 1;
+
+	*link = bpf_program__attach_ksyscall(prog, syscall_name, &opts);
+	return *link ? 0 : -errno;
+}
+
+static int attach_kprobe_multi(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	LIBBPF_OPTS(bpf_kprobe_multi_opts, opts);
+	const char *spec;
+	char *pattern;
+	int n;
+
+	*link = NULL;
+
+	/* no auto-attach for SEC("kprobe.multi") and SEC("kretprobe.multi") */
+	if (strcmp(prog->sec_name, "kprobe.multi") == 0 ||
+	    strcmp(prog->sec_name, "kretprobe.multi") == 0)
+		return 0;
+
+	opts.retprobe = str_has_pfx(prog->sec_name, "kretprobe.multi/");
+	if (opts.retprobe)
+		spec = prog->sec_name + sizeof("kretprobe.multi/") - 1;
+	else
+		spec = prog->sec_name + sizeof("kprobe.multi/") - 1;
+
+	n = sscanf(spec, "%m[a-zA-Z0-9_.*?]", &pattern);
+	if (n < 1) {
+		pr_warn("kprobe multi pattern is invalid: %s\n", pattern);
+		return -EINVAL;
+	}
+
+	*link = bpf_program__attach_kprobe_multi_opts(prog, pattern, &opts);
+	free(pattern);
+	return libbpf_get_error(*link);
+}
