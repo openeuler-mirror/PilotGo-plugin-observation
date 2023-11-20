@@ -11019,3 +11019,139 @@ static int resolve_full_path(const char *file, char *result, size_t result_sz)
 	}
 	return -ENOENT;
 }
+
+LIBBPF_API struct bpf_link *
+bpf_program__attach_uprobe_opts(const struct bpf_program *prog, pid_t pid,
+				const char *binary_path, size_t func_offset,
+				const struct bpf_uprobe_opts *opts)
+{
+	const char *archive_path = NULL, *archive_sep = NULL;
+	char errmsg[STRERR_BUFSIZE], *legacy_probe = NULL;
+	DECLARE_LIBBPF_OPTS(bpf_perf_event_opts, pe_opts);
+	enum probe_attach_mode attach_mode;
+	char full_path[PATH_MAX];
+	struct bpf_link *link;
+	size_t ref_ctr_off;
+	int pfd, err;
+	bool retprobe, legacy;
+	const char *func_name;
+
+	if (!OPTS_VALID(opts, bpf_uprobe_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	attach_mode = OPTS_GET(opts, attach_mode, PROBE_ATTACH_MODE_DEFAULT);
+	retprobe = OPTS_GET(opts, retprobe, false);
+	ref_ctr_off = OPTS_GET(opts, ref_ctr_offset, 0);
+	pe_opts.bpf_cookie = OPTS_GET(opts, bpf_cookie, 0);
+
+	if (!binary_path)
+		return libbpf_err_ptr(-EINVAL);
+
+	/* Check if "binary_path" refers to an archive. */
+	archive_sep = strstr(binary_path, "!/");
+	if (archive_sep) {
+		full_path[0] = '\0';
+		libbpf_strlcpy(full_path, binary_path,
+			       min(sizeof(full_path), (size_t)(archive_sep - binary_path + 1)));
+		archive_path = full_path;
+		binary_path = archive_sep + 2;
+	} else if (!strchr(binary_path, '/')) {
+		err = resolve_full_path(binary_path, full_path, sizeof(full_path));
+		if (err) {
+			pr_warn("prog '%s': failed to resolve full path for '%s': %d\n",
+				prog->name, binary_path, err);
+			return libbpf_err_ptr(err);
+		}
+		binary_path = full_path;
+	}
+	func_name = OPTS_GET(opts, func_name, NULL);
+	if (func_name) {
+		long sym_off;
+
+		if (archive_path) {
+			sym_off = elf_find_func_offset_from_archive(archive_path, binary_path,
+								    func_name);
+			binary_path = archive_path;
+		} else {
+			sym_off = elf_find_func_offset_from_file(binary_path, func_name);
+		}
+		if (sym_off < 0)
+			return libbpf_err_ptr(sym_off);
+		func_offset += sym_off;
+	}
+
+	legacy = determine_uprobe_perf_type() < 0;
+	switch (attach_mode) {
+	case PROBE_ATTACH_MODE_LEGACY:
+		legacy = true;
+		pe_opts.force_ioctl_attach = true;
+		break;
+	case PROBE_ATTACH_MODE_PERF:
+		if (legacy)
+			return libbpf_err_ptr(-ENOTSUP);
+		pe_opts.force_ioctl_attach = true;
+		break;
+	case PROBE_ATTACH_MODE_LINK:
+		if (legacy || !kernel_supports(prog->obj, FEAT_PERF_LINK))
+			return libbpf_err_ptr(-ENOTSUP);
+		break;
+	case PROBE_ATTACH_MODE_DEFAULT:
+		break;
+	default:
+		return libbpf_err_ptr(-EINVAL);
+	}
+
+	if (!legacy) {
+		pfd = perf_event_open_probe(true /* uprobe */, retprobe, binary_path,
+					    func_offset, pid, ref_ctr_off);
+	} else {
+		char probe_name[PATH_MAX + 64];
+
+		if (ref_ctr_off)
+			return libbpf_err_ptr(-EINVAL);
+
+		gen_uprobe_legacy_event_name(probe_name, sizeof(probe_name),
+					     binary_path, func_offset);
+
+		legacy_probe = strdup(probe_name);
+		if (!legacy_probe)
+			return libbpf_err_ptr(-ENOMEM);
+
+		pfd = perf_event_uprobe_open_legacy(legacy_probe, retprobe,
+						    binary_path, func_offset, pid);
+	}
+	if (pfd < 0) {
+		err = -errno;
+		pr_warn("prog '%s': failed to create %s '%s:0x%zx' perf event: %s\n",
+			prog->name, retprobe ? "uretprobe" : "uprobe",
+			binary_path, func_offset,
+			libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		goto err_out;
+	}
+
+	link = bpf_program__attach_perf_event_opts(prog, pfd, &pe_opts);
+	err = libbpf_get_error(link);
+	if (err) {
+		close(pfd);
+		pr_warn("prog '%s': failed to attach to %s '%s:0x%zx': %s\n",
+			prog->name, retprobe ? "uretprobe" : "uprobe",
+			binary_path, func_offset,
+			libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		goto err_clean_legacy;
+	}
+	if (legacy) {
+		struct bpf_link_perf *perf_link = container_of(link, struct bpf_link_perf, link);
+
+		perf_link->legacy_probe_name = legacy_probe;
+		perf_link->legacy_is_kprobe = false;
+		perf_link->legacy_is_retprobe = retprobe;
+	}
+	return link;
+
+err_clean_legacy:
+	if (legacy)
+		remove_uprobe_event_legacy(legacy_probe, retprobe);
+err_out:
+	free(legacy_probe);
+	return libbpf_err_ptr(err);
+}
