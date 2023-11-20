@@ -1307,3 +1307,236 @@ static struct glob_sym *find_glob_sym(struct bpf_linker *linker, const char *sym
 
     return NULL;
 }
+
+static struct glob_sym *add_glob_sym(struct bpf_linker *linker)
+{
+    struct glob_sym *syms, *sym;
+
+    syms = libbpf_reallocarray(linker->glob_syms, linker->glob_sym_cnt + 1,
+                               sizeof(*linker->glob_syms));
+    if (!syms)
+        return NULL;
+
+    sym = &syms[linker->glob_sym_cnt];
+    memset(sym, 0, sizeof(*sym));
+    sym->var_idx = -1;
+
+    linker->glob_syms = syms;
+    linker->glob_sym_cnt++;
+
+    return sym;
+}
+
+static bool glob_sym_btf_matches(const char *sym_name, bool exact,
+                                 const struct btf *btf1, __u32 id1,
+                                 const struct btf *btf2, __u32 id2)
+{
+    const struct btf_type *t1, *t2;
+    bool is_static1, is_static2;
+    const char *n1, *n2;
+    int i, n;
+
+recur:
+    n1 = n2 = NULL;
+    t1 = skip_mods_and_typedefs(btf1, id1, &id1);
+    t2 = skip_mods_and_typedefs(btf2, id2, &id2);
+
+    /* check if only one side is FWD, otherwise handle with common logic */
+    if (!exact && btf_is_fwd(t1) != btf_is_fwd(t2))
+    {
+        n1 = btf__str_by_offset(btf1, t1->name_off);
+        n2 = btf__str_by_offset(btf2, t2->name_off);
+        if (strcmp(n1, n2) != 0)
+        {
+            pr_warn("global '%s': incompatible forward declaration names '%s' and '%s'\n",
+                    sym_name, n1, n2);
+            return false;
+        }
+        /* validate if FWD kind matches concrete kind */
+        if (btf_is_fwd(t1))
+        {
+            if (btf_kflag(t1) && btf_is_union(t2))
+                return true;
+            if (!btf_kflag(t1) && btf_is_struct(t2))
+                return true;
+            pr_warn("global '%s': incompatible %s forward declaration and concrete kind %s\n",
+                    sym_name, btf_kflag(t1) ? "union" : "struct", btf_kind_str(t2));
+        }
+        else
+        {
+            if (btf_kflag(t2) && btf_is_union(t1))
+                return true;
+            if (!btf_kflag(t2) && btf_is_struct(t1))
+                return true;
+            pr_warn("global '%s': incompatible %s forward declaration and concrete kind %s\n",
+                    sym_name, btf_kflag(t2) ? "union" : "struct", btf_kind_str(t1));
+        }
+        return false;
+    }
+
+    if (btf_kind(t1) != btf_kind(t2))
+    {
+        pr_warn("global '%s': incompatible BTF kinds %s and %s\n",
+                sym_name, btf_kind_str(t1), btf_kind_str(t2));
+        return false;
+    }
+
+    switch (btf_kind(t1))
+    {
+    case BTF_KIND_STRUCT:
+    case BTF_KIND_UNION:
+    case BTF_KIND_ENUM:
+    case BTF_KIND_ENUM64:
+    case BTF_KIND_FWD:
+    case BTF_KIND_FUNC:
+    case BTF_KIND_VAR:
+        n1 = btf__str_by_offset(btf1, t1->name_off);
+        n2 = btf__str_by_offset(btf2, t2->name_off);
+        if (strcmp(n1, n2) != 0)
+        {
+            pr_warn("global '%s': incompatible %s names '%s' and '%s'\n",
+                    sym_name, btf_kind_str(t1), n1, n2);
+            return false;
+        }
+        break;
+    default:
+        break;
+    }
+
+    switch (btf_kind(t1))
+    {
+    case BTF_KIND_UNKN: /* void */
+    case BTF_KIND_FWD:
+        return true;
+    case BTF_KIND_INT:
+    case BTF_KIND_FLOAT:
+    case BTF_KIND_ENUM:
+    case BTF_KIND_ENUM64:
+        /* ignore encoding for int and enum values for enum */
+        if (t1->size != t2->size)
+        {
+            pr_warn("global '%s': incompatible %s '%s' size %u and %u\n",
+                    sym_name, btf_kind_str(t1), n1, t1->size, t2->size);
+            return false;
+        }
+        return true;
+    case BTF_KIND_PTR:
+        /* just validate overall shape of the referenced type, so no
+         * contents comparison for struct/union, and allowd fwd vs
+         * struct/union
+         */
+        exact = false;
+        id1 = t1->type;
+        id2 = t2->type;
+        goto recur;
+    case BTF_KIND_ARRAY:
+        /* ignore index type and array size */
+        id1 = btf_array(t1)->type;
+        id2 = btf_array(t2)->type;
+        goto recur;
+    case BTF_KIND_FUNC:
+        /* extern and global linkages are compatible */
+        is_static1 = btf_func_linkage(t1) == BTF_FUNC_STATIC;
+        is_static2 = btf_func_linkage(t2) == BTF_FUNC_STATIC;
+        if (is_static1 != is_static2)
+        {
+            pr_warn("global '%s': incompatible func '%s' linkage\n", sym_name, n1);
+            return false;
+        }
+
+        id1 = t1->type;
+        id2 = t2->type;
+        goto recur;
+    case BTF_KIND_VAR:
+        /* extern and global linkages are compatible */
+        is_static1 = btf_var(t1)->linkage == BTF_VAR_STATIC;
+        is_static2 = btf_var(t2)->linkage == BTF_VAR_STATIC;
+        if (is_static1 != is_static2)
+        {
+            pr_warn("global '%s': incompatible var '%s' linkage\n", sym_name, n1);
+            return false;
+        }
+
+        id1 = t1->type;
+        id2 = t2->type;
+        goto recur;
+    case BTF_KIND_STRUCT:
+    case BTF_KIND_UNION:
+    {
+        const struct btf_member *m1, *m2;
+
+        if (!exact)
+            return true;
+
+        if (btf_vlen(t1) != btf_vlen(t2))
+        {
+            pr_warn("global '%s': incompatible number of %s fields %u and %u\n",
+                    sym_name, btf_kind_str(t1), btf_vlen(t1), btf_vlen(t2));
+            return false;
+        }
+
+        n = btf_vlen(t1);
+        m1 = btf_members(t1);
+        m2 = btf_members(t2);
+        for (i = 0; i < n; i++, m1++, m2++)
+        {
+            n1 = btf__str_by_offset(btf1, m1->name_off);
+            n2 = btf__str_by_offset(btf2, m2->name_off);
+            if (strcmp(n1, n2) != 0)
+            {
+                pr_warn("global '%s': incompatible field #%d names '%s' and '%s'\n",
+                        sym_name, i, n1, n2);
+                return false;
+            }
+            if (m1->offset != m2->offset)
+            {
+                pr_warn("global '%s': incompatible field #%d ('%s') offsets\n",
+                        sym_name, i, n1);
+                return false;
+            }
+            if (!glob_sym_btf_matches(sym_name, exact, btf1, m1->type, btf2, m2->type))
+                return false;
+        }
+
+        return true;
+    }
+    case BTF_KIND_FUNC_PROTO:
+    {
+        const struct btf_param *m1, *m2;
+
+        if (btf_vlen(t1) != btf_vlen(t2))
+        {
+            pr_warn("global '%s': incompatible number of %s params %u and %u\n",
+                    sym_name, btf_kind_str(t1), btf_vlen(t1), btf_vlen(t2));
+            return false;
+        }
+
+        n = btf_vlen(t1);
+        m1 = btf_params(t1);
+        m2 = btf_params(t2);
+        for (i = 0; i < n; i++, m1++, m2++)
+        {
+            /* ignore func arg names */
+            if (!glob_sym_btf_matches(sym_name, exact, btf1, m1->type, btf2, m2->type))
+                return false;
+        }
+
+        /* now check return type as well */
+        id1 = t1->type;
+        id2 = t2->type;
+        goto recur;
+    }
+
+    /* skip_mods_and_typedefs() make this impossible */
+    case BTF_KIND_TYPEDEF:
+    case BTF_KIND_VOLATILE:
+    case BTF_KIND_CONST:
+    case BTF_KIND_RESTRICT:
+    /* DATASECs are never compared with each other */
+    case BTF_KIND_DATASEC:
+    default:
+        pr_warn("global '%s': unsupported BTF kind %s\n",
+                sym_name, btf_kind_str(t1));
+        return false;
+    }
+}
