@@ -10360,3 +10360,63 @@ kallsyms_resolve_kprobe_multi_cb(unsigned long long sym_addr, char sym_type,
 	res->addrs[res->cnt++] = (unsigned long) sym_addr;
 	return 0;
 }
+
+static int ftrace_resolve_kprobe_multi_cb(const char *sym_name, void *ctx)
+{
+	struct kprobe_multi_resolve *res = ctx;
+	int err;
+	char *name;
+
+	if (!glob_match(sym_name, res->pattern))
+		return 0;
+
+	err = libbpf_ensure_mem((void **) &res->syms, &res->cap,
+				sizeof(const char *), res->cnt + 1);
+	if (err)
+		return err;
+
+	name = strdup(sym_name);
+	if (!name)
+		return -errno;
+
+	res->syms[res->cnt++] = name;
+	return 0;
+}
+
+typedef int (*available_kprobe_cb_t)(const char *sym_name, void *ctx);
+
+static int
+libbpf_available_kprobes_parse(available_kprobe_cb_t cb, void *ctx)
+{
+	char sym_name[256];
+	FILE *f;
+	int ret, err = 0;
+	const char *available_path = tracefs_available_filter_functions();
+
+	f = fopen(available_path, "r");
+	if (!f) {
+		err = -errno;
+		pr_warn("failed to open %s, fallback to kallsyms.\n",
+			available_path);
+		return err;
+	}
+
+	while (true) {
+		ret = fscanf(f, "%s%*[^\n]\n", sym_name);
+		if (ret == EOF && feof(f))
+			break;
+		if (ret != 1) {
+			pr_warn("failed to read available kprobe entry: %d\n",
+				ret);
+			err = -EINVAL;
+			break;
+		}
+
+		err = cb(sym_name, ctx);
+		if (err)
+			break;
+	}
+
+	fclose(f);
+	return err;
+}
