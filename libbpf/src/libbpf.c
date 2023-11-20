@@ -10267,3 +10267,42 @@ err_out:
 	free(legacy_probe);
 	return libbpf_err_ptr(err);
 }
+
+struct bpf_link *bpf_program__attach_kprobe(const struct bpf_program *prog,
+					    bool retprobe,
+					    const char *func_name)
+{
+	DECLARE_LIBBPF_OPTS(bpf_kprobe_opts, opts,
+		.retprobe = retprobe,
+	);
+
+	return bpf_program__attach_kprobe_opts(prog, func_name, &opts);
+}
+
+struct bpf_link *bpf_program__attach_ksyscall(const struct bpf_program *prog,
+					      const char *syscall_name,
+					      const struct bpf_ksyscall_opts *opts)
+{
+	LIBBPF_OPTS(bpf_kprobe_opts, kprobe_opts);
+	char func_name[128];
+
+	if (!OPTS_VALID(opts, bpf_ksyscall_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	if (kernel_supports(prog->obj, FEAT_SYSCALL_WRAPPER)) {
+		/* arch_specific_syscall_pfx() should never return NULL here
+		 * because it is guarded by kernel_supports(). However, since
+		 * compiler does not know that we have an explicit conditional
+		 * as well.
+		 */
+		snprintf(func_name, sizeof(func_name), "__%s_sys_%s",
+			 arch_specific_syscall_pfx() ? : "", syscall_name);
+	} else {
+		snprintf(func_name, sizeof(func_name), "__se_sys_%s", syscall_name);
+	}
+
+	kprobe_opts.retprobe = OPTS_GET(opts, retprobe, false);
+	kprobe_opts.bpf_cookie = OPTS_GET(opts, bpf_cookie, 0);
+
+	return bpf_program__attach_kprobe_opts(prog, func_name, &kprobe_opts);
+}
