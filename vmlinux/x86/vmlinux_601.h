@@ -10740,3 +10740,51 @@ struct sk_buff {
 	refcount_t users;
 	struct skb_ext *extensions;
 };
+struct ref_tracker_dir {};
+
+struct prot_inuse;
+
+struct netns_core {
+	struct ctl_table_header *sysctl_hdr;
+	int sysctl_somaxconn;
+	u8 sysctl_txrehash;
+	struct prot_inuse *prot_inuse;
+};
+
+struct ipstats_mib;
+
+struct tcp_mib;
+
+struct linux_mib;
+
+struct udp_mib;
+
+struct linux_tls_mib;
+
+struct mptcp_mib;
+
+struct icmp_mib;
+
+struct icmpmsg_mib;
+
+struct icmpv6_mib;
+
+struct icmpv6msg_mib;
+
+struct netns_mib {
+	struct ipstats_mib *ip_statistics;
+	struct ipstats_mib *ipv6_statistics;
+	struct tcp_mib *tcp_statistics;
+	struct linux_mib *net_statistics;
+	struct udp_mib *udp_statistics;
+	struct udp_mib *udp_stats_in6;
+	struct linux_tls_mib *tls_statistics;
+	struct mptcp_mib *mptcp_statistics;
+	struct udp_mib *udplite_statistics;
+	struct udp_mib *udplite_stats_in6;
+	struct icmp_mib *icmp_statistics;
+	struct icmpmsg_mib *icmpmsg_statistics;
+	struct icmpv6_mib *icmpv6_statistics;
+	struct icmpv6msg_mib *icmpv6msg_statistics;
+	struct proc_dir_entry *proc_net_devsnmp6;
+};
