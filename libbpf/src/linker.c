@@ -1122,3 +1122,62 @@ static bool sec_content_is_same(struct dst_sec *dst_sec, struct src_sec *src_sec
         return false;
     return true;
 }
+static int extend_sec(struct bpf_linker *linker, struct dst_sec *dst, struct src_sec *src)
+{
+    void *tmp;
+    size_t dst_align, src_align;
+    size_t dst_align_sz, dst_final_sz;
+    int err;
+
+    if (src->ephemeral)
+        return 0;
+
+    if (dst->ephemeral)
+    {
+        err = init_sec(linker, dst, src);
+        if (err)
+            return err;
+    }
+
+    dst_align = dst->shdr->sh_addralign;
+    src_align = src->shdr->sh_addralign;
+    if (dst_align == 0)
+        dst_align = 1;
+    if (dst_align < src_align)
+        dst_align = src_align;
+
+    dst_align_sz = (dst->sec_sz + dst_align - 1) / dst_align * dst_align;
+
+    dst_final_sz = dst_align_sz + src->shdr->sh_size;
+
+    if (src->shdr->sh_type != SHT_NOBITS)
+    {
+        tmp = realloc(dst->raw_data, dst_final_sz);
+        if (!tmp && dst_align_sz > 0)
+            return -ENOMEM;
+        dst->raw_data = tmp;
+
+        memset(dst->raw_data + dst->sec_sz, 0, dst_align_sz - dst->sec_sz);
+        memcpy(dst->raw_data + dst_align_sz, src->data->d_buf, src->shdr->sh_size);
+    }
+
+    dst->sec_sz = dst_final_sz;
+    dst->shdr->sh_size = dst_final_sz;
+    dst->data->d_size = dst_final_sz;
+
+    dst->shdr->sh_addralign = dst_align;
+    dst->data->d_align = dst_align;
+
+    src->dst_off = dst_align_sz;
+
+    return 0;
+}
+
+static bool is_data_sec(struct src_sec *sec)
+{
+    if (!sec || sec->skipped)
+        return false;
+    if (sec->ephemeral)
+        return true;
+    return sec->shdr->sh_type == SHT_PROGBITS || sec->shdr->sh_type == SHT_NOBITS;
+}
