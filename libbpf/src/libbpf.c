@@ -10939,3 +10939,83 @@ out:
 	zip_archive_close(archive);
 	return ret;
 }
+
+static const char *arch_specific_lib_paths(void)
+{
+	/*
+	 * Based on https://packages.debian.org/sid/libc6.
+	 *
+	 * Assume that the traced program is built for the same architecture
+	 * as libbpf, which should cover the vast majority of cases.
+	 */
+#if defined(__x86_64__)
+	return "/lib/x86_64-linux-gnu";
+#elif defined(__i386__)
+	return "/lib/i386-linux-gnu";
+#elif defined(__s390x__)
+	return "/lib/s390x-linux-gnu";
+#elif defined(__s390__)
+	return "/lib/s390-linux-gnu";
+#elif defined(__arm__) && defined(__SOFTFP__)
+	return "/lib/arm-linux-gnueabi";
+#elif defined(__arm__) && !defined(__SOFTFP__)
+	return "/lib/arm-linux-gnueabihf";
+#elif defined(__aarch64__)
+	return "/lib/aarch64-linux-gnu";
+#elif defined(__mips__) && defined(__MIPSEL__) && _MIPS_SZLONG == 64
+	return "/lib/mips64el-linux-gnuabi64";
+#elif defined(__mips__) && defined(__MIPSEL__) && _MIPS_SZLONG == 32
+	return "/lib/mipsel-linux-gnu";
+#elif defined(__powerpc64__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	return "/lib/powerpc64le-linux-gnu";
+#elif defined(__sparc__) && defined(__arch64__)
+	return "/lib/sparc64-linux-gnu";
+#elif defined(__riscv) && __riscv_xlen == 64
+	return "/lib/riscv64-linux-gnu";
+#else
+	return NULL;
+#endif
+}
+
+/* Get full path to program/shared library. */
+static int resolve_full_path(const char *file, char *result, size_t result_sz)
+{
+	const char *search_paths[3] = {};
+	int i, perm;
+
+	if (str_has_sfx(file, ".so") || strstr(file, ".so.")) {
+		search_paths[0] = getenv("LD_LIBRARY_PATH");
+		search_paths[1] = "/usr/lib64:/usr/lib";
+		search_paths[2] = arch_specific_lib_paths();
+		perm = R_OK;
+	} else {
+		search_paths[0] = getenv("PATH");
+		search_paths[1] = "/usr/bin:/usr/sbin";
+		perm = R_OK | X_OK;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(search_paths); i++) {
+		const char *s;
+
+		if (!search_paths[i])
+			continue;
+		for (s = search_paths[i]; s != NULL; s = strchr(s, ':')) {
+			char *next_path;
+			int seg_len;
+
+			if (s[0] == ':')
+				s++;
+			next_path = strchr(s, ':');
+			seg_len = next_path ? next_path - s : strlen(s);
+			if (!seg_len)
+				continue;
+			snprintf(result, result_sz, "%.*s/%s", seg_len, s, file);
+			/* ensure it has required permissions */
+			if (faccessat(AT_FDCWD, result, perm, AT_EACCESS) < 0)
+				continue;
+			pr_debug("resolved '%s' to '%s'\n", file, result);
+			return 0;
+		}
+	}
+	return -ENOENT;
+}
