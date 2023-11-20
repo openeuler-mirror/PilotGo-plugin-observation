@@ -10420,3 +10420,104 @@ libbpf_available_kprobes_parse(available_kprobe_cb_t cb, void *ctx)
 	fclose(f);
 	return err;
 }
+
+static void
+kprobe_multi_resolve_free(struct kprobe_multi_resolve *res)
+{
+	while (res->syms && res->cnt)
+		free((char *)res->syms[--res->cnt]);
+
+	free(res->syms);
+	free(res->addrs);
+	/* reset cap to zero, when fallback */
+	res->cap = 0;
+}
+
+struct bpf_link *
+bpf_program__attach_kprobe_multi_opts(const struct bpf_program *prog,
+				      const char *pattern,
+				      struct bpf_kprobe_multi_opts *opts)
+{
+	LIBBPF_OPTS(bpf_link_create_opts, lopts);
+	struct kprobe_multi_resolve res = {
+		.pattern = pattern,
+	};
+	struct bpf_link *link = NULL;
+	char errmsg[STRERR_BUFSIZE];
+	const unsigned long *addrs;
+	int err, link_fd, prog_fd;
+	const __u64 *cookies;
+	const char **syms;
+	bool retprobe;
+	size_t cnt;
+
+	if (!OPTS_VALID(opts, bpf_kprobe_multi_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	syms    = OPTS_GET(opts, syms, false);
+	addrs   = OPTS_GET(opts, addrs, false);
+	cnt     = OPTS_GET(opts, cnt, false);
+	cookies = OPTS_GET(opts, cookies, false);
+
+	if (!pattern && !addrs && !syms)
+		return libbpf_err_ptr(-EINVAL);
+	if (pattern && (addrs || syms || cookies || cnt))
+		return libbpf_err_ptr(-EINVAL);
+	if (!pattern && !cnt)
+		return libbpf_err_ptr(-EINVAL);
+	if (addrs && syms)
+		return libbpf_err_ptr(-EINVAL);
+
+	if (pattern) {
+		err = libbpf_available_kprobes_parse(ftrace_resolve_kprobe_multi_cb,
+						     &res);
+		if (err) {
+			kprobe_multi_resolve_free(&res);
+			err = libbpf_kallsyms_parse(kallsyms_resolve_kprobe_multi_cb,
+						    &res);
+			if (err)
+				goto error;
+		}
+
+		if (!res.cnt) {
+			err = -ENOENT;
+			goto error;
+		}
+		syms = res.syms;
+		addrs = res.addrs;
+		cnt = res.cnt;
+	}
+
+	retprobe = OPTS_GET(opts, retprobe, false);
+
+	lopts.kprobe_multi.syms = syms;
+	lopts.kprobe_multi.addrs = addrs;
+	lopts.kprobe_multi.cookies = cookies;
+	lopts.kprobe_multi.cnt = cnt;
+	lopts.kprobe_multi.flags = retprobe ? BPF_F_KPROBE_MULTI_RETURN : 0;
+
+	link = calloc(1, sizeof(*link));
+	if (!link) {
+		err = -ENOMEM;
+		goto error;
+	}
+	link->detach = &bpf_link__detach_fd;
+
+	prog_fd = bpf_program__fd(prog);
+	link_fd = bpf_link_create(prog_fd, 0, BPF_TRACE_KPROBE_MULTI, &lopts);
+	if (link_fd < 0) {
+		err = -errno;
+		pr_warn("prog '%s': failed to attach: %s\n",
+			prog->name, libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		goto error;
+	}
+	link->fd = link_fd;
+	OPTS_SET(opts, cnt, res.cnt);
+	kprobe_multi_resolve_free(&res);
+	return link;
+
+error:
+	free(link);
+	kprobe_multi_resolve_free(&res);
+	return libbpf_err_ptr(err);
+}
