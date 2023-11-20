@@ -1181,3 +1181,69 @@ static bool is_data_sec(struct src_sec *sec)
         return true;
     return sec->shdr->sh_type == SHT_PROGBITS || sec->shdr->sh_type == SHT_NOBITS;
 }
+
+static bool is_relo_sec(struct src_sec *sec)
+{
+    if (!sec || sec->skipped || sec->ephemeral)
+        return false;
+    return sec->shdr->sh_type == SHT_REL;
+}
+
+static int linker_append_sec_data(struct bpf_linker *linker, struct src_obj *obj)
+{
+    int i, err;
+
+    for (i = 1; i < obj->sec_cnt; i++)
+    {
+        struct src_sec *src_sec;
+        struct dst_sec *dst_sec;
+
+        src_sec = &obj->secs[i];
+        if (!is_data_sec(src_sec))
+            continue;
+
+        dst_sec = find_dst_sec_by_name(linker, src_sec->sec_name);
+        if (!dst_sec)
+        {
+            dst_sec = add_dst_sec(linker, src_sec->sec_name);
+            if (!dst_sec)
+                return -ENOMEM;
+            err = init_sec(linker, dst_sec, src_sec);
+            if (err)
+            {
+                pr_warn("failed to init section '%s'\n", src_sec->sec_name);
+                return err;
+            }
+        }
+        else
+        {
+            if (!secs_match(dst_sec, src_sec))
+            {
+                pr_warn("ELF sections %s are incompatible\n", src_sec->sec_name);
+                return -1;
+            }
+
+            /* "license" and "version" sections are deduped */
+            if (strcmp(src_sec->sec_name, "license") == 0 || strcmp(src_sec->sec_name, "version") == 0)
+            {
+                if (!sec_content_is_same(dst_sec, src_sec))
+                {
+                    pr_warn("non-identical contents of section '%s' are not supported\n", src_sec->sec_name);
+                    return -EINVAL;
+                }
+                src_sec->skipped = true;
+                src_sec->dst_id = dst_sec->id;
+                continue;
+            }
+        }
+
+        /* record mapped section index */
+        src_sec->dst_id = dst_sec->id;
+
+        err = extend_sec(linker, dst_sec, src_sec);
+        if (err)
+            return err;
+    }
+
+    return 0;
+}
