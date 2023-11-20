@@ -10306,3 +10306,57 @@ struct bpf_link *bpf_program__attach_ksyscall(const struct bpf_program *prog,
 
 	return bpf_program__attach_kprobe_opts(prog, func_name, &kprobe_opts);
 }
+
+/* Adapted from perf/util/string.c */
+static bool glob_match(const char *str, const char *pat)
+{
+	while (*str && *pat && *pat != '*') {
+		if (*pat == '?') {      /* Matches any single character */
+			str++;
+			pat++;
+			continue;
+		}
+		if (*str != *pat)
+			return false;
+		str++;
+		pat++;
+	}
+	/* Check wild card */
+	if (*pat == '*') {
+		while (*pat == '*')
+			pat++;
+		if (!*pat) /* Tail wild card matches all */
+			return true;
+		while (*str)
+			if (glob_match(str++, pat))
+				return true;
+	}
+	return !*str && !*pat;
+}
+
+struct kprobe_multi_resolve {
+	const char *pattern;
+	unsigned long *addrs;
+	const char **syms;
+	size_t cap;
+	size_t cnt;
+};
+
+static int
+kallsyms_resolve_kprobe_multi_cb(unsigned long long sym_addr, char sym_type,
+				 const char *sym_name, void *ctx)
+{
+	struct kprobe_multi_resolve *res = ctx;
+	int err;
+
+	if (!glob_match(sym_name, res->pattern))
+		return 0;
+
+	err = libbpf_ensure_mem((void **) &res->addrs, &res->cap,
+				sizeof(unsigned long), res->cnt + 1);
+	if (err)
+		return err;
+
+	res->addrs[res->cnt++] = (unsigned long) sym_addr;
+	return 0;
+}
