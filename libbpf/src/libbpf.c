@@ -11200,3 +11200,95 @@ static int attach_uprobe(const struct bpf_program *prog, long cookie, struct bpf
 
 	return ret;
 }
+
+struct bpf_link *bpf_program__attach_uprobe(const struct bpf_program *prog,
+					    bool retprobe, pid_t pid,
+					    const char *binary_path,
+					    size_t func_offset)
+{
+	DECLARE_LIBBPF_OPTS(bpf_uprobe_opts, opts, .retprobe = retprobe);
+
+	return bpf_program__attach_uprobe_opts(prog, pid, binary_path, func_offset, &opts);
+}
+
+struct bpf_link *bpf_program__attach_usdt(const struct bpf_program *prog,
+					  pid_t pid, const char *binary_path,
+					  const char *usdt_provider, const char *usdt_name,
+					  const struct bpf_usdt_opts *opts)
+{
+	char resolved_path[512];
+	struct bpf_object *obj = prog->obj;
+	struct bpf_link *link;
+	__u64 usdt_cookie;
+	int err;
+
+	if (!OPTS_VALID(opts, bpf_uprobe_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	if (bpf_program__fd(prog) < 0) {
+		pr_warn("prog '%s': can't attach BPF program w/o FD (did you load it?)\n",
+			prog->name);
+		return libbpf_err_ptr(-EINVAL);
+	}
+
+	if (!binary_path)
+		return libbpf_err_ptr(-EINVAL);
+
+	if (!strchr(binary_path, '/')) {
+		err = resolve_full_path(binary_path, resolved_path, sizeof(resolved_path));
+		if (err) {
+			pr_warn("prog '%s': failed to resolve full path for '%s': %d\n",
+				prog->name, binary_path, err);
+			return libbpf_err_ptr(err);
+		}
+		binary_path = resolved_path;
+	}
+
+	/* USDT manager is instantiated lazily on first USDT attach. It will
+	 * be destroyed together with BPF object in bpf_object__close().
+	 */
+	if (IS_ERR(obj->usdt_man))
+		return libbpf_ptr(obj->usdt_man);
+	if (!obj->usdt_man) {
+		obj->usdt_man = usdt_manager_new(obj);
+		if (IS_ERR(obj->usdt_man))
+			return libbpf_ptr(obj->usdt_man);
+	}
+
+	usdt_cookie = OPTS_GET(opts, usdt_cookie, 0);
+	link = usdt_manager_attach_usdt(obj->usdt_man, prog, pid, binary_path,
+					usdt_provider, usdt_name, usdt_cookie);
+	err = libbpf_get_error(link);
+	if (err)
+		return libbpf_err_ptr(err);
+	return link;
+}
+
+static int attach_usdt(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	char *path = NULL, *provider = NULL, *name = NULL;
+	const char *sec_name;
+	int n, err;
+
+	sec_name = bpf_program__section_name(prog);
+	if (strcmp(sec_name, "usdt") == 0) {
+		/* no auto-attach for just SEC("usdt") */
+		*link = NULL;
+		return 0;
+	}
+
+	n = sscanf(sec_name, "usdt/%m[^:]:%m[^:]:%m[^:]", &path, &provider, &name);
+	if (n != 3) {
+		pr_warn("invalid section '%s', expected SEC(\"usdt/<path>:<provider>:<name>\")\n",
+			sec_name);
+		err = -EINVAL;
+	} else {
+		*link = bpf_program__attach_usdt(prog, -1 /* any process */, path,
+						 provider, name, NULL);
+		err = libbpf_get_error(*link);
+	}
+	free(path);
+	free(provider);
+	free(name);
+	return err;
+}
