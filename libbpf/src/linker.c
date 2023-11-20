@@ -1247,3 +1247,63 @@ static int linker_append_sec_data(struct bpf_linker *linker, struct src_obj *obj
 
     return 0;
 }
+static int linker_append_elf_syms(struct bpf_linker *linker, struct src_obj *obj)
+{
+    struct src_sec *symtab = &obj->secs[obj->symtab_sec_idx];
+    Elf64_Sym *sym = symtab->data->d_buf;
+    int i, n = symtab->shdr->sh_size / symtab->shdr->sh_entsize, err;
+    int str_sec_idx = symtab->shdr->sh_link;
+    const char *sym_name;
+
+    obj->sym_map = calloc(n + 1, sizeof(*obj->sym_map));
+    if (!obj->sym_map)
+        return -ENOMEM;
+
+    for (i = 0; i < n; i++, sym++)
+    {
+        /* We already validated all-zero symbol #0 and we already
+         * appended it preventively to the final SYMTAB, so skip it.
+         */
+        if (i == 0)
+            continue;
+
+        sym_name = elf_strptr(obj->elf, str_sec_idx, sym->st_name);
+        if (!sym_name)
+        {
+            pr_warn("can't fetch symbol name for symbol #%d in '%s'\n", i, obj->filename);
+            return -EINVAL;
+        }
+
+        err = linker_append_elf_sym(linker, obj, sym, sym_name, i);
+        if (err)
+            return err;
+    }
+
+    return 0;
+}
+
+static Elf64_Sym *get_sym_by_idx(struct bpf_linker *linker, size_t sym_idx)
+{
+    struct dst_sec *symtab = &linker->secs[linker->symtab_sec_idx];
+    Elf64_Sym *syms = symtab->raw_data;
+
+    return &syms[sym_idx];
+}
+
+static struct glob_sym *find_glob_sym(struct bpf_linker *linker, const char *sym_name)
+{
+    struct glob_sym *glob_sym;
+    const char *name;
+    int i;
+
+    for (i = 0; i < linker->glob_sym_cnt; i++)
+    {
+        glob_sym = &linker->glob_syms[i];
+        name = strset__data(linker->strtab_strs) + glob_sym->name_off;
+
+        if (strcmp(name, sym_name) == 0)
+            return glob_sym;
+    }
+
+    return NULL;
+}
