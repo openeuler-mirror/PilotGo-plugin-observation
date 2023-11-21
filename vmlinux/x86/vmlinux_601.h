@@ -11162,3 +11162,54 @@ struct netns_ipv6 {
 struct nf_logger;
 
 struct nf_hook_entries;
+
+struct netns_nf {
+	struct proc_dir_entry *proc_netfilter;
+	const struct nf_logger *nf_loggers[11];
+	struct ctl_table_header *nf_log_dir_header;
+	struct nf_hook_entries *hooks_ipv4[5];
+	struct nf_hook_entries *hooks_ipv6[5];
+	unsigned int defrag_ipv4_users;
+	unsigned int defrag_ipv6_users;
+};
+
+struct nf_ct_event_notifier;
+
+struct nf_generic_net {
+	unsigned int timeout;
+};
+
+struct nf_tcp_net {
+	unsigned int timeouts[14];
+	u8 tcp_loose;
+	u8 tcp_be_liberal;
+	u8 tcp_max_retrans;
+	u8 tcp_ignore_invalid_rst;
+};
+
+struct nf_udp_net {
+	unsigned int timeouts[2];
+};
+
+struct nf_icmp_net {
+	unsigned int timeout;
+};
+
+struct nf_dccp_net {
+	u8 dccp_loose;
+	unsigned int dccp_timeout[10];
+};
+
+struct nf_sctp_net {
+	unsigned int timeouts[10];
+};
+
+struct nf_ip_net {
+	struct nf_generic_net generic;
+	struct nf_tcp_net tcp;
+	struct nf_udp_net udp;
+	struct nf_icmp_net icmp;
+	struct nf_icmp_net icmpv6;
+	struct nf_dccp_net dccp;
+	struct nf_sctp_net sctp;
+};
