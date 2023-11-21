@@ -1540,3 +1540,102 @@ recur:
         return false;
     }
 }
+
+static bool map_defs_match(const char *sym_name,
+                           const struct btf *main_btf,
+                           const struct btf_map_def *main_def,
+                           const struct btf_map_def *main_inner_def,
+                           const struct btf *extra_btf,
+                           const struct btf_map_def *extra_def,
+                           const struct btf_map_def *extra_inner_def)
+{
+    const char *reason;
+
+    if (main_def->map_type != extra_def->map_type)
+    {
+        reason = "type";
+        goto mismatch;
+    }
+
+    /* check key type/size match */
+    if (main_def->key_size != extra_def->key_size)
+    {
+        reason = "key_size";
+        goto mismatch;
+    }
+    if (!!main_def->key_type_id != !!extra_def->key_type_id)
+    {
+        reason = "key type";
+        goto mismatch;
+    }
+    if ((main_def->parts & MAP_DEF_KEY_TYPE) && !glob_sym_btf_matches(sym_name, true /*exact*/,
+                                                                      main_btf, main_def->key_type_id,
+                                                                      extra_btf, extra_def->key_type_id))
+    {
+        reason = "key type";
+        goto mismatch;
+    }
+
+    /* validate value type/size match */
+    if (main_def->value_size != extra_def->value_size)
+    {
+        reason = "value_size";
+        goto mismatch;
+    }
+    if (!!main_def->value_type_id != !!extra_def->value_type_id)
+    {
+        reason = "value type";
+        goto mismatch;
+    }
+    if ((main_def->parts & MAP_DEF_VALUE_TYPE) && !glob_sym_btf_matches(sym_name, true /*exact*/,
+                                                                        main_btf, main_def->value_type_id,
+                                                                        extra_btf, extra_def->value_type_id))
+    {
+        reason = "key type";
+        goto mismatch;
+    }
+
+    if (main_def->max_entries != extra_def->max_entries)
+    {
+        reason = "max_entries";
+        goto mismatch;
+    }
+    if (main_def->map_flags != extra_def->map_flags)
+    {
+        reason = "map_flags";
+        goto mismatch;
+    }
+    if (main_def->numa_node != extra_def->numa_node)
+    {
+        reason = "numa_node";
+        goto mismatch;
+    }
+    if (main_def->pinning != extra_def->pinning)
+    {
+        reason = "pinning";
+        goto mismatch;
+    }
+
+    if ((main_def->parts & MAP_DEF_INNER_MAP) != (extra_def->parts & MAP_DEF_INNER_MAP))
+    {
+        reason = "inner map";
+        goto mismatch;
+    }
+
+    if (main_def->parts & MAP_DEF_INNER_MAP)
+    {
+        char inner_map_name[128];
+
+        snprintf(inner_map_name, sizeof(inner_map_name), "%s.inner", sym_name);
+
+        return map_defs_match(inner_map_name,
+                              main_btf, main_inner_def, NULL,
+                              extra_btf, extra_inner_def, NULL);
+    }
+
+    return true;
+
+mismatch:
+    pr_warn("global '%s': map %s mismatch\n", sym_name, reason);
+    return false;
+}
