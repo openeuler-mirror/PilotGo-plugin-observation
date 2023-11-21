@@ -1682,3 +1682,42 @@ static bool glob_map_defs_match(const char *sym_name,
     return map_defs_match(sym_name, linker->btf, &dst_def, &dst_inner_def,
                           obj->btf, &src_def, &src_inner_def);
 }
+
+static bool glob_syms_match(const char *sym_name,
+                            struct bpf_linker *linker, struct glob_sym *glob_sym,
+                            struct src_obj *obj, Elf64_Sym *sym, size_t sym_idx, int btf_id)
+{
+    const struct btf_type *src_t;
+
+    /* if we are dealing with externs, BTF types describing both global
+     * and extern VARs/FUNCs should be completely present in all files
+     */
+    if (!glob_sym->btf_id || !btf_id)
+    {
+        pr_warn("BTF info is missing for global symbol '%s'\n", sym_name);
+        return false;
+    }
+
+    src_t = btf__type_by_id(obj->btf, btf_id);
+    if (!btf_is_var(src_t) && !btf_is_func(src_t))
+    {
+        pr_warn("only extern variables and functions are supported, but got '%s' for '%s'\n",
+                btf_kind_str(src_t), sym_name);
+        return false;
+    }
+
+    /* deal with .maps definitions specially */
+    if (glob_sym->sec_id && strcmp(linker->secs[glob_sym->sec_id].sec_name, MAPS_ELF_SEC) == 0)
+        return glob_map_defs_match(sym_name, linker, glob_sym, obj, sym, btf_id);
+
+    if (!glob_sym_btf_matches(sym_name, true /*exact*/,
+                              linker->btf, glob_sym->btf_id, obj->btf, btf_id))
+        return false;
+
+    return true;
+}
+
+static bool btf_is_non_static(const struct btf_type *t)
+{
+    return (btf_is_var(t) && btf_var(t)->linkage != BTF_VAR_STATIC) || (btf_is_func(t) && btf_func_linkage(t) != BTF_FUNC_STATIC);
+}
