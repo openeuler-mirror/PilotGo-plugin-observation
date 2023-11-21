@@ -11914,3 +11914,114 @@ static void perf_buffer__free_cpu_buf(struct perf_buffer *pb,
 	free(cpu_buf->buf);
 	free(cpu_buf);
 }
+
+void perf_buffer__free(struct perf_buffer *pb)
+{
+	int i;
+
+	if (IS_ERR_OR_NULL(pb))
+		return;
+	if (pb->cpu_bufs) {
+		for (i = 0; i < pb->cpu_cnt; i++) {
+			struct perf_cpu_buf *cpu_buf = pb->cpu_bufs[i];
+
+			if (!cpu_buf)
+				continue;
+
+			bpf_map_delete_elem(pb->map_fd, &cpu_buf->map_key);
+			perf_buffer__free_cpu_buf(pb, cpu_buf);
+		}
+		free(pb->cpu_bufs);
+	}
+	if (pb->epoll_fd >= 0)
+		close(pb->epoll_fd);
+	free(pb->events);
+	free(pb);
+}
+
+static struct perf_cpu_buf *
+perf_buffer__open_cpu_buf(struct perf_buffer *pb, struct perf_event_attr *attr,
+			  int cpu, int map_key)
+{
+	struct perf_cpu_buf *cpu_buf;
+	char msg[STRERR_BUFSIZE];
+	int err;
+
+	cpu_buf = calloc(1, sizeof(*cpu_buf));
+	if (!cpu_buf)
+		return ERR_PTR(-ENOMEM);
+
+	cpu_buf->pb = pb;
+	cpu_buf->cpu = cpu;
+	cpu_buf->map_key = map_key;
+
+	cpu_buf->fd = syscall(__NR_perf_event_open, attr, -1 /* pid */, cpu,
+			      -1, PERF_FLAG_FD_CLOEXEC);
+	if (cpu_buf->fd < 0) {
+		err = -errno;
+		pr_warn("failed to open perf buffer event on cpu #%d: %s\n",
+			cpu, libbpf_strerror_r(err, msg, sizeof(msg)));
+		goto error;
+	}
+
+	cpu_buf->base = mmap(NULL, pb->mmap_size + pb->page_size,
+			     PROT_READ | PROT_WRITE, MAP_SHARED,
+			     cpu_buf->fd, 0);
+	if (cpu_buf->base == MAP_FAILED) {
+		cpu_buf->base = NULL;
+		err = -errno;
+		pr_warn("failed to mmap perf buffer on cpu #%d: %s\n",
+			cpu, libbpf_strerror_r(err, msg, sizeof(msg)));
+		goto error;
+	}
+
+	if (ioctl(cpu_buf->fd, PERF_EVENT_IOC_ENABLE, 0) < 0) {
+		err = -errno;
+		pr_warn("failed to enable perf buffer event on cpu #%d: %s\n",
+			cpu, libbpf_strerror_r(err, msg, sizeof(msg)));
+		goto error;
+	}
+
+	return cpu_buf;
+
+error:
+	perf_buffer__free_cpu_buf(pb, cpu_buf);
+	return (struct perf_cpu_buf *)ERR_PTR(err);
+}
+
+static struct perf_buffer *__perf_buffer__new(int map_fd, size_t page_cnt,
+					      struct perf_buffer_params *p);
+
+struct perf_buffer *perf_buffer__new(int map_fd, size_t page_cnt,
+				     perf_buffer_sample_fn sample_cb,
+				     perf_buffer_lost_fn lost_cb,
+				     void *ctx,
+				     const struct perf_buffer_opts *opts)
+{
+	const size_t attr_sz = sizeof(struct perf_event_attr);
+	struct perf_buffer_params p = {};
+	struct perf_event_attr attr;
+	__u32 sample_period;
+
+	if (!OPTS_VALID(opts, perf_buffer_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	sample_period = OPTS_GET(opts, sample_period, 1);
+	if (!sample_period)
+		sample_period = 1;
+
+	memset(&attr, 0, attr_sz);
+	attr.size = attr_sz;
+	attr.config = PERF_COUNT_SW_BPF_OUTPUT;
+	attr.type = PERF_TYPE_SOFTWARE;
+	attr.sample_type = PERF_SAMPLE_RAW;
+	attr.sample_period = sample_period;
+	attr.wakeup_events = sample_period;
+
+	p.attr = &attr;
+	p.sample_cb = sample_cb;
+	p.lost_cb = lost_cb;
+	p.ctx = ctx;
+
+	return libbpf_ptr(__perf_buffer__new(map_fd, page_cnt, &p));
+}
