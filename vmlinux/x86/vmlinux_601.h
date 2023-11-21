@@ -11213,3 +11213,83 @@ struct nf_ip_net {
 	struct nf_dccp_net dccp;
 	struct nf_sctp_net sctp;
 };
+
+struct ip_conntrack_stat;
+
+struct netns_ct {
+	u8 sysctl_log_invalid;
+	u8 sysctl_events;
+	u8 sysctl_acct;
+	u8 sysctl_tstamp;
+	u8 sysctl_checksum;
+	struct ip_conntrack_stat *stat;
+	struct nf_ct_event_notifier *nf_conntrack_event_cb;
+	struct nf_ip_net nf_ct_proto;
+};
+
+struct netns_bpf {
+	struct bpf_prog_array *run_array[2];
+	struct bpf_prog *progs[2];
+	struct list_head links[2];
+};
+
+struct xfrm_policy_hash {
+	struct hlist_head *table;
+	unsigned int hmask;
+	u8 dbits4;
+	u8 sbits4;
+	u8 dbits6;
+	u8 sbits6;
+};
+
+struct xfrm_policy_hthresh {
+	struct work_struct work;
+	seqlock_t lock;
+	u8 lbits4;
+	u8 rbits4;
+	u8 lbits6;
+	u8 rbits6;
+};
+
+struct netns_xfrm {
+	struct list_head state_all;
+	struct hlist_head *state_bydst;
+	struct hlist_head *state_bysrc;
+	struct hlist_head *state_byspi;
+	struct hlist_head *state_byseq;
+	unsigned int state_hmask;
+	unsigned int state_num;
+	struct work_struct state_hash_work;
+	struct list_head policy_all;
+	struct hlist_head *policy_byidx;
+	unsigned int policy_idx_hmask;
+	struct hlist_head policy_inexact[3];
+	struct xfrm_policy_hash policy_bydst[3];
+	unsigned int policy_count[6];
+	struct work_struct policy_hash_work;
+	struct xfrm_policy_hthresh policy_hthresh;
+	struct list_head inexact_bins;
+	struct sock *nlsk;
+	struct sock *nlsk_stash;
+	u32 sysctl_aevent_etime;
+	u32 sysctl_aevent_rseqth;
+	int sysctl_larval_drop;
+	u32 sysctl_acq_expires;
+	u8 policy_default[3];
+	struct ctl_table_header *sysctl_hdr;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct dst_ops xfrm4_dst_ops;
+	struct dst_ops xfrm6_dst_ops;
+	spinlock_t xfrm_state_lock;
+	seqcount_spinlock_t xfrm_state_hash_generation;
+	seqcount_spinlock_t xfrm_policy_hash_generation;
+	spinlock_t xfrm_policy_lock;
+	struct mutex xfrm_cfg_mutex;
+};
+
+struct mpls_route;
