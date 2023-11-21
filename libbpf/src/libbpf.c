@@ -11678,3 +11678,51 @@ bpf_program__attach_iter(const struct bpf_program *prog,
 	link->fd = link_fd;
 	return link;
 }
+
+static int attach_iter(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	*link = bpf_program__attach_iter(prog, NULL);
+	return libbpf_get_error(*link);
+}
+
+struct bpf_link *bpf_program__attach(const struct bpf_program *prog)
+{
+	struct bpf_link *link = NULL;
+	int err;
+
+	if (!prog->sec_def || !prog->sec_def->prog_attach_fn)
+		return libbpf_err_ptr(-EOPNOTSUPP);
+
+	err = prog->sec_def->prog_attach_fn(prog, prog->sec_def->cookie, &link);
+	if (err)
+		return libbpf_err_ptr(err);
+
+	/* When calling bpf_program__attach() explicitly, auto-attach support
+	 * is expected to work, so NULL returned link is considered an error.
+	 * This is different for skeleton's attach, see comment in
+	 * bpf_object__attach_skeleton().
+	 */
+	if (!link)
+		return libbpf_err_ptr(-EOPNOTSUPP);
+
+	return link;
+}
+
+struct bpf_link_struct_ops {
+	struct bpf_link link;
+	int map_fd;
+};
+
+static int bpf_link__detach_struct_ops(struct bpf_link *link)
+{
+	struct bpf_link_struct_ops *st_link;
+	__u32 zero = 0;
+
+	st_link = container_of(link, struct bpf_link_struct_ops, link);
+
+	if (st_link->map_fd < 0)
+		/* w/o a real link */
+		return bpf_map_delete_elem(link->fd, &zero);
+
+	return close(link->fd);
+}
