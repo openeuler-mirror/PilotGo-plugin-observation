@@ -11293,3 +11293,87 @@ struct netns_xfrm {
 };
 
 struct mpls_route;
+
+struct netns_mpls {
+	int ip_ttl_propagate;
+	int default_ttl;
+	size_t platform_labels;
+	struct mpls_route **platform_label;
+	struct ctl_table_header *ctl;
+};
+
+struct netns_xdp {
+	struct mutex lock;
+	struct hlist_head list;
+};
+
+struct uevent_sock;
+
+struct net_generic;
+
+struct net {
+	refcount_t passive;
+	spinlock_t rules_mod_lock;
+	atomic_t dev_unreg_count;
+	unsigned int dev_base_seq;
+	int ifindex;
+	spinlock_t nsid_lock;
+	atomic_t fnhe_genid;
+	struct list_head list;
+	struct list_head exit_list;
+	struct llist_node cleanup_list;
+	struct key_tag *key_domain;
+	struct user_namespace *user_ns;
+	struct ucounts *ucounts;
+	struct idr netns_ids;
+	struct ns_common ns;
+	struct ref_tracker_dir refcnt_tracker;
+	struct ref_tracker_dir notrefcnt_tracker;
+	struct list_head dev_base_head;
+	struct proc_dir_entry *proc_net;
+	struct proc_dir_entry *proc_net_stat;
+	struct ctl_table_set sysctls;
+	struct sock *rtnl;
+	struct sock *genl_sock;
+	struct uevent_sock *uevent_sock;
+	struct hlist_head *dev_name_head;
+	struct hlist_head *dev_index_head;
+	struct raw_notifier_head netdev_chain;
+	u32 hash_mix;
+	struct net_device *loopback_dev;
+	struct list_head rules_ops;
+	struct netns_core core;
+	struct netns_mib mib;
+	struct netns_packet packet;
+	struct netns_unix unx;
+	struct netns_nexthop nexthop;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct netns_ipv4 ipv4;
+	struct netns_ipv6 ipv6;
+	struct netns_nf nf;
+	struct netns_ct ct;
+	struct net_generic *gen;
+	struct netns_bpf bpf;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct netns_xfrm xfrm;
+	u64 net_cookie;
+	struct netns_mpls mpls;
+	struct netns_xdp xdp;
+	struct sock *diag_nlsk;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
