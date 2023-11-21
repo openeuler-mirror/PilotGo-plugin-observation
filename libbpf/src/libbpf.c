@@ -11487,3 +11487,51 @@ static int attach_raw_tp(const struct bpf_program *prog, long cookie, struct bpf
 	*link = bpf_program__attach_raw_tracepoint(prog, tp_name);
 	return libbpf_get_error(*link);
 }
+
+/* Common logic for all BPF program types that attach to a btf_id */
+static struct bpf_link *bpf_program__attach_btf_id(const struct bpf_program *prog,
+						   const struct bpf_trace_opts *opts)
+{
+	LIBBPF_OPTS(bpf_link_create_opts, link_opts);
+	char errmsg[STRERR_BUFSIZE];
+	struct bpf_link *link;
+	int prog_fd, pfd;
+
+	if (!OPTS_VALID(opts, bpf_trace_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	prog_fd = bpf_program__fd(prog);
+	if (prog_fd < 0) {
+		pr_warn("prog '%s': can't attach before loaded\n", prog->name);
+		return libbpf_err_ptr(-EINVAL);
+	}
+
+	link = calloc(1, sizeof(*link));
+	if (!link)
+		return libbpf_err_ptr(-ENOMEM);
+	link->detach = &bpf_link__detach_fd;
+
+	/* libbpf is smart enough to redirect to BPF_RAW_TRACEPOINT_OPEN on old kernels */
+	link_opts.tracing.cookie = OPTS_GET(opts, cookie, 0);
+	pfd = bpf_link_create(prog_fd, 0, bpf_program__expected_attach_type(prog), &link_opts);
+	if (pfd < 0) {
+		pfd = -errno;
+		free(link);
+		pr_warn("prog '%s': failed to attach: %s\n",
+			prog->name, libbpf_strerror_r(pfd, errmsg, sizeof(errmsg)));
+		return libbpf_err_ptr(pfd);
+	}
+	link->fd = pfd;
+	return link;
+}
+
+struct bpf_link *bpf_program__attach_trace(const struct bpf_program *prog)
+{
+	return bpf_program__attach_btf_id(prog, NULL);
+}
+
+struct bpf_link *bpf_program__attach_trace_opts(const struct bpf_program *prog,
+						const struct bpf_trace_opts *opts)
+{
+	return bpf_program__attach_btf_id(prog, opts);
+}
