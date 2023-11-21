@@ -11377,3 +11377,42 @@ struct bpf_link *bpf_program__attach_tracepoint_opts(const struct bpf_program *p
 	}
 	return link;
 }
+
+struct bpf_link *bpf_program__attach_tracepoint(const struct bpf_program *prog,
+						const char *tp_category,
+						const char *tp_name)
+{
+	return bpf_program__attach_tracepoint_opts(prog, tp_category, tp_name, NULL);
+}
+
+static int attach_tp(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	char *sec_name, *tp_cat, *tp_name;
+
+	*link = NULL;
+
+	/* no auto-attach for SEC("tp") or SEC("tracepoint") */
+	if (strcmp(prog->sec_name, "tp") == 0 || strcmp(prog->sec_name, "tracepoint") == 0)
+		return 0;
+
+	sec_name = strdup(prog->sec_name);
+	if (!sec_name)
+		return -ENOMEM;
+
+	/* extract "tp/<category>/<name>" or "tracepoint/<category>/<name>" */
+	if (str_has_pfx(prog->sec_name, "tp/"))
+		tp_cat = sec_name + sizeof("tp/") - 1;
+	else
+		tp_cat = sec_name + sizeof("tracepoint/") - 1;
+	tp_name = strchr(tp_cat, '/');
+	if (!tp_name) {
+		free(sec_name);
+		return -EINVAL;
+	}
+	*tp_name = '\0';
+	tp_name++;
+
+	*link = bpf_program__attach_tracepoint(prog, tp_cat, tp_name);
+	free(sec_name);
+	return libbpf_get_error(*link);
+}
