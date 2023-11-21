@@ -11095,3 +11095,70 @@ struct netns_sysctl_ipv6 {
 	bool skip_notify_on_dev_down;
 	u8 fib_notify_on_flag_change;
 };
+
+struct ipv6_devconf;
+
+struct fib6_info;
+
+struct rt6_info;
+
+struct rt6_statistics;
+
+struct fib6_table;
+
+struct seg6_pernet_data;
+
+struct ioam6_pernet_data;
+
+struct netns_ipv6 {
+	struct dst_ops ip6_dst_ops;
+	struct netns_sysctl_ipv6 sysctl;
+	struct ipv6_devconf *devconf_all;
+	struct ipv6_devconf *devconf_dflt;
+	struct inet_peer_base *peers;
+	struct fqdir *fqdir;
+	struct fib6_info *fib6_null_entry;
+	struct rt6_info *ip6_null_entry;
+	struct rt6_statistics *rt6_stats;
+	struct timer_list ip6_fib_timer;
+	struct hlist_head *fib_table_hash;
+	struct fib6_table *fib6_main_tbl;
+	struct list_head fib6_walkers;
+	rwlock_t fib6_walker_lock;
+	spinlock_t fib6_gc_lock;
+	atomic_t ip6_rt_gc_expire;
+	long unsigned int ip6_rt_last_gc;
+	unsigned char flowlabel_has_excl;
+	bool fib6_has_custom_rules;
+	unsigned int fib6_rules_require_fldissect;
+	unsigned int fib6_routes_require_src;
+	struct rt6_info *ip6_prohibit_entry;
+	struct rt6_info *ip6_blk_hole_entry;
+	struct fib6_table *fib6_local_tbl;
+	struct fib_rules_ops *fib6_rules_ops;
+	struct sock *ndisc_sk;
+	struct sock *tcp_sk;
+	struct sock *igmp_sk;
+	struct sock *mc_autojoin_sk;
+	struct hlist_head *inet6_addr_lst;
+	spinlock_t addrconf_hash_lock;
+	struct delayed_work addr_chk_work;
+	atomic_t dev_addr_genid;
+	atomic_t fib6_sernum;
+	struct seg6_pernet_data *seg6_data;
+	struct fib_notifier_ops *notifier_ops;
+	struct fib_notifier_ops *ip6mr_notifier_ops;
+	unsigned int ipmr_seq;
+	struct {
+		struct hlist_head head;
+		spinlock_t lock;
+		u32 seq;
+	} ip6addrlbl_table;
+	struct ioam6_pernet_data *ioam6_data;
+	long: 64;
+	long: 64;
+};
+
+struct nf_logger;
+
+struct nf_hook_entries;
