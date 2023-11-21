@@ -11638,3 +11638,43 @@ struct bpf_link *bpf_program__attach_freplace(const struct bpf_program *prog,
 		return bpf_program__attach_trace(prog);
 	}
 }
+
+struct bpf_link *
+bpf_program__attach_iter(const struct bpf_program *prog,
+			 const struct bpf_iter_attach_opts *opts)
+{
+	DECLARE_LIBBPF_OPTS(bpf_link_create_opts, link_create_opts);
+	char errmsg[STRERR_BUFSIZE];
+	struct bpf_link *link;
+	int prog_fd, link_fd;
+	__u32 target_fd = 0;
+
+	if (!OPTS_VALID(opts, bpf_iter_attach_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	link_create_opts.iter_info = OPTS_GET(opts, link_info, (void *)0);
+	link_create_opts.iter_info_len = OPTS_GET(opts, link_info_len, 0);
+
+	prog_fd = bpf_program__fd(prog);
+	if (prog_fd < 0) {
+		pr_warn("prog '%s': can't attach before loaded\n", prog->name);
+		return libbpf_err_ptr(-EINVAL);
+	}
+
+	link = calloc(1, sizeof(*link));
+	if (!link)
+		return libbpf_err_ptr(-ENOMEM);
+	link->detach = &bpf_link__detach_fd;
+
+	link_fd = bpf_link_create(prog_fd, target_fd, BPF_TRACE_ITER,
+				  &link_create_opts);
+	if (link_fd < 0) {
+		link_fd = -errno;
+		free(link);
+		pr_warn("prog '%s': failed to attach to iterator: %s\n",
+			prog->name, libbpf_strerror_r(link_fd, errmsg, sizeof(errmsg)));
+		return libbpf_err_ptr(link_fd);
+	}
+	link->fd = link_fd;
+	return link;
+}
