@@ -11377,3 +11377,118 @@ struct net {
 	long: 64;
 	long: 64;
 };
+
+struct in6_addr {
+	union {
+		__u8 u6_addr8[16];
+		__be16 u6_addr16[8];
+		__be32 u6_addr32[4];
+	} in6_u;
+};
+
+struct pipe_buf_operations;
+
+struct pipe_buffer {
+	struct page *page;
+	unsigned int offset;
+	unsigned int len;
+	const struct pipe_buf_operations *ops;
+	unsigned int flags;
+	long unsigned int private;
+};
+
+struct pipe_buf_operations {
+	int (*confirm)(struct pipe_inode_info *, struct pipe_buffer *);
+	void (*release)(struct pipe_inode_info *, struct pipe_buffer *);
+	bool (*try_steal)(struct pipe_inode_info *, struct pipe_buffer *);
+	bool (*get)(struct pipe_inode_info *, struct pipe_buffer *);
+};
+
+struct ip_conntrack_stat {
+	unsigned int found;
+	unsigned int invalid;
+	unsigned int insert;
+	unsigned int insert_failed;
+	unsigned int clash_resolve;
+	unsigned int drop;
+	unsigned int early_drop;
+	unsigned int error;
+	unsigned int expect_new;
+	unsigned int expect_create;
+	unsigned int expect_delete;
+	unsigned int search_restart;
+	unsigned int chaintoolong;
+};
+
+enum skb_drop_reason {
+	SKB_NOT_DROPPED_YET = 0,
+	SKB_CONSUMED = 1,
+	SKB_DROP_REASON_NOT_SPECIFIED = 2,
+	SKB_DROP_REASON_NO_SOCKET = 3,
+	SKB_DROP_REASON_PKT_TOO_SMALL = 4,
+	SKB_DROP_REASON_TCP_CSUM = 5,
+	SKB_DROP_REASON_SOCKET_FILTER = 6,
+	SKB_DROP_REASON_UDP_CSUM = 7,
+	SKB_DROP_REASON_NETFILTER_DROP = 8,
+	SKB_DROP_REASON_OTHERHOST = 9,
+	SKB_DROP_REASON_IP_CSUM = 10,
+	SKB_DROP_REASON_IP_INHDR = 11,
+	SKB_DROP_REASON_IP_RPFILTER = 12,
+	SKB_DROP_REASON_UNICAST_IN_L2_MULTICAST = 13,
+	SKB_DROP_REASON_XFRM_POLICY = 14,
+	SKB_DROP_REASON_IP_NOPROTO = 15,
+	SKB_DROP_REASON_SOCKET_RCVBUFF = 16,
+	SKB_DROP_REASON_PROTO_MEM = 17,
+	SKB_DROP_REASON_TCP_MD5NOTFOUND = 18,
+	SKB_DROP_REASON_TCP_MD5UNEXPECTED = 19,
+	SKB_DROP_REASON_TCP_MD5FAILURE = 20,
+	SKB_DROP_REASON_SOCKET_BACKLOG = 21,
+	SKB_DROP_REASON_TCP_FLAGS = 22,
+	SKB_DROP_REASON_TCP_ZEROWINDOW = 23,
+	SKB_DROP_REASON_TCP_OLD_DATA = 24,
+	SKB_DROP_REASON_TCP_OVERWINDOW = 25,
+	SKB_DROP_REASON_TCP_OFOMERGE = 26,
+	SKB_DROP_REASON_TCP_RFC7323_PAWS = 27,
+	SKB_DROP_REASON_TCP_INVALID_SEQUENCE = 28,
+	SKB_DROP_REASON_TCP_RESET = 29,
+	SKB_DROP_REASON_TCP_INVALID_SYN = 30,
+	SKB_DROP_REASON_TCP_CLOSE = 31,
+	SKB_DROP_REASON_TCP_FASTOPEN = 32,
+	SKB_DROP_REASON_TCP_OLD_ACK = 33,
+	SKB_DROP_REASON_TCP_TOO_OLD_ACK = 34,
+	SKB_DROP_REASON_TCP_ACK_UNSENT_DATA = 35,
+	SKB_DROP_REASON_TCP_OFO_QUEUE_PRUNE = 36,
+	SKB_DROP_REASON_TCP_OFO_DROP = 37,
+	SKB_DROP_REASON_IP_OUTNOROUTES = 38,
+	SKB_DROP_REASON_BPF_CGROUP_EGRESS = 39,
+	SKB_DROP_REASON_IPV6DISABLED = 40,
+	SKB_DROP_REASON_NEIGH_CREATEFAIL = 41,
+	SKB_DROP_REASON_NEIGH_FAILED = 42,
+	SKB_DROP_REASON_NEIGH_QUEUEFULL = 43,
+	SKB_DROP_REASON_NEIGH_DEAD = 44,
+	SKB_DROP_REASON_TC_EGRESS = 45,
+	SKB_DROP_REASON_QDISC_DROP = 46,
+	SKB_DROP_REASON_CPU_BACKLOG = 47,
+	SKB_DROP_REASON_XDP = 48,
+	SKB_DROP_REASON_TC_INGRESS = 49,
+	SKB_DROP_REASON_UNHANDLED_PROTO = 50,
+	SKB_DROP_REASON_SKB_CSUM = 51,
+	SKB_DROP_REASON_SKB_GSO_SEG = 52,
+	SKB_DROP_REASON_SKB_UCOPY_FAULT = 53,
+	SKB_DROP_REASON_DEV_HDR = 54,
+	SKB_DROP_REASON_DEV_READY = 55,
+	SKB_DROP_REASON_FULL_RING = 56,
+	SKB_DROP_REASON_NOMEM = 57,
+	SKB_DROP_REASON_HDR_TRUNC = 58,
+	SKB_DROP_REASON_TAP_FILTER = 59,
+	SKB_DROP_REASON_TAP_TXFILTER = 60,
+	SKB_DROP_REASON_ICMP_CSUM = 61,
+	SKB_DROP_REASON_INVALID_PROTO = 62,
+	SKB_DROP_REASON_IP_INADDRERRORS = 63,
+	SKB_DROP_REASON_IP_INNOROUTES = 64,
+	SKB_DROP_REASON_PKT_TOO_BIG = 65,
+	SKB_DROP_REASON_DUP_FRAG = 66,
+	SKB_DROP_REASON_FRAG_REASM_TIMEOUT = 67,
+	SKB_DROP_REASON_FRAG_TOO_FAR = 68,
+	SKB_DROP_REASON_MAX = 69,
+};
