@@ -12025,3 +12025,174 @@ struct perf_buffer *perf_buffer__new(int map_fd, size_t page_cnt,
 
 	return libbpf_ptr(__perf_buffer__new(map_fd, page_cnt, &p));
 }
+
+struct perf_buffer *perf_buffer__new_raw(int map_fd, size_t page_cnt,
+					 struct perf_event_attr *attr,
+					 perf_buffer_event_fn event_cb, void *ctx,
+					 const struct perf_buffer_raw_opts *opts)
+{
+	struct perf_buffer_params p = {};
+
+	if (!attr)
+		return libbpf_err_ptr(-EINVAL);
+
+	if (!OPTS_VALID(opts, perf_buffer_raw_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	p.attr = attr;
+	p.event_cb = event_cb;
+	p.ctx = ctx;
+	p.cpu_cnt = OPTS_GET(opts, cpu_cnt, 0);
+	p.cpus = OPTS_GET(opts, cpus, NULL);
+	p.map_keys = OPTS_GET(opts, map_keys, NULL);
+
+	return libbpf_ptr(__perf_buffer__new(map_fd, page_cnt, &p));
+}
+
+static struct perf_buffer *__perf_buffer__new(int map_fd, size_t page_cnt,
+					      struct perf_buffer_params *p)
+{
+	const char *online_cpus_file = "/sys/devices/system/cpu/online";
+	struct bpf_map_info map;
+	char msg[STRERR_BUFSIZE];
+	struct perf_buffer *pb;
+	bool *online = NULL;
+	__u32 map_info_len;
+	int err, i, j, n;
+
+	if (page_cnt == 0 || (page_cnt & (page_cnt - 1))) {
+		pr_warn("page count should be power of two, but is %zu\n",
+			page_cnt);
+		return ERR_PTR(-EINVAL);
+	}
+
+	/* best-effort sanity checks */
+	memset(&map, 0, sizeof(map));
+	map_info_len = sizeof(map);
+	err = bpf_map_get_info_by_fd(map_fd, &map, &map_info_len);
+	if (err) {
+		err = -errno;
+		/* if BPF_OBJ_GET_INFO_BY_FD is supported, will return
+		 * -EBADFD, -EFAULT, or -E2BIG on real error
+		 */
+		if (err != -EINVAL) {
+			pr_warn("failed to get map info for map FD %d: %s\n",
+				map_fd, libbpf_strerror_r(err, msg, sizeof(msg)));
+			return ERR_PTR(err);
+		}
+		pr_debug("failed to get map info for FD %d; API not supported? Ignoring...\n",
+			 map_fd);
+	} else {
+		if (map.type != BPF_MAP_TYPE_PERF_EVENT_ARRAY) {
+			pr_warn("map '%s' should be BPF_MAP_TYPE_PERF_EVENT_ARRAY\n",
+				map.name);
+			return ERR_PTR(-EINVAL);
+		}
+	}
+
+	pb = calloc(1, sizeof(*pb));
+	if (!pb)
+		return ERR_PTR(-ENOMEM);
+
+	pb->event_cb = p->event_cb;
+	pb->sample_cb = p->sample_cb;
+	pb->lost_cb = p->lost_cb;
+	pb->ctx = p->ctx;
+
+	pb->page_size = getpagesize();
+	pb->mmap_size = pb->page_size * page_cnt;
+	pb->map_fd = map_fd;
+
+	pb->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+	if (pb->epoll_fd < 0) {
+		err = -errno;
+		pr_warn("failed to create epoll instance: %s\n",
+			libbpf_strerror_r(err, msg, sizeof(msg)));
+		goto error;
+	}
+
+	if (p->cpu_cnt > 0) {
+		pb->cpu_cnt = p->cpu_cnt;
+	} else {
+		pb->cpu_cnt = libbpf_num_possible_cpus();
+		if (pb->cpu_cnt < 0) {
+			err = pb->cpu_cnt;
+			goto error;
+		}
+		if (map.max_entries && map.max_entries < pb->cpu_cnt)
+			pb->cpu_cnt = map.max_entries;
+	}
+
+	pb->events = calloc(pb->cpu_cnt, sizeof(*pb->events));
+	if (!pb->events) {
+		err = -ENOMEM;
+		pr_warn("failed to allocate events: out of memory\n");
+		goto error;
+	}
+	pb->cpu_bufs = calloc(pb->cpu_cnt, sizeof(*pb->cpu_bufs));
+	if (!pb->cpu_bufs) {
+		err = -ENOMEM;
+		pr_warn("failed to allocate buffers: out of memory\n");
+		goto error;
+	}
+
+	err = parse_cpu_mask_file(online_cpus_file, &online, &n);
+	if (err) {
+		pr_warn("failed to get online CPU mask: %d\n", err);
+		goto error;
+	}
+
+	for (i = 0, j = 0; i < pb->cpu_cnt; i++) {
+		struct perf_cpu_buf *cpu_buf;
+		int cpu, map_key;
+
+		cpu = p->cpu_cnt > 0 ? p->cpus[i] : i;
+		map_key = p->cpu_cnt > 0 ? p->map_keys[i] : i;
+
+		/* in case user didn't explicitly requested particular CPUs to
+		 * be attached to, skip offline/not present CPUs
+		 */
+		if (p->cpu_cnt <= 0 && (cpu >= n || !online[cpu]))
+			continue;
+
+		cpu_buf = perf_buffer__open_cpu_buf(pb, p->attr, cpu, map_key);
+		if (IS_ERR(cpu_buf)) {
+			err = PTR_ERR(cpu_buf);
+			goto error;
+		}
+
+		pb->cpu_bufs[j] = cpu_buf;
+
+		err = bpf_map_update_elem(pb->map_fd, &map_key,
+					  &cpu_buf->fd, 0);
+		if (err) {
+			err = -errno;
+			pr_warn("failed to set cpu #%d, key %d -> perf FD %d: %s\n",
+				cpu, map_key, cpu_buf->fd,
+				libbpf_strerror_r(err, msg, sizeof(msg)));
+			goto error;
+		}
+
+		pb->events[j].events = EPOLLIN;
+		pb->events[j].data.ptr = cpu_buf;
+		if (epoll_ctl(pb->epoll_fd, EPOLL_CTL_ADD, cpu_buf->fd,
+			      &pb->events[j]) < 0) {
+			err = -errno;
+			pr_warn("failed to epoll_ctl cpu #%d perf FD %d: %s\n",
+				cpu, cpu_buf->fd,
+				libbpf_strerror_r(err, msg, sizeof(msg)));
+			goto error;
+		}
+		j++;
+	}
+	pb->cpu_cnt = j;
+	free(online);
+
+	return pb;
+
+error:
+	free(online);
+	if (pb)
+		perf_buffer__free(pb);
+	return ERR_PTR(err);
+}
