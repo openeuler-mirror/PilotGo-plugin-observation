@@ -1721,3 +1721,78 @@ static bool btf_is_non_static(const struct btf_type *t)
 {
     return (btf_is_var(t) && btf_var(t)->linkage != BTF_VAR_STATIC) || (btf_is_func(t) && btf_func_linkage(t) != BTF_FUNC_STATIC);
 }
+
+static int find_glob_sym_btf(struct src_obj *obj, Elf64_Sym *sym, const char *sym_name,
+                             int *out_btf_sec_id, int *out_btf_id)
+{
+    int i, j, n, m, btf_id = 0;
+    const struct btf_type *t;
+    const struct btf_var_secinfo *vi;
+    const char *name;
+
+    if (!obj->btf)
+    {
+        pr_warn("failed to find BTF info for object '%s'\n", obj->filename);
+        return -EINVAL;
+    }
+
+    n = btf__type_cnt(obj->btf);
+    for (i = 1; i < n; i++)
+    {
+        t = btf__type_by_id(obj->btf, i);
+
+        /* some global and extern FUNCs and VARs might not be associated with any
+         * DATASEC, so try to detect them in the same pass
+         */
+        if (btf_is_non_static(t))
+        {
+            name = btf__str_by_offset(obj->btf, t->name_off);
+            if (strcmp(name, sym_name) != 0)
+                continue;
+
+            /* remember and still try to find DATASEC */
+            btf_id = i;
+            continue;
+        }
+
+        if (!btf_is_datasec(t))
+            continue;
+
+        vi = btf_var_secinfos(t);
+        for (j = 0, m = btf_vlen(t); j < m; j++, vi++)
+        {
+            t = btf__type_by_id(obj->btf, vi->type);
+            name = btf__str_by_offset(obj->btf, t->name_off);
+
+            if (strcmp(name, sym_name) != 0)
+                continue;
+            if (btf_is_var(t) && btf_var(t)->linkage == BTF_VAR_STATIC)
+                continue;
+            if (btf_is_func(t) && btf_func_linkage(t) == BTF_FUNC_STATIC)
+                continue;
+
+            if (btf_id && btf_id != vi->type)
+            {
+                pr_warn("global/extern '%s' BTF is ambiguous: both types #%d and #%u match\n",
+                        sym_name, btf_id, vi->type);
+                return -EINVAL;
+            }
+
+            *out_btf_sec_id = i;
+            *out_btf_id = vi->type;
+
+            return 0;
+        }
+    }
+
+    /* free-floating extern or global FUNC */
+    if (btf_id)
+    {
+        *out_btf_sec_id = 0;
+        *out_btf_id = btf_id;
+        return 0;
+    }
+
+    pr_warn("failed to find BTF info for global/extern symbol '%s'\n", sym_name);
+    return -ENOENT;
+}
