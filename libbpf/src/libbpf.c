@@ -11343,3 +11343,37 @@ static int perf_event_open_tracepoint(const char *tp_category,
 	}
 	return pfd;
 }
+
+struct bpf_link *bpf_program__attach_tracepoint_opts(const struct bpf_program *prog,
+						     const char *tp_category,
+						     const char *tp_name,
+						     const struct bpf_tracepoint_opts *opts)
+{
+	DECLARE_LIBBPF_OPTS(bpf_perf_event_opts, pe_opts);
+	char errmsg[STRERR_BUFSIZE];
+	struct bpf_link *link;
+	int pfd, err;
+
+	if (!OPTS_VALID(opts, bpf_tracepoint_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	pe_opts.bpf_cookie = OPTS_GET(opts, bpf_cookie, 0);
+
+	pfd = perf_event_open_tracepoint(tp_category, tp_name);
+	if (pfd < 0) {
+		pr_warn("prog '%s': failed to create tracepoint '%s/%s' perf event: %s\n",
+			prog->name, tp_category, tp_name,
+			libbpf_strerror_r(pfd, errmsg, sizeof(errmsg)));
+		return libbpf_err_ptr(pfd);
+	}
+	link = bpf_program__attach_perf_event_opts(prog, pfd, &pe_opts);
+	err = libbpf_get_error(link);
+	if (err) {
+		close(pfd);
+		pr_warn("prog '%s': failed to attach to tracepoint '%s/%s': %s\n",
+			prog->name, tp_category, tp_name,
+			libbpf_strerror_r(err, errmsg, sizeof(errmsg)));
+		return libbpf_err_ptr(err);
+	}
+	return link;
+}
