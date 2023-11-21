@@ -11726,3 +11726,49 @@ static int bpf_link__detach_struct_ops(struct bpf_link *link)
 
 	return close(link->fd);
 }
+
+struct bpf_link *bpf_map__attach_struct_ops(const struct bpf_map *map)
+{
+	struct bpf_link_struct_ops *link;
+	__u32 zero = 0;
+	int err, fd;
+
+	if (!bpf_map__is_struct_ops(map) || map->fd == -1)
+		return libbpf_err_ptr(-EINVAL);
+
+	link = calloc(1, sizeof(*link));
+	if (!link)
+		return libbpf_err_ptr(-EINVAL);
+
+	/* kern_vdata should be prepared during the loading phase. */
+	err = bpf_map_update_elem(map->fd, &zero, map->st_ops->kern_vdata, 0);
+	/* It can be EBUSY if the map has been used to create or
+	 * update a link before.  We don't allow updating the value of
+	 * a struct_ops once it is set.  That ensures that the value
+	 * never changed.  So, it is safe to skip EBUSY.
+	 */
+	if (err && (!(map->def.map_flags & BPF_F_LINK) || err != -EBUSY)) {
+		free(link);
+		return libbpf_err_ptr(err);
+	}
+
+	link->link.detach = bpf_link__detach_struct_ops;
+
+	if (!(map->def.map_flags & BPF_F_LINK)) {
+		/* w/o a real link */
+		link->link.fd = map->fd;
+		link->map_fd = -1;
+		return &link->link;
+	}
+
+	fd = bpf_link_create(map->fd, 0, BPF_STRUCT_OPS, NULL);
+	if (fd < 0) {
+		free(link);
+		return libbpf_err_ptr(fd);
+	}
+
+	link->link.fd = fd;
+	link->map_fd = map->fd;
+
+	return &link->link;
+}
