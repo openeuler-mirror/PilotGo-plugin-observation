@@ -11810,3 +11810,51 @@ int bpf_link__update_map(struct bpf_link *link, const struct bpf_map *map)
 
 typedef enum bpf_perf_event_ret (*bpf_perf_event_print_t)(struct perf_event_header *hdr,
 							  void *private_data);
+
+static enum bpf_perf_event_ret
+perf_event_read_simple(void *mmap_mem, size_t mmap_size, size_t page_size,
+		       void **copy_mem, size_t *copy_size,
+		       bpf_perf_event_print_t fn, void *private_data)
+{
+	struct perf_event_mmap_page *header = mmap_mem;
+	__u64 data_head = ring_buffer_read_head(header);
+	__u64 data_tail = header->data_tail;
+	void *base = ((__u8 *)header) + page_size;
+	int ret = LIBBPF_PERF_EVENT_CONT;
+	struct perf_event_header *ehdr;
+	size_t ehdr_size;
+
+	while (data_head != data_tail) {
+		ehdr = base + (data_tail & (mmap_size - 1));
+		ehdr_size = ehdr->size;
+
+		if (((void *)ehdr) + ehdr_size > base + mmap_size) {
+			void *copy_start = ehdr;
+			size_t len_first = base + mmap_size - copy_start;
+			size_t len_secnd = ehdr_size - len_first;
+
+			if (*copy_size < ehdr_size) {
+				free(*copy_mem);
+				*copy_mem = malloc(ehdr_size);
+				if (!*copy_mem) {
+					*copy_size = 0;
+					ret = LIBBPF_PERF_EVENT_ERROR;
+					break;
+				}
+				*copy_size = ehdr_size;
+			}
+
+			memcpy(*copy_mem, copy_start, len_first);
+			memcpy(*copy_mem + len_first, base, len_secnd);
+			ehdr = *copy_mem;
+		}
+
+		ret = fn(ehdr, private_data);
+		data_tail += ehdr_size;
+		if (ret != LIBBPF_PERF_EVENT_CONT)
+			break;
+	}
+
+	ring_buffer_write_tail(header, data_tail);
+	return libbpf_err(ret);
+}
