@@ -11535,3 +11535,56 @@ struct bpf_link *bpf_program__attach_trace_opts(const struct bpf_program *prog,
 {
 	return bpf_program__attach_btf_id(prog, opts);
 }
+
+struct bpf_link *bpf_program__attach_lsm(const struct bpf_program *prog)
+{
+	return bpf_program__attach_btf_id(prog, NULL);
+}
+
+static int attach_trace(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	*link = bpf_program__attach_trace(prog);
+	return libbpf_get_error(*link);
+}
+
+static int attach_lsm(const struct bpf_program *prog, long cookie, struct bpf_link **link)
+{
+	*link = bpf_program__attach_lsm(prog);
+	return libbpf_get_error(*link);
+}
+
+static struct bpf_link *
+bpf_program__attach_fd(const struct bpf_program *prog, int target_fd, int btf_id,
+		       const char *target_name)
+{
+	DECLARE_LIBBPF_OPTS(bpf_link_create_opts, opts,
+			    .target_btf_id = btf_id);
+	enum bpf_attach_type attach_type;
+	char errmsg[STRERR_BUFSIZE];
+	struct bpf_link *link;
+	int prog_fd, link_fd;
+
+	prog_fd = bpf_program__fd(prog);
+	if (prog_fd < 0) {
+		pr_warn("prog '%s': can't attach before loaded\n", prog->name);
+		return libbpf_err_ptr(-EINVAL);
+	}
+
+	link = calloc(1, sizeof(*link));
+	if (!link)
+		return libbpf_err_ptr(-ENOMEM);
+	link->detach = &bpf_link__detach_fd;
+
+	attach_type = bpf_program__expected_attach_type(prog);
+	link_fd = bpf_link_create(prog_fd, target_fd, attach_type, &opts);
+	if (link_fd < 0) {
+		link_fd = -errno;
+		free(link);
+		pr_warn("prog '%s': failed to attach to %s: %s\n",
+			prog->name, target_name,
+			libbpf_strerror_r(link_fd, errmsg, sizeof(errmsg)));
+		return libbpf_err_ptr(link_fd);
+	}
+	link->fd = link_fd;
+	return link;
+}
