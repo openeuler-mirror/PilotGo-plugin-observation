@@ -12196,3 +12196,49 @@ error:
 		perf_buffer__free(pb);
 	return ERR_PTR(err);
 }
+
+struct perf_sample_raw {
+	struct perf_event_header header;
+	uint32_t size;
+	char data[];
+};
+
+struct perf_sample_lost {
+	struct perf_event_header header;
+	uint64_t id;
+	uint64_t lost;
+	uint64_t sample_id;
+};
+
+static enum bpf_perf_event_ret
+perf_buffer__process_record(struct perf_event_header *e, void *ctx)
+{
+	struct perf_cpu_buf *cpu_buf = ctx;
+	struct perf_buffer *pb = cpu_buf->pb;
+	void *data = e;
+
+	/* user wants full control over parsing perf event */
+	if (pb->event_cb)
+		return pb->event_cb(pb->ctx, cpu_buf->cpu, e);
+
+	switch (e->type) {
+	case PERF_RECORD_SAMPLE: {
+		struct perf_sample_raw *s = data;
+
+		if (pb->sample_cb)
+			pb->sample_cb(pb->ctx, cpu_buf->cpu, s->data, s->size);
+		break;
+	}
+	case PERF_RECORD_LOST: {
+		struct perf_sample_lost *s = data;
+
+		if (pb->lost_cb)
+			pb->lost_cb(pb->ctx, cpu_buf->cpu, s->lost);
+		break;
+	}
+	default:
+		pr_warn("unknown perf sample type %d\n", e->type);
+		return LIBBPF_PERF_EVENT_ERROR;
+	}
+	return LIBBPF_PERF_EVENT_CONT;
+}
