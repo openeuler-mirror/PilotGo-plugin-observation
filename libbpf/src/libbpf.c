@@ -12557,3 +12557,48 @@ static int populate_skeleton_progs(const struct bpf_object *obj,
 	}
 	return 0;
 }
+
+int bpf_object__open_skeleton(struct bpf_object_skeleton *s,
+			      const struct bpf_object_open_opts *opts)
+{
+	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, skel_opts,
+		.object_name = s->name,
+	);
+	struct bpf_object *obj;
+	int err;
+
+	/* Attempt to preserve opts->object_name, unless overriden by user
+	 * explicitly. Overwriting object name for skeletons is discouraged,
+	 * as it breaks global data maps, because they contain object name
+	 * prefix as their own map name prefix. When skeleton is generated,
+	 * bpftool is making an assumption that this name will stay the same.
+	 */
+	if (opts) {
+		memcpy(&skel_opts, opts, sizeof(*opts));
+		if (!opts->object_name)
+			skel_opts.object_name = s->name;
+	}
+
+	obj = bpf_object__open_mem(s->data, s->data_sz, &skel_opts);
+	err = libbpf_get_error(obj);
+	if (err) {
+		pr_warn("failed to initialize skeleton BPF object '%s': %d\n",
+			s->name, err);
+		return libbpf_err(err);
+	}
+
+	*s->obj = obj;
+	err = populate_skeleton_maps(obj, s->maps, s->map_cnt);
+	if (err) {
+		pr_warn("failed to populate skeleton maps for '%s': %d\n", s->name, err);
+		return libbpf_err(err);
+	}
+
+	err = populate_skeleton_progs(obj, s->progs, s->prog_cnt);
+	if (err) {
+		pr_warn("failed to populate skeleton progs for '%s': %d\n", s->name, err);
+		return libbpf_err(err);
+	}
+
+	return 0;
+}
