@@ -117,3 +117,76 @@ struct btf_dump {
 	 */
 	struct btf_dump_data *typed_dump;
 };
+
+static size_t str_hash_fn(long key, void *ctx)
+{
+	return str_hash((void *)key);
+}
+
+static bool str_equal_fn(long a, long b, void *ctx)
+{
+	return strcmp((void *)a, (void *)b) == 0;
+}
+
+static const char *btf_name_of(const struct btf_dump *d, __u32 name_off)
+{
+	return btf__name_by_offset(d->btf, name_off);
+}
+
+static void btf_dump_printf(const struct btf_dump *d, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	d->printf_fn(d->cb_ctx, fmt, args);
+	va_end(args);
+}
+
+static int btf_dump_mark_referenced(struct btf_dump *d);
+static int btf_dump_resize(struct btf_dump *d);
+
+struct btf_dump *btf_dump__new(const struct btf *btf,
+			       btf_dump_printf_fn_t printf_fn,
+			       void *ctx,
+			       const struct btf_dump_opts *opts)
+{
+	struct btf_dump *d;
+	int err;
+
+	if (!OPTS_VALID(opts, btf_dump_opts))
+		return libbpf_err_ptr(-EINVAL);
+
+	if (!printf_fn)
+		return libbpf_err_ptr(-EINVAL);
+
+	d = calloc(1, sizeof(struct btf_dump));
+	if (!d)
+		return libbpf_err_ptr(-ENOMEM);
+
+	d->btf = btf;
+	d->printf_fn = printf_fn;
+	d->cb_ctx = ctx;
+	d->ptr_sz = btf__pointer_size(btf) ? : sizeof(void *);
+
+	d->type_names = hashmap__new(str_hash_fn, str_equal_fn, NULL);
+	if (IS_ERR(d->type_names)) {
+		err = PTR_ERR(d->type_names);
+		d->type_names = NULL;
+		goto err;
+	}
+	d->ident_names = hashmap__new(str_hash_fn, str_equal_fn, NULL);
+	if (IS_ERR(d->ident_names)) {
+		err = PTR_ERR(d->ident_names);
+		d->ident_names = NULL;
+		goto err;
+	}
+
+	err = btf_dump_resize(d);
+	if (err)
+		goto err;
+
+	return d;
+err:
+	btf_dump__free(d);
+	return libbpf_err_ptr(err);
+}
