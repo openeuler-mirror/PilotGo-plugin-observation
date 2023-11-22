@@ -2029,3 +2029,104 @@ add_sym:
 
     return 0;
 }
+static int linker_append_elf_relos(struct bpf_linker *linker, struct src_obj *obj)
+{
+    struct src_sec *src_symtab = &obj->secs[obj->symtab_sec_idx];
+    int i, err;
+
+    for (i = 1; i < obj->sec_cnt; i++)
+    {
+        struct src_sec *src_sec, *src_linked_sec;
+        struct dst_sec *dst_sec, *dst_linked_sec;
+        Elf64_Rel *src_rel, *dst_rel;
+        int j, n;
+
+        src_sec = &obj->secs[i];
+        if (!is_relo_sec(src_sec))
+            continue;
+
+        /* shdr->sh_info points to relocatable section */
+        src_linked_sec = &obj->secs[src_sec->shdr->sh_info];
+        if (src_linked_sec->skipped)
+            continue;
+
+        dst_sec = find_dst_sec_by_name(linker, src_sec->sec_name);
+        if (!dst_sec)
+        {
+            dst_sec = add_dst_sec(linker, src_sec->sec_name);
+            if (!dst_sec)
+                return -ENOMEM;
+            err = init_sec(linker, dst_sec, src_sec);
+            if (err)
+            {
+                pr_warn("failed to init section '%s'\n", src_sec->sec_name);
+                return err;
+            }
+        }
+        else if (!secs_match(dst_sec, src_sec))
+        {
+            pr_warn("sections %s are not compatible\n", src_sec->sec_name);
+            return -1;
+        }
+
+        /* shdr->sh_link points to SYMTAB */
+        dst_sec->shdr->sh_link = linker->symtab_sec_idx;
+
+        /* shdr->sh_info points to relocated section */
+        dst_linked_sec = &linker->secs[src_linked_sec->dst_id];
+        dst_sec->shdr->sh_info = dst_linked_sec->sec_idx;
+
+        src_sec->dst_id = dst_sec->id;
+        err = extend_sec(linker, dst_sec, src_sec);
+        if (err)
+            return err;
+
+        src_rel = src_sec->data->d_buf;
+        dst_rel = dst_sec->raw_data + src_sec->dst_off;
+        n = src_sec->shdr->sh_size / src_sec->shdr->sh_entsize;
+        for (j = 0; j < n; j++, src_rel++, dst_rel++)
+        {
+            size_t src_sym_idx, dst_sym_idx, sym_type;
+            Elf64_Sym *src_sym;
+
+            src_sym_idx = ELF64_R_SYM(src_rel->r_info);
+            src_sym = src_symtab->data->d_buf + sizeof(*src_sym) * src_sym_idx;
+
+            dst_sym_idx = obj->sym_map[src_sym_idx];
+            dst_rel->r_offset += src_linked_sec->dst_off;
+            sym_type = ELF64_R_TYPE(src_rel->r_info);
+            dst_rel->r_info = ELF64_R_INFO(dst_sym_idx, sym_type);
+
+            if (ELF64_ST_TYPE(src_sym->st_info) == STT_SECTION)
+            {
+                struct src_sec *sec = &obj->secs[src_sym->st_shndx];
+                struct bpf_insn *insn;
+
+                if (src_linked_sec->shdr->sh_flags & SHF_EXECINSTR)
+                {
+                    /* calls to the very first static function inside
+                     * .text section at offset 0 will
+                     * reference section symbol, not the
+                     * function symbol. Fix that up,
+                     * otherwise it won't be possible to
+                     * relocate calls to two different
+                     * static functions with the same name
+                     * (rom two different object files)
+                     */
+                    insn = dst_linked_sec->raw_data + dst_rel->r_offset;
+                    if (insn->code == (BPF_JMP | BPF_CALL))
+                        insn->imm += sec->dst_off / sizeof(struct bpf_insn);
+                    else
+                        insn->imm += sec->dst_off;
+                }
+                else
+                {
+                    pr_warn("relocation against STT_SECTION in non-exec section is not supported!\n");
+                    return -EINVAL;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
