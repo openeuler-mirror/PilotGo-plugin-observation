@@ -12461,3 +12461,56 @@ cleanup:
 	*mask = NULL;
 	return err;
 }
+
+int parse_cpu_mask_file(const char *fcpu, bool **mask, int *mask_sz)
+{
+	int fd, err = 0, len;
+	char buf[128];
+
+	fd = open(fcpu, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) {
+		err = -errno;
+		pr_warn("Failed to open cpu mask file %s: %d\n", fcpu, err);
+		return err;
+	}
+	len = read(fd, buf, sizeof(buf));
+	close(fd);
+	if (len <= 0) {
+		err = len ? -errno : -EINVAL;
+		pr_warn("Failed to read cpu mask from %s: %d\n", fcpu, err);
+		return err;
+	}
+	if (len >= sizeof(buf)) {
+		pr_warn("CPU mask is too big in file %s\n", fcpu);
+		return -E2BIG;
+	}
+	buf[len] = '\0';
+
+	return parse_cpu_mask_str(buf, mask, mask_sz);
+}
+
+int libbpf_num_possible_cpus(void)
+{
+	static const char *fcpu = "/sys/devices/system/cpu/possible";
+	static int cpus;
+	int err, n, i, tmp_cpus;
+	bool *mask;
+
+	tmp_cpus = READ_ONCE(cpus);
+	if (tmp_cpus > 0)
+		return tmp_cpus;
+
+	err = parse_cpu_mask_file(fcpu, &mask, &n);
+	if (err)
+		return libbpf_err(err);
+
+	tmp_cpus = 0;
+	for (i = 0; i < n; i++) {
+		if (mask[i])
+			tmp_cpus++;
+	}
+	free(mask);
+
+	WRITE_ONCE(cpus, tmp_cpus);
+	return tmp_cpus;
+}
