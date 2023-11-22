@@ -2104,15 +2104,6 @@ static int linker_append_elf_relos(struct bpf_linker *linker, struct src_obj *ob
 
                 if (src_linked_sec->shdr->sh_flags & SHF_EXECINSTR)
                 {
-                    /* calls to the very first static function inside
-                     * .text section at offset 0 will
-                     * reference section symbol, not the
-                     * function symbol. Fix that up,
-                     * otherwise it won't be possible to
-                     * relocate calls to two different
-                     * static functions with the same name
-                     * (rom two different object files)
-                     */
                     insn = dst_linked_sec->raw_data + dst_rel->r_offset;
                     if (insn->code == (BPF_JMP | BPF_CALL))
                         insn->imm += sec->dst_off / sizeof(struct bpf_insn);
@@ -2125,6 +2116,100 @@ static int linker_append_elf_relos(struct bpf_linker *linker, struct src_obj *ob
                     return -EINVAL;
                 }
             }
+        }
+    }
+
+    return 0;
+}
+static Elf64_Sym *find_sym_by_name(struct src_obj *obj, size_t sec_idx,
+                                   int sym_type, const char *sym_name)
+{
+    struct src_sec *symtab = &obj->secs[obj->symtab_sec_idx];
+    Elf64_Sym *sym = symtab->data->d_buf;
+    int i, n = symtab->shdr->sh_size / symtab->shdr->sh_entsize;
+    int str_sec_idx = symtab->shdr->sh_link;
+    const char *name;
+
+    for (i = 0; i < n; i++, sym++)
+    {
+        if (sym->st_shndx != sec_idx)
+            continue;
+        if (ELF64_ST_TYPE(sym->st_info) != sym_type)
+            continue;
+
+        name = elf_strptr(obj->elf, str_sec_idx, sym->st_name);
+        if (!name)
+            return NULL;
+
+        if (strcmp(sym_name, name) != 0)
+            continue;
+
+        return sym;
+    }
+
+    return NULL;
+}
+
+static int linker_fixup_btf(struct src_obj *obj)
+{
+    const char *sec_name;
+    struct src_sec *sec;
+    int i, j, n, m;
+
+    if (!obj->btf)
+        return 0;
+
+    n = btf__type_cnt(obj->btf);
+    for (i = 1; i < n; i++)
+    {
+        struct btf_var_secinfo *vi;
+        struct btf_type *t;
+
+        t = btf_type_by_id(obj->btf, i);
+        if (btf_kind(t) != BTF_KIND_DATASEC)
+            continue;
+
+        sec_name = btf__str_by_offset(obj->btf, t->name_off);
+        sec = find_src_sec_by_name(obj, sec_name);
+        if (sec)
+        {
+            if (sec->shdr)
+                t->size = sec->shdr->sh_size;
+        }
+        else
+        {
+            if (strcmp(sec_name, BTF_EXTERN_SEC) == 0)
+                continue;
+
+            sec = add_src_sec(obj, sec_name);
+            if (!sec)
+                return -ENOMEM;
+
+            sec->ephemeral = true;
+            sec->sec_idx = 0; /* will match UNDEF shndx in ELF */
+        }
+
+        sec->sec_type_id = i;
+
+        vi = btf_var_secinfos(t);
+        for (j = 0, m = btf_vlen(t); j < m; j++, vi++)
+        {
+            const struct btf_type *vt = btf__type_by_id(obj->btf, vi->type);
+            const char *var_name = btf__str_by_offset(obj->btf, vt->name_off);
+            int var_linkage = btf_var(vt)->linkage;
+            Elf64_Sym *sym;
+
+            if (var_linkage != BTF_VAR_GLOBAL_ALLOCATED)
+                continue;
+
+            sym = find_sym_by_name(obj, sec->sec_idx, STT_OBJECT, var_name);
+            if (!sym)
+            {
+                pr_warn("failed to find symbol for variable '%s' in section '%s'\n", var_name, sec_name);
+                return -ENOENT;
+            }
+
+            vi->offset = sym->st_value;
         }
     }
 
