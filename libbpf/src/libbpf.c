@@ -12281,3 +12281,68 @@ int perf_buffer__poll(struct perf_buffer *pb, int timeout_ms)
 	}
 	return cnt;
 }
+
+/* Return number of PERF_EVENT_ARRAY map slots set up by this perf_buffer
+ * manager.
+ */
+size_t perf_buffer__buffer_cnt(const struct perf_buffer *pb)
+{
+	return pb->cpu_cnt;
+}
+
+/*
+ * Return perf_event FD of a ring buffer in *buf_idx* slot of
+ * PERF_EVENT_ARRAY BPF map. This FD can be polled for new data using
+ * select()/poll()/epoll() Linux syscalls.
+ */
+int perf_buffer__buffer_fd(const struct perf_buffer *pb, size_t buf_idx)
+{
+	struct perf_cpu_buf *cpu_buf;
+
+	if (buf_idx >= pb->cpu_cnt)
+		return libbpf_err(-EINVAL);
+
+	cpu_buf = pb->cpu_bufs[buf_idx];
+	if (!cpu_buf)
+		return libbpf_err(-ENOENT);
+
+	return cpu_buf->fd;
+}
+
+int perf_buffer__buffer(struct perf_buffer *pb, int buf_idx, void **buf, size_t *buf_size)
+{
+	struct perf_cpu_buf *cpu_buf;
+
+	if (buf_idx >= pb->cpu_cnt)
+		return libbpf_err(-EINVAL);
+
+	cpu_buf = pb->cpu_bufs[buf_idx];
+	if (!cpu_buf)
+		return libbpf_err(-ENOENT);
+
+	*buf = cpu_buf->base;
+	*buf_size = pb->mmap_size;
+	return 0;
+}
+
+/*
+ * Consume data from perf ring buffer corresponding to slot *buf_idx* in
+ * PERF_EVENT_ARRAY BPF map without waiting/polling. If there is no data to
+ * consume, do nothing and return success.
+ * Returns:
+ *   - 0 on success;
+ *   - <0 on failure.
+ */
+int perf_buffer__consume_buffer(struct perf_buffer *pb, size_t buf_idx)
+{
+	struct perf_cpu_buf *cpu_buf;
+
+	if (buf_idx >= pb->cpu_cnt)
+		return libbpf_err(-EINVAL);
+
+	cpu_buf = pb->cpu_bufs[buf_idx];
+	if (!cpu_buf)
+		return libbpf_err(-ENOENT);
+
+	return perf_buffer__process_records(pb, cpu_buf);
+}
