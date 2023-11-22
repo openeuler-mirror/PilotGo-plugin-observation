@@ -11492,3 +11492,52 @@ enum skb_drop_reason {
 	SKB_DROP_REASON_FRAG_TOO_FAR = 68,
 	SKB_DROP_REASON_MAX = 69,
 };
+
+struct skb_ext {
+	refcount_t refcnt;
+	u8 offset[3];
+	u8 chunks;
+	char data[0];
+};
+
+struct scm_creds {
+	u32 pid;
+	kuid_t uid;
+	kgid_t gid;
+};
+
+struct nlmsghdr {
+	__u32 nlmsg_len;
+	__u16 nlmsg_type;
+	__u16 nlmsg_flags;
+	__u32 nlmsg_seq;
+	__u32 nlmsg_pid;
+};
+
+struct nlattr {
+	__u16 nla_len;
+	__u16 nla_type;
+};
+
+struct netlink_skb_parms {
+	struct scm_creds creds;
+	__u32 portid;
+	__u32 dst_group;
+	__u32 flags;
+	struct sock *sk;
+	bool nsid_is_set;
+	int nsid;
+};
+
+struct nla_policy;
+
+struct netlink_ext_ack {
+	const char *_msg;
+	const struct nlattr *bad_attr;
+	const struct nla_policy *policy;
+	const struct nlattr *miss_nest;
+	u16 miss_type;
+	u8 cookie[20];
+	u8 cookie_len;
+	char _msg_buf[80];
+};
