@@ -12725,3 +12725,70 @@ int bpf_object__load_skeleton(struct bpf_object_skeleton *s)
 
 	return 0;
 }
+
+int bpf_object__attach_skeleton(struct bpf_object_skeleton *s)
+{
+	int i, err;
+
+	for (i = 0; i < s->prog_cnt; i++) {
+		struct bpf_program *prog = *s->progs[i].prog;
+		struct bpf_link **link = s->progs[i].link;
+
+		if (!prog->autoload || !prog->autoattach)
+			continue;
+
+		/* auto-attaching not supported for this program */
+		if (!prog->sec_def || !prog->sec_def->prog_attach_fn)
+			continue;
+
+		/* if user already set the link manually, don't attempt auto-attach */
+		if (*link)
+			continue;
+
+		err = prog->sec_def->prog_attach_fn(prog, prog->sec_def->cookie, link);
+		if (err) {
+			pr_warn("prog '%s': failed to auto-attach: %d\n",
+				bpf_program__name(prog), err);
+			return libbpf_err(err);
+		}
+
+		/* It's possible that for some SEC() definitions auto-attach
+		 * is supported in some cases (e.g., if definition completely
+		 * specifies target information), but is not in other cases.
+		 * SEC("uprobe") is one such case. If user specified target
+		 * binary and function name, such BPF program can be
+		 * auto-attached. But if not, it shouldn't trigger skeleton's
+		 * attach to fail. It should just be skipped.
+		 * attach_fn signals such case with returning 0 (no error) and
+		 * setting link to NULL.
+		 */
+	}
+
+	return 0;
+}
+
+void bpf_object__detach_skeleton(struct bpf_object_skeleton *s)
+{
+	int i;
+
+	for (i = 0; i < s->prog_cnt; i++) {
+		struct bpf_link **link = s->progs[i].link;
+
+		bpf_link__destroy(*link);
+		*link = NULL;
+	}
+}
+
+void bpf_object__destroy_skeleton(struct bpf_object_skeleton *s)
+{
+	if (!s)
+		return;
+
+	if (s->progs)
+		bpf_object__detach_skeleton(s);
+	if (s->obj)
+		bpf_object__close(*s->obj);
+	free(s->maps);
+	free(s->progs);
+	free(s);
+}
