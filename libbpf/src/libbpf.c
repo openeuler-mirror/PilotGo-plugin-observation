@@ -12411,3 +12411,53 @@ int bpf_program__set_attach_target(struct bpf_program *prog,
 	prog->attach_prog_fd = attach_prog_fd;
 	return 0;
 }
+
+int parse_cpu_mask_str(const char *s, bool **mask, int *mask_sz)
+{
+	int err = 0, n, len, start, end = -1;
+	bool *tmp;
+
+	*mask = NULL;
+	*mask_sz = 0;
+
+	/* Each sub string separated by ',' has format \d+-\d+ or \d+ */
+	while (*s) {
+		if (*s == ',' || *s == '\n') {
+			s++;
+			continue;
+		}
+		n = sscanf(s, "%d%n-%d%n", &start, &len, &end, &len);
+		if (n <= 0 || n > 2) {
+			pr_warn("Failed to get CPU range %s: %d\n", s, n);
+			err = -EINVAL;
+			goto cleanup;
+		} else if (n == 1) {
+			end = start;
+		}
+		if (start < 0 || start > end) {
+			pr_warn("Invalid CPU range [%d,%d] in %s\n",
+				start, end, s);
+			err = -EINVAL;
+			goto cleanup;
+		}
+		tmp = realloc(*mask, end + 1);
+		if (!tmp) {
+			err = -ENOMEM;
+			goto cleanup;
+		}
+		*mask = tmp;
+		memset(tmp + *mask_sz, 0, start - *mask_sz);
+		memset(tmp + start, 1, end - start + 1);
+		*mask_sz = end + 1;
+		s += len;
+	}
+	if (!*mask_sz) {
+		pr_warn("Empty CPU range\n");
+		return -EINVAL;
+	}
+	return 0;
+cleanup:
+	free(*mask);
+	*mask = NULL;
+	return err;
+}
