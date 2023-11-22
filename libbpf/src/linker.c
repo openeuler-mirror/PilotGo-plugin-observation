@@ -1925,12 +1925,6 @@ static int linker_append_elf_sym(struct bpf_linker *linker, struct src_obj *obj,
         t = btf__type_by_id(obj->btf, btf_sec_id);
         sec_name = btf__str_by_offset(obj->btf, t->name_off);
 
-        /* Clang puts unannotated extern vars into
-         * '.extern' BTF DATASEC. Treat them the same
-         * as unannotated extern funcs (which are
-         * currently not put into any DATASECs).
-         * Those don't have associated src_sec/dst_sec.
-         */
         if (strcmp(sec_name, BTF_EXTERN_SEC) != 0)
         {
             src_sec = find_src_sec_by_name(obj, sec_name);
@@ -1946,16 +1940,8 @@ static int linker_append_elf_sym(struct bpf_linker *linker, struct src_obj *obj,
     glob_sym = find_glob_sym(linker, sym_name);
     if (glob_sym)
     {
-        /* Preventively resolve to existing symbol. This is
-         * needed for further relocation symbol remapping in
-         * the next step of linking.
-         */
         obj->sym_map[src_sym_idx] = glob_sym->sym_idx;
 
-        /* If both symbols are non-externs, at least one of
-         * them has to be STB_WEAK, otherwise they are in
-         * a conflict with each other.
-         */
         if (!sym_is_extern && !glob_sym->is_extern && !glob_sym->is_weak && sym_bind != STB_WEAK)
         {
             pr_warn("conflicting non-weak symbol #%d (%s) definition in '%s'\n",
@@ -1968,55 +1954,27 @@ static int linker_append_elf_sym(struct bpf_linker *linker, struct src_obj *obj,
 
         dst_sym = get_sym_by_idx(linker, glob_sym->sym_idx);
 
-        /* If new symbol is strong, then force dst_sym to be strong as
-         * well; this way a mix of weak and non-weak extern
-         * definitions will end up being strong.
-         */
         if (sym_bind == STB_GLOBAL)
         {
-            /* We still need to preserve type (NOTYPE or
-             * OBJECT/FUNC, depending on whether the symbol is
-             * extern or not)
-             */
+
             sym_update_bind(dst_sym, STB_GLOBAL);
             glob_sym->is_weak = false;
         }
 
-        /* Non-default visibility is "contaminating", with stricter
-         * visibility overwriting more permissive ones, even if more
-         * permissive visibility comes from just an extern definition.
-         * Currently only STV_DEFAULT and STV_HIDDEN are allowed and
-         * ensured by ELF symbol sanity checks above.
-         */
         if (sym_vis > ELF64_ST_VISIBILITY(dst_sym->st_other))
             sym_update_visibility(dst_sym, sym_vis);
 
-        /* If the new symbol is extern, then regardless if
-         * existing symbol is extern or resolved global, just
-         * keep the existing one untouched.
-         */
         if (sym_is_extern)
             return 0;
 
-        /* If existing symbol is a strong resolved symbol, bail out,
-         * because we lost resolution battle have nothing to
-         * contribute. We already checked abover that there is no
-         * strong-strong conflict. We also already tightened binding
-         * and visibility, so nothing else to contribute at that point.
-         */
         if (!glob_sym->is_extern && sym_bind == STB_WEAK)
             return 0;
 
-        /* At this point, new symbol is strong non-extern,
-         * so overwrite glob_sym with new symbol information.
-         * Preserve binding and visibility.
-         */
         sym_update_type(dst_sym, sym_type);
         dst_sym->st_shndx = dst_sec->sec_idx;
         dst_sym->st_value = src_sec->dst_off + sym->st_value;
         dst_sym->st_size = sym->st_size;
 
-        /* see comment below about dst_sec->id vs dst_sec->sec_idx */
         glob_sym->sec_id = dst_sec->id;
         glob_sym->is_extern = false;
 
@@ -2024,9 +1982,50 @@ static int linker_append_elf_sym(struct bpf_linker *linker, struct src_obj *obj,
                                      obj->btf, btf_id))
             return -EINVAL;
 
-        /* request updating VAR's/FUNC's underlying BTF type when appending BTF type */
         glob_sym->underlying_btf_id = 0;
 
         obj->sym_map[src_sym_idx] = glob_sym->sym_idx;
         return 0;
     }
+
+add_sym:
+    name_off = strset__add_str(linker->strtab_strs, sym_name);
+    if (name_off < 0)
+        return name_off;
+
+    dst_sym = add_new_sym(linker, &dst_sym_idx);
+    if (!dst_sym)
+        return -ENOMEM;
+
+    dst_sym->st_name = name_off;
+    dst_sym->st_info = sym->st_info;
+    dst_sym->st_other = sym->st_other;
+    dst_sym->st_shndx = dst_sec ? dst_sec->sec_idx : sym->st_shndx;
+    dst_sym->st_value = (src_sec ? src_sec->dst_off : 0) + sym->st_value;
+    dst_sym->st_size = sym->st_size;
+
+    obj->sym_map[src_sym_idx] = dst_sym_idx;
+
+    if (sym_type == STT_SECTION && dst_sym)
+    {
+        dst_sec->sec_sym_idx = dst_sym_idx;
+        dst_sym->st_value = 0;
+    }
+
+    if (sym_bind != STB_LOCAL)
+    {
+        glob_sym = add_glob_sym(linker);
+        if (!glob_sym)
+            return -ENOMEM;
+
+        glob_sym->sym_idx = dst_sym_idx;
+
+        glob_sym->sec_id = dst_sec ? dst_sec->id : 0;
+        glob_sym->name_off = name_off;
+        glob_sym->btf_id = 0;
+        glob_sym->is_extern = sym_is_extern;
+        glob_sym->is_weak = sym_bind == STB_WEAK;
+    }
+
+    return 0;
+}
