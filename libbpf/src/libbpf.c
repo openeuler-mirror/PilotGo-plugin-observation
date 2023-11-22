@@ -12602,3 +12602,63 @@ int bpf_object__open_skeleton(struct bpf_object_skeleton *s,
 
 	return 0;
 }
+
+int bpf_object__open_subskeleton(struct bpf_object_subskeleton *s)
+{
+	int err, len, var_idx, i;
+	const char *var_name;
+	const struct bpf_map *map;
+	struct btf *btf;
+	__u32 map_type_id;
+	const struct btf_type *map_type, *var_type;
+	const struct bpf_var_skeleton *var_skel;
+	struct btf_var_secinfo *var;
+
+	if (!s->obj)
+		return libbpf_err(-EINVAL);
+
+	btf = bpf_object__btf(s->obj);
+	if (!btf) {
+		pr_warn("subskeletons require BTF at runtime (object %s)\n",
+			bpf_object__name(s->obj));
+		return libbpf_err(-errno);
+	}
+
+	err = populate_skeleton_maps(s->obj, s->maps, s->map_cnt);
+	if (err) {
+		pr_warn("failed to populate subskeleton maps: %d\n", err);
+		return libbpf_err(err);
+	}
+
+	err = populate_skeleton_progs(s->obj, s->progs, s->prog_cnt);
+	if (err) {
+		pr_warn("failed to populate subskeleton maps: %d\n", err);
+		return libbpf_err(err);
+	}
+
+	for (var_idx = 0; var_idx < s->var_cnt; var_idx++) {
+		var_skel = &s->vars[var_idx];
+		map = *var_skel->map;
+		map_type_id = bpf_map__btf_value_type_id(map);
+		map_type = btf__type_by_id(btf, map_type_id);
+
+		if (!btf_is_datasec(map_type)) {
+			pr_warn("type for map '%1$s' is not a datasec: %2$s",
+				bpf_map__name(map),
+				__btf_kind_str(btf_kind(map_type)));
+			return libbpf_err(-EINVAL);
+		}
+
+		len = btf_vlen(map_type);
+		var = btf_var_secinfos(map_type);
+		for (i = 0; i < len; i++, var++) {
+			var_type = btf__type_by_id(btf, var->type);
+			var_name = btf__name_by_offset(btf, var_type->name_off);
+			if (strcmp(var_name, var_skel->name) == 0) {
+				*var_skel->addr = map->mmaped + var->offset;
+				break;
+			}
+		}
+	}
+	return 0;
+}
