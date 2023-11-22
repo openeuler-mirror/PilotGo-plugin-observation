@@ -1796,3 +1796,57 @@ static int find_glob_sym_btf(struct src_obj *obj, Elf64_Sym *sym, const char *sy
     pr_warn("failed to find BTF info for global/extern symbol '%s'\n", sym_name);
     return -ENOENT;
 }
+
+static struct src_sec *find_src_sec_by_name(struct src_obj *obj, const char *sec_name)
+{
+    struct src_sec *sec;
+    int i;
+
+    for (i = 1; i < obj->sec_cnt; i++)
+    {
+        sec = &obj->secs[i];
+
+        if (strcmp(sec->sec_name, sec_name) == 0)
+            return sec;
+    }
+
+    return NULL;
+}
+
+static int complete_extern_btf_info(struct btf *dst_btf, int dst_id,
+                                    struct btf *src_btf, int src_id)
+{
+    struct btf_type *dst_t = btf_type_by_id(dst_btf, dst_id);
+    struct btf_type *src_t = btf_type_by_id(src_btf, src_id);
+    struct btf_param *src_p, *dst_p;
+    const char *s;
+    int i, n, off;
+
+    if (btf_is_var(dst_t))
+    {
+        btf_var(dst_t)->linkage = BTF_VAR_GLOBAL_ALLOCATED;
+        return 0;
+    }
+
+    dst_t->info = btf_type_info(BTF_KIND_FUNC, BTF_FUNC_GLOBAL, 0);
+
+    /* now onto FUNC_PROTO types */
+    src_t = btf_type_by_id(src_btf, src_t->type);
+    dst_t = btf_type_by_id(dst_btf, dst_t->type);
+
+    src_p = btf_params(src_t);
+    dst_p = btf_params(dst_t);
+    for (i = 0, n = btf_vlen(dst_t); i < n; i++, src_p++, dst_p++)
+    {
+        if (!src_p->name_off)
+            continue;
+
+        /* src_btf has more complete info, so add name to dst_btf */
+        s = btf__str_by_offset(src_btf, src_p->name_off);
+        off = btf__add_str(dst_btf, s);
+        if (off < 0)
+            return off;
+        dst_p->name_off = off;
+    }
+    return 0;
+}
