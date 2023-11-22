@@ -190,3 +190,67 @@ err:
 	btf_dump__free(d);
 	return libbpf_err_ptr(err);
 }
+
+static int btf_dump_resize(struct btf_dump *d)
+{
+	int err, last_id = btf__type_cnt(d->btf) - 1;
+
+	if (last_id <= d->last_id)
+		return 0;
+
+	if (libbpf_ensure_mem((void **)&d->type_states, &d->type_states_cap,
+			      sizeof(*d->type_states), last_id + 1))
+		return -ENOMEM;
+	if (libbpf_ensure_mem((void **)&d->cached_names, &d->cached_names_cap,
+			      sizeof(*d->cached_names), last_id + 1))
+		return -ENOMEM;
+
+	if (d->last_id == 0) {
+		/* VOID is special */
+		d->type_states[0].order_state = ORDERED;
+		d->type_states[0].emit_state = EMITTED;
+	}
+
+	/* eagerly determine referenced types for anon enums */
+	err = btf_dump_mark_referenced(d);
+	if (err)
+		return err;
+
+	d->last_id = last_id;
+	return 0;
+}
+
+static void btf_dump_free_names(struct hashmap *map)
+{
+	size_t bkt;
+	struct hashmap_entry *cur;
+
+	hashmap__for_each_entry(map, cur, bkt)
+		free((void *)cur->pkey);
+
+	hashmap__free(map);
+}
+
+void btf_dump__free(struct btf_dump *d)
+{
+	int i;
+
+	if (IS_ERR_OR_NULL(d))
+		return;
+
+	free(d->type_states);
+	if (d->cached_names) {
+		/* any set cached name is owned by us and should be freed */
+		for (i = 0; i <= d->last_id; i++) {
+			if (d->cached_names[i])
+				free((void *)d->cached_names[i]);
+		}
+	}
+	free(d->cached_names);
+	free(d->emit_queue);
+	free(d->decl_stack);
+	btf_dump_free_names(d->type_names);
+	btf_dump_free_names(d->ident_names);
+
+	free(d);
+}
