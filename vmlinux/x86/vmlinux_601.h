@@ -11541,3 +11541,57 @@ struct netlink_ext_ack {
 	u8 cookie_len;
 	char _msg_buf[80];
 };
+
+struct netlink_range_validation;
+
+struct netlink_range_validation_signed;
+
+struct nla_policy {
+	u8 type;
+	u8 validation_type;
+	u16 len;
+	union {
+		u16 strict_start_type;
+		const u32 bitfield32_valid;
+		const u32 mask;
+		const char *reject_message;
+		const struct nla_policy *nested_policy;
+		struct netlink_range_validation *range;
+		struct netlink_range_validation_signed *range_signed;
+		struct {
+			s16 min;
+			s16 max;
+		};
+		int (*validate)(const struct nlattr *, struct netlink_ext_ack *);
+	};
+};
+
+struct netlink_callback {
+	struct sk_buff *skb;
+	const struct nlmsghdr *nlh;
+	int (*dump)(struct sk_buff *, struct netlink_callback *);
+	int (*done)(struct netlink_callback *);
+	void *data;
+	struct module *module;
+	struct netlink_ext_ack *extack;
+	u16 family;
+	u16 answer_flags;
+	u32 min_dump_alloc;
+	unsigned int prev_seq;
+	unsigned int seq;
+	bool strict_check;
+	union {
+		u8 ctx[48];
+		long int args[6];
+	};
+};
+
+struct netlink_range_validation {
+	u64 min;
+	u64 max;
+};
+
+struct netlink_range_validation_signed {
+	s64 min;
+	s64 max;
+};
