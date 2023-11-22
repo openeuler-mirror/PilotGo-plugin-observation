@@ -12346,3 +12346,68 @@ int perf_buffer__consume_buffer(struct perf_buffer *pb, size_t buf_idx)
 
 	return perf_buffer__process_records(pb, cpu_buf);
 }
+
+int perf_buffer__consume(struct perf_buffer *pb)
+{
+	int i, err;
+
+	for (i = 0; i < pb->cpu_cnt; i++) {
+		struct perf_cpu_buf *cpu_buf = pb->cpu_bufs[i];
+
+		if (!cpu_buf)
+			continue;
+
+		err = perf_buffer__process_records(pb, cpu_buf);
+		if (err) {
+			pr_warn("perf_buffer: failed to process records in buffer #%d: %d\n", i, err);
+			return libbpf_err(err);
+		}
+	}
+	return 0;
+}
+
+int bpf_program__set_attach_target(struct bpf_program *prog,
+				   int attach_prog_fd,
+				   const char *attach_func_name)
+{
+	int btf_obj_fd = 0, btf_id = 0, err;
+
+	if (!prog || attach_prog_fd < 0)
+		return libbpf_err(-EINVAL);
+
+	if (prog->obj->loaded)
+		return libbpf_err(-EINVAL);
+
+	if (attach_prog_fd && !attach_func_name) {
+		/* remember attach_prog_fd and let bpf_program__load() find
+		 * BTF ID during the program load
+		 */
+		prog->attach_prog_fd = attach_prog_fd;
+		return 0;
+	}
+
+	if (attach_prog_fd) {
+		btf_id = libbpf_find_prog_btf_id(attach_func_name,
+						 attach_prog_fd);
+		if (btf_id < 0)
+			return libbpf_err(btf_id);
+	} else {
+		if (!attach_func_name)
+			return libbpf_err(-EINVAL);
+
+		/* load btf_vmlinux, if not yet */
+		err = bpf_object__load_vmlinux_btf(prog->obj, true);
+		if (err)
+			return libbpf_err(err);
+		err = find_kernel_btf_id(prog->obj, attach_func_name,
+					 prog->expected_attach_type,
+					 &btf_obj_fd, &btf_id);
+		if (err)
+			return libbpf_err(err);
+	}
+
+	prog->attach_btf_id = btf_id;
+	prog->attach_btf_obj_fd = btf_obj_fd;
+	prog->attach_prog_fd = attach_prog_fd;
+	return 0;
+}
