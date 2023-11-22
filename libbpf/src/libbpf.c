@@ -12242,3 +12242,42 @@ perf_buffer__process_record(struct perf_event_header *e, void *ctx)
 	}
 	return LIBBPF_PERF_EVENT_CONT;
 }
+
+static int perf_buffer__process_records(struct perf_buffer *pb,
+					struct perf_cpu_buf *cpu_buf)
+{
+	enum bpf_perf_event_ret ret;
+
+	ret = perf_event_read_simple(cpu_buf->base, pb->mmap_size,
+				     pb->page_size, &cpu_buf->buf,
+				     &cpu_buf->buf_size,
+				     perf_buffer__process_record, cpu_buf);
+	if (ret != LIBBPF_PERF_EVENT_CONT)
+		return ret;
+	return 0;
+}
+
+int perf_buffer__epoll_fd(const struct perf_buffer *pb)
+{
+	return pb->epoll_fd;
+}
+
+int perf_buffer__poll(struct perf_buffer *pb, int timeout_ms)
+{
+	int i, cnt, err;
+
+	cnt = epoll_wait(pb->epoll_fd, pb->events, pb->cpu_cnt, timeout_ms);
+	if (cnt < 0)
+		return -errno;
+
+	for (i = 0; i < cnt; i++) {
+		struct perf_cpu_buf *cpu_buf = pb->events[i].data.ptr;
+
+		err = perf_buffer__process_records(pb, cpu_buf);
+		if (err) {
+			pr_warn("error while processing records: %d\n", err);
+			return libbpf_err(err);
+		}
+	}
+	return cnt;
+}
