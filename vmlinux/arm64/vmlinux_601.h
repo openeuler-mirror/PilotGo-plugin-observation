@@ -2452,3 +2452,12 @@ struct list_lru {
 	bool memcg_aware;
 	struct xarray xa;
 };
+
+struct kernfs_root;
+
+struct kernfs_elem_dir {
+	long unsigned int subdirs;
+	struct rb_root children;
+	struct kernfs_root *root;
+	long unsigned int rev;
+};
