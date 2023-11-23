@@ -12365,3 +12365,47 @@ enum freq_qos_req_type {
 	FREQ_QOS_MIN = 1,
 	FREQ_QOS_MAX = 2,
 };
+
+struct freq_qos_request {
+	enum freq_qos_req_type type;
+	struct plist_node pnode;
+	struct freq_constraints *qos;
+};
+
+enum dev_pm_qos_req_type {
+	DEV_PM_QOS_RESUME_LATENCY = 1,
+	DEV_PM_QOS_LATENCY_TOLERANCE = 2,
+	DEV_PM_QOS_MIN_FREQUENCY = 3,
+	DEV_PM_QOS_MAX_FREQUENCY = 4,
+	DEV_PM_QOS_FLAGS = 5,
+};
+
+struct dev_pm_qos_request {
+	enum dev_pm_qos_req_type type;
+	union {
+		struct plist_node pnode;
+		struct pm_qos_flags_request flr;
+		struct freq_qos_request freq;
+	} data;
+	struct device *dev;
+};
+
+enum cpufreq_table_sorting {
+	CPUFREQ_TABLE_UNSORTED = 0,
+	CPUFREQ_TABLE_SORTED_ASCENDING = 1,
+	CPUFREQ_TABLE_SORTED_DESCENDING = 2,
+};
+
+struct cpufreq_cpuinfo {
+	unsigned int max_freq;
+	unsigned int min_freq;
+	unsigned int transition_latency;
+};
+
+struct cpufreq_governor;
+
+struct cpufreq_frequency_table;
+
+struct cpufreq_stats;
+
+struct thermal_cooling_device;
