@@ -2364,3 +2364,16 @@ struct vm_operations_struct {
 	struct mempolicy * (*get_policy)(struct vm_area_struct *, long unsigned int);
 	struct page * (*find_special_page)(struct vm_area_struct *, long unsigned int);
 };
+
+struct rcu_segcblist {
+	struct callback_head *head;
+	struct callback_head **tails[4];
+	long unsigned int gp_seq[4];
+	long int len;
+	long int seglen[4];
+	u8 flags;
+};
+
+struct srcu_node;
+
+struct srcu_struct;
