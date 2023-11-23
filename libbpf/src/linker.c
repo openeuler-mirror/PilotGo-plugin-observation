@@ -2394,3 +2394,154 @@ static int linker_append_btf(struct bpf_linker *linker, struct src_obj *obj)
 
     return 0;
 }
+
+static void *add_btf_ext_rec(struct btf_ext_sec_data *ext_data, const void *src_rec)
+{
+    void *tmp;
+
+    tmp = libbpf_reallocarray(ext_data->recs, ext_data->rec_cnt + 1, ext_data->rec_sz);
+    if (!tmp)
+        return NULL;
+    ext_data->recs = tmp;
+
+    tmp += ext_data->rec_cnt * ext_data->rec_sz;
+    memcpy(tmp, src_rec, ext_data->rec_sz);
+
+    ext_data->rec_cnt++;
+
+    return tmp;
+}
+
+static int linker_append_btf_ext(struct bpf_linker *linker, struct src_obj *obj)
+{
+    const struct btf_ext_info_sec *ext_sec;
+    const char *sec_name, *s;
+    struct src_sec *src_sec;
+    struct dst_sec *dst_sec;
+    int rec_sz, str_off, i;
+
+    if (!obj->btf_ext)
+        return 0;
+
+    rec_sz = obj->btf_ext->func_info.rec_size;
+    for_each_btf_ext_sec(&obj->btf_ext->func_info, ext_sec)
+    {
+        struct bpf_func_info_min *src_rec, *dst_rec;
+
+        sec_name = btf__name_by_offset(obj->btf, ext_sec->sec_name_off);
+        src_sec = find_src_sec_by_name(obj, sec_name);
+        if (!src_sec)
+        {
+            pr_warn("can't find section '%s' referenced from .BTF.ext\n", sec_name);
+            return -EINVAL;
+        }
+        dst_sec = &linker->secs[src_sec->dst_id];
+
+        if (dst_sec->func_info.rec_sz == 0)
+            dst_sec->func_info.rec_sz = rec_sz;
+        if (dst_sec->func_info.rec_sz != rec_sz)
+        {
+            pr_warn("incompatible .BTF.ext record sizes for section '%s'\n", sec_name);
+            return -EINVAL;
+        }
+
+        for_each_btf_ext_rec(&obj->btf_ext->func_info, ext_sec, i, src_rec)
+        {
+            dst_rec = add_btf_ext_rec(&dst_sec->func_info, src_rec);
+            if (!dst_rec)
+                return -ENOMEM;
+
+            dst_rec->insn_off += src_sec->dst_off;
+            dst_rec->type_id = obj->btf_type_map[dst_rec->type_id];
+        }
+    }
+
+    rec_sz = obj->btf_ext->line_info.rec_size;
+    for_each_btf_ext_sec(&obj->btf_ext->line_info, ext_sec)
+    {
+        struct bpf_line_info_min *src_rec, *dst_rec;
+
+        sec_name = btf__name_by_offset(obj->btf, ext_sec->sec_name_off);
+        src_sec = find_src_sec_by_name(obj, sec_name);
+        if (!src_sec)
+        {
+            pr_warn("can't find section '%s' referenced from .BTF.ext\n", sec_name);
+            return -EINVAL;
+        }
+        dst_sec = &linker->secs[src_sec->dst_id];
+
+        if (dst_sec->line_info.rec_sz == 0)
+            dst_sec->line_info.rec_sz = rec_sz;
+        if (dst_sec->line_info.rec_sz != rec_sz)
+        {
+            pr_warn("incompatible .BTF.ext record sizes for section '%s'\n", sec_name);
+            return -EINVAL;
+        }
+
+        for_each_btf_ext_rec(&obj->btf_ext->line_info, ext_sec, i, src_rec)
+        {
+            dst_rec = add_btf_ext_rec(&dst_sec->line_info, src_rec);
+            if (!dst_rec)
+                return -ENOMEM;
+
+            dst_rec->insn_off += src_sec->dst_off;
+
+            s = btf__str_by_offset(obj->btf, src_rec->file_name_off);
+            str_off = btf__add_str(linker->btf, s);
+            if (str_off < 0)
+                return -ENOMEM;
+            dst_rec->file_name_off = str_off;
+
+            s = btf__str_by_offset(obj->btf, src_rec->line_off);
+            str_off = btf__add_str(linker->btf, s);
+            if (str_off < 0)
+                return -ENOMEM;
+            dst_rec->line_off = str_off;
+
+            /* dst_rec->line_col is fine */
+        }
+    }
+
+    rec_sz = obj->btf_ext->core_relo_info.rec_size;
+    for_each_btf_ext_sec(&obj->btf_ext->core_relo_info, ext_sec)
+    {
+        struct bpf_core_relo *src_rec, *dst_rec;
+
+        sec_name = btf__name_by_offset(obj->btf, ext_sec->sec_name_off);
+        src_sec = find_src_sec_by_name(obj, sec_name);
+        if (!src_sec)
+        {
+            pr_warn("can't find section '%s' referenced from .BTF.ext\n", sec_name);
+            return -EINVAL;
+        }
+        dst_sec = &linker->secs[src_sec->dst_id];
+
+        if (dst_sec->core_relo_info.rec_sz == 0)
+            dst_sec->core_relo_info.rec_sz = rec_sz;
+        if (dst_sec->core_relo_info.rec_sz != rec_sz)
+        {
+            pr_warn("incompatible .BTF.ext record sizes for section '%s'\n", sec_name);
+            return -EINVAL;
+        }
+
+        for_each_btf_ext_rec(&obj->btf_ext->core_relo_info, ext_sec, i, src_rec)
+        {
+            dst_rec = add_btf_ext_rec(&dst_sec->core_relo_info, src_rec);
+            if (!dst_rec)
+                return -ENOMEM;
+
+            dst_rec->insn_off += src_sec->dst_off;
+            dst_rec->type_id = obj->btf_type_map[dst_rec->type_id];
+
+            s = btf__str_by_offset(obj->btf, src_rec->access_str_off);
+            str_off = btf__add_str(linker->btf, s);
+            if (str_off < 0)
+                return -ENOMEM;
+            dst_rec->access_str_off = str_off;
+
+            /* dst_rec->kind is fine */
+        }
+    }
+
+    return 0;
+}
