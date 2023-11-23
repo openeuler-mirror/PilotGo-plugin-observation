@@ -2467,3 +2467,16 @@ struct kernfs_node;
 struct kernfs_elem_symlink {
 	struct kernfs_node *target_kn;
 };
+
+struct kernfs_ops;
+
+struct kernfs_open_node;
+
+struct kernfs_elem_attr {
+	const struct kernfs_ops *ops;
+	struct kernfs_open_node *open;
+	loff_t size;
+	struct kernfs_node *notify_next;
+};
+
+struct kernfs_iattrs;
