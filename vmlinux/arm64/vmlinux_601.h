@@ -2377,3 +2377,30 @@ struct rcu_segcblist {
 struct srcu_node;
 
 struct srcu_struct;
+
+struct srcu_data {
+	atomic_long_t srcu_lock_count[2];
+	atomic_long_t srcu_unlock_count[2];
+	int srcu_nmi_safety;
+	long: 32;
+	long: 64;
+	long: 64;
+	long: 64;
+	spinlock_t lock;
+	struct rcu_segcblist srcu_cblist;
+	long unsigned int srcu_gp_seq_needed;
+	long unsigned int srcu_gp_seq_needed_exp;
+	bool srcu_cblist_invoking;
+	struct timer_list delay_work;
+	struct work_struct work;
+	struct callback_head srcu_barrier_head;
+	struct srcu_node *mynode;
+	long unsigned int grpmask;
+	int cpu;
+	struct srcu_struct *ssp;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
