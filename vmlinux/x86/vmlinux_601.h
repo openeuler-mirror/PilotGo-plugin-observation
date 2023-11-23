@@ -11938,3 +11938,96 @@ struct linux_tls_mib {
 };
 
 struct inet_frags;
+
+struct fqdir {
+	long int high_thresh;
+	long int low_thresh;
+	int timeout;
+	int max_dist;
+	struct inet_frags *f;
+	struct net *net;
+	bool dead;
+	long: 64;
+	long: 64;
+	struct rhashtable rhashtable;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	atomic_long_t mem;
+	struct work_struct destroy_work;
+	struct llist_node free_list;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+struct inet_frag_queue;
+
+struct inet_frags {
+	unsigned int qsize;
+	void (*constructor)(struct inet_frag_queue *, const void *);
+	void (*destructor)(struct inet_frag_queue *);
+	void (*frag_expire)(struct timer_list *);
+	struct kmem_cache *frags_cachep;
+	const char *frags_cache_name;
+	struct rhashtable_params rhash_params;
+	refcount_t refcnt;
+	struct completion completion;
+};
+
+struct frag_v4_compare_key {
+	__be32 saddr;
+	__be32 daddr;
+	u32 user;
+	u32 vif;
+	__be16 id;
+	u16 protocol;
+};
+
+struct frag_v6_compare_key {
+	struct in6_addr saddr;
+	struct in6_addr daddr;
+	u32 user;
+	__be32 id;
+	u32 iif;
+};
+
+struct inet_frag_queue {
+	struct rhash_head node;
+	union {
+		struct frag_v4_compare_key v4;
+		struct frag_v6_compare_key v6;
+	} key;
+	struct timer_list timer;
+	spinlock_t lock;
+	refcount_t refcnt;
+	struct rb_root rb_fragments;
+	struct sk_buff *fragments_tail;
+	struct sk_buff *last_run_head;
+	ktime_t stamp;
+	int len;
+	int meat;
+	u8 mono_delivery_time;
+	__u8 flags;
+	u16 max_size;
+	struct fqdir *fqdir;
+	struct callback_head rcu;
+};
+
+enum tcp_ca_event {
+	CA_EVENT_TX_START = 0,
+	CA_EVENT_CWND_RESTART = 1,
+	CA_EVENT_COMPLETE_CWR = 2,
+	CA_EVENT_LOSS = 3,
+	CA_EVENT_ECN_NO_CE = 4,
+	CA_EVENT_ECN_IS_CE = 5,
+};
+
+struct ack_sample;
+
+struct rate_sample;
+
+union tcp_cc_info;
