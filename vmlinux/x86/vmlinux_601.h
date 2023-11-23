@@ -12855,3 +12855,78 @@ struct tty_struct {
 	struct work_struct SAK_work;
 	struct tty_port *port;
 };
+
+struct cdev {
+	struct kobject kobj;
+	struct module *owner;
+	const struct file_operations *ops;
+	struct list_head list;
+	dev_t dev;
+	unsigned int count;
+};
+
+struct tty_buffer {
+	union {
+		struct tty_buffer *next;
+		struct llist_node free;
+	};
+	int used;
+	int size;
+	int commit;
+	int lookahead;
+	int read;
+	int flags;
+	long unsigned int data[0];
+};
+
+struct tty_bufhead {
+	struct tty_buffer *head;
+	struct work_struct work;
+	struct mutex lock;
+	atomic_t priority;
+	struct tty_buffer sentinel;
+	struct llist_head free;
+	atomic_t mem_used;
+	int mem_limit;
+	struct tty_buffer *tail;
+};
+
+struct serial_icounter_struct;
+
+struct serial_struct;
+
+struct tty_operations {
+	struct tty_struct * (*lookup)(struct tty_driver *, struct file *, int);
+	int (*install)(struct tty_driver *, struct tty_struct *);
+	void (*remove)(struct tty_driver *, struct tty_struct *);
+	int (*open)(struct tty_struct *, struct file *);
+	void (*close)(struct tty_struct *, struct file *);
+	void (*shutdown)(struct tty_struct *);
+	void (*cleanup)(struct tty_struct *);
+	int (*write)(struct tty_struct *, const unsigned char *, int);
+	int (*put_char)(struct tty_struct *, unsigned char);
+	void (*flush_chars)(struct tty_struct *);
+	unsigned int (*write_room)(struct tty_struct *);
+	unsigned int (*chars_in_buffer)(struct tty_struct *);
+	int (*ioctl)(struct tty_struct *, unsigned int, long unsigned int);
+	long int (*compat_ioctl)(struct tty_struct *, unsigned int, long unsigned int);
+	void (*set_termios)(struct tty_struct *, const struct ktermios *);
+	void (*throttle)(struct tty_struct *);
+	void (*unthrottle)(struct tty_struct *);
+	void (*stop)(struct tty_struct *);
+	void (*start)(struct tty_struct *);
+	void (*hangup)(struct tty_struct *);
+	int (*break_ctl)(struct tty_struct *, int);
+	void (*flush_buffer)(struct tty_struct *);
+	void (*set_ldisc)(struct tty_struct *);
+	void (*wait_until_sent)(struct tty_struct *, int);
+	void (*send_xchar)(struct tty_struct *, char);
+	int (*tiocmget)(struct tty_struct *);
+	int (*tiocmset)(struct tty_struct *, unsigned int, unsigned int);
+	int (*resize)(struct tty_struct *, struct winsize *);
+	int (*get_icount)(struct tty_struct *, struct serial_icounter_struct *);
+	int (*get_serial)(struct tty_struct *, struct serial_struct *);
+	int (*set_serial)(struct tty_struct *, struct serial_struct *);
+	void (*show_fdinfo)(struct tty_struct *, struct seq_file *);
+	int (*proc_show)(struct seq_file *, void *);
+};
