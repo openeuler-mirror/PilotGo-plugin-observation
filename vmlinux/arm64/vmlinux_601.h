@@ -2442,3 +2442,13 @@ struct srcu_struct {
 	struct delayed_work work;
 	struct lockdep_map dep_map;
 };
+
+struct list_lru_node;
+
+struct list_lru {
+	struct list_lru_node *node;
+	struct list_head list;
+	int shrinker_id;
+	bool memcg_aware;
+	struct xarray xa;
+};
