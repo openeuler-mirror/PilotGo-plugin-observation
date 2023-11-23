@@ -2651,3 +2651,84 @@ static int emit_elf_data_sec(struct bpf_linker *linker, const char *sec_name,
 
     return 0;
 }
+
+static int finalize_btf(struct bpf_linker *linker)
+{
+    LIBBPF_OPTS(btf_dedup_opts, opts);
+    struct btf *btf = linker->btf;
+    const void *raw_data;
+    int i, j, id, err;
+    __u32 raw_sz;
+
+    /* bail out if no BTF data was produced */
+    if (btf__type_cnt(linker->btf) == 1)
+        return 0;
+
+    for (i = 1; i < linker->sec_cnt; i++)
+    {
+        struct dst_sec *sec = &linker->secs[i];
+
+        if (!sec->has_btf)
+            continue;
+
+        id = btf__add_datasec(btf, sec->sec_name, sec->sec_sz);
+        if (id < 0)
+        {
+            pr_warn("failed to add consolidated BTF type for datasec '%s': %d\n",
+                    sec->sec_name, id);
+            return id;
+        }
+
+        for (j = 0; j < sec->sec_var_cnt; j++)
+        {
+            struct btf_var_secinfo *vi = &sec->sec_vars[j];
+
+            if (btf__add_datasec_var_info(btf, vi->type, vi->offset, vi->size))
+                return -EINVAL;
+        }
+    }
+
+    err = finalize_btf_ext(linker);
+    if (err)
+    {
+        pr_warn(".BTF.ext generation failed: %d\n", err);
+        return err;
+    }
+
+    opts.btf_ext = linker->btf_ext;
+    err = btf__dedup(linker->btf, &opts);
+    if (err)
+    {
+        pr_warn("BTF dedup failed: %d\n", err);
+        return err;
+    }
+
+    /* Emit .BTF section */
+    raw_data = btf__raw_data(linker->btf, &raw_sz);
+    if (!raw_data)
+        return -ENOMEM;
+
+    err = emit_elf_data_sec(linker, BTF_ELF_SEC, 8, raw_data, raw_sz);
+    if (err)
+    {
+        pr_warn("failed to write out .BTF ELF section: %d\n", err);
+        return err;
+    }
+
+    /* Emit .BTF.ext section */
+    if (linker->btf_ext)
+    {
+        raw_data = btf_ext__get_raw_data(linker->btf_ext, &raw_sz);
+        if (!raw_data)
+            return -ENOMEM;
+
+        err = emit_elf_data_sec(linker, BTF_EXT_ELF_SEC, 8, raw_data, raw_sz);
+        if (err)
+        {
+            pr_warn("failed to write out .BTF.ext ELF section: %d\n", err);
+            return err;
+        }
+    }
+
+    return 0;
+}
