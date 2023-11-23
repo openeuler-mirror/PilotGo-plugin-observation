@@ -12322,3 +12322,46 @@ enum pm_qos_type {
 	PM_QOS_MAX = 1,
 	PM_QOS_MIN = 2,
 };
+
+struct pm_qos_constraints {
+	struct plist_head list;
+	s32 target_value;
+	s32 default_value;
+	s32 no_constraint_value;
+	enum pm_qos_type type;
+	struct blocking_notifier_head *notifiers;
+};
+
+struct freq_constraints {
+	struct pm_qos_constraints min_freq;
+	struct blocking_notifier_head min_freq_notifiers;
+	struct pm_qos_constraints max_freq;
+	struct blocking_notifier_head max_freq_notifiers;
+};
+
+struct pm_qos_flags {
+	struct list_head list;
+	s32 effective_flags;
+};
+
+struct dev_pm_qos_request;
+
+struct dev_pm_qos {
+	struct pm_qos_constraints resume_latency;
+	struct pm_qos_constraints latency_tolerance;
+	struct freq_constraints freq;
+	struct pm_qos_flags flags;
+	struct dev_pm_qos_request *resume_latency_req;
+	struct dev_pm_qos_request *latency_tolerance_req;
+	struct dev_pm_qos_request *flags_req;
+};
+
+struct pm_qos_flags_request {
+	struct list_head node;
+	s32 flags;
+};
+
+enum freq_qos_req_type {
+	FREQ_QOS_MIN = 1,
+	FREQ_QOS_MAX = 2,
+};
