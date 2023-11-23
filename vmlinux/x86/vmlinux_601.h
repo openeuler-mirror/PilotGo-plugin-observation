@@ -12031,3 +12031,136 @@ struct ack_sample;
 struct rate_sample;
 
 union tcp_cc_info;
+
+struct tcp_congestion_ops {
+	u32 (*ssthresh)(struct sock *);
+	void (*cong_avoid)(struct sock *, u32, u32);
+	void (*set_state)(struct sock *, u8);
+	void (*cwnd_event)(struct sock *, enum tcp_ca_event);
+	void (*in_ack_event)(struct sock *, u32);
+	void (*pkts_acked)(struct sock *, const struct ack_sample *);
+	u32 (*min_tso_segs)(struct sock *);
+	void (*cong_control)(struct sock *, const struct rate_sample *);
+	u32 (*undo_cwnd)(struct sock *);
+	u32 (*sndbuf_expand)(struct sock *);
+	size_t (*get_info)(struct sock *, u32, int *, union tcp_cc_info *);
+	char name[16];
+	struct module *owner;
+	struct list_head list;
+	u32 key;
+	u32 flags;
+	void (*init)(struct sock *);
+	void (*release)(struct sock *);
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+typedef struct {} netdevice_tracker;
+
+struct xfrm_state;
+
+struct lwtunnel_state;
+
+struct dst_entry {
+	struct net_device *dev;
+	struct dst_ops *ops;
+	long unsigned int _metrics;
+	long unsigned int expires;
+	struct xfrm_state *xfrm;
+	int (*input)(struct sk_buff *);
+	int (*output)(struct net *, struct sock *, struct sk_buff *);
+	short unsigned int flags;
+	short int obsolete;
+	short unsigned int header_len;
+	short unsigned int trailer_len;
+	atomic_t __refcnt;
+	int __use;
+	long unsigned int lastuse;
+	struct lwtunnel_state *lwtstate;
+	struct callback_head callback_head;
+	short int error;
+	short int __pad;
+	__u32 tclassid;
+	netdevice_tracker dev_tracker;
+};
+
+enum nf_inet_hooks {
+	NF_INET_PRE_ROUTING = 0,
+	NF_INET_LOCAL_IN = 1,
+	NF_INET_FORWARD = 2,
+	NF_INET_LOCAL_OUT = 3,
+	NF_INET_POST_ROUTING = 4,
+	NF_INET_NUMHOOKS = 5,
+	NF_INET_INGRESS = 5,
+};
+
+enum {
+	NFPROTO_UNSPEC = 0,
+	NFPROTO_INET = 1,
+	NFPROTO_IPV4 = 2,
+	NFPROTO_ARP = 3,
+	NFPROTO_NETDEV = 5,
+	NFPROTO_BRIDGE = 7,
+	NFPROTO_IPV6 = 10,
+	NFPROTO_NUMPROTO = 11,
+};
+
+enum nf_log_type {
+	NF_LOG_TYPE_LOG = 0,
+	NF_LOG_TYPE_ULOG = 1,
+	NF_LOG_TYPE_MAX = 2,
+};
+
+typedef u8 u_int8_t;
+
+struct nf_loginfo;
+
+typedef void nf_logfn(struct net *, u_int8_t, unsigned int, const struct sk_buff *, const struct net_device *, const struct net_device *, const struct nf_loginfo *, const char *);
+
+struct nf_logger {
+	char *name;
+	enum nf_log_type type;
+	nf_logfn *logfn;
+	struct module *me;
+};
+
+enum tcp_conntrack {
+	TCP_CONNTRACK_NONE = 0,
+	TCP_CONNTRACK_SYN_SENT = 1,
+	TCP_CONNTRACK_SYN_RECV = 2,
+	TCP_CONNTRACK_ESTABLISHED = 3,
+	TCP_CONNTRACK_FIN_WAIT = 4,
+	TCP_CONNTRACK_CLOSE_WAIT = 5,
+	TCP_CONNTRACK_LAST_ACK = 6,
+	TCP_CONNTRACK_TIME_WAIT = 7,
+	TCP_CONNTRACK_CLOSE = 8,
+	TCP_CONNTRACK_LISTEN = 9,
+	TCP_CONNTRACK_MAX = 10,
+	TCP_CONNTRACK_IGNORE = 11,
+	TCP_CONNTRACK_RETRANS = 12,
+	TCP_CONNTRACK_UNACK = 13,
+	TCP_CONNTRACK_TIMEOUT_MAX = 14,
+};
+
+enum ct_dccp_states {
+	CT_DCCP_NONE = 0,
+	CT_DCCP_REQUEST = 1,
+	CT_DCCP_RESPOND = 2,
+	CT_DCCP_PARTOPEN = 3,
+	CT_DCCP_OPEN = 4,
+	CT_DCCP_CLOSEREQ = 5,
+	CT_DCCP_CLOSING = 6,
+	CT_DCCP_TIMEWAIT = 7,
+	CT_DCCP_IGNORE = 8,
+	CT_DCCP_INVALID = 9,
+	__CT_DCCP_MAX = 10,
+};
+
+enum ip_conntrack_dir {
+	IP_CT_DIR_ORIGINAL = 0,
+	IP_CT_DIR_REPLY = 1,
+	IP_CT_DIR_MAX = 2,
+};
