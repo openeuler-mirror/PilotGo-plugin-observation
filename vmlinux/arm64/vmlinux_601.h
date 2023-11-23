@@ -2461,3 +2461,9 @@ struct kernfs_elem_dir {
 	struct kernfs_root *root;
 	long unsigned int rev;
 };
+
+struct kernfs_node;
+
+struct kernfs_elem_symlink {
+	struct kernfs_node *target_kn;
+};
