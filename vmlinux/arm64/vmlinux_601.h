@@ -2480,3 +2480,24 @@ struct kernfs_elem_attr {
 };
 
 struct kernfs_iattrs;
+
+struct kernfs_node {
+	atomic_t count;
+	atomic_t active;
+	struct lockdep_map dep_map;
+	struct kernfs_node *parent;
+	const char *name;
+	struct rb_node rb;
+	const void *ns;
+	unsigned int hash;
+	union {
+		struct kernfs_elem_dir dir;
+		struct kernfs_elem_symlink symlink;
+		struct kernfs_elem_attr attr;
+	};
+	void *priv;
+	u64 id;
+	short unsigned int flags;
+	umode_t mode;
+	struct kernfs_iattrs *iattr;
+};
