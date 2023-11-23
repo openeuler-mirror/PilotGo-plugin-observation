@@ -12493,3 +12493,98 @@ struct thermal_cooling_device {
 };
 
 typedef u64 acpi_size;
+
+typedef u32 acpi_status;
+
+typedef char *acpi_string;
+
+struct acpi_object_list {
+	u32 count;
+	union acpi_object *pointer;
+};
+
+struct acpi_buffer {
+	acpi_size length;
+	void *pointer;
+};
+
+struct acpi_table_header {
+	char signature[4];
+	u32 length;
+	u8 revision;
+	u8 checksum;
+	char oem_id[6];
+	char oem_table_id[8];
+	u32 oem_revision;
+	char asl_compiler_id[4];
+	u32 asl_compiler_revision;
+};
+
+struct acpi_generic_address {
+	u8 space_id;
+	u8 bit_width;
+	u8 bit_offset;
+	u8 access_width;
+	u64 address;
+} __attribute__((packed));
+
+struct acpi_table_fadt {
+	struct acpi_table_header header;
+	u32 facs;
+	u32 dsdt;
+	u8 model;
+	u8 preferred_profile;
+	u16 sci_interrupt;
+	u32 smi_command;
+	u8 acpi_enable;
+	u8 acpi_disable;
+	u8 s4_bios_request;
+	u8 pstate_control;
+	u32 pm1a_event_block;
+	u32 pm1b_event_block;
+	u32 pm1a_control_block;
+	u32 pm1b_control_block;
+	u32 pm2_control_block;
+	u32 pm_timer_block;
+	u32 gpe0_block;
+	u32 gpe1_block;
+	u8 pm1_event_length;
+	u8 pm1_control_length;
+	u8 pm2_control_length;
+	u8 pm_timer_length;
+	u8 gpe0_block_length;
+	u8 gpe1_block_length;
+	u8 gpe1_base;
+	u8 cst_control;
+	u16 c2_latency;
+	u16 c3_latency;
+	u16 flush_size;
+	u16 flush_stride;
+	u8 duty_offset;
+	u8 duty_width;
+	u8 day_alarm;
+	u8 month_alarm;
+	u8 century;
+	u16 boot_flags;
+	u8 reserved;
+	u32 flags;
+	struct acpi_generic_address reset_register;
+	u8 reset_value;
+	u16 arm_boot_flags;
+	u8 minor_revision;
+	u64 Xfacs;
+	u64 Xdsdt;
+	struct acpi_generic_address xpm1a_event_block;
+	struct acpi_generic_address xpm1b_event_block;
+	struct acpi_generic_address xpm1a_control_block;
+	struct acpi_generic_address xpm1b_control_block;
+	struct acpi_generic_address xpm2_control_block;
+	struct acpi_generic_address xpm_timer_block;
+	struct acpi_generic_address xgpe0_block;
+	struct acpi_generic_address xgpe1_block;
+	struct acpi_generic_address sleep_control;
+	struct acpi_generic_address sleep_status;
+	u64 hypervisor_id;
+} __attribute__((packed));
+
+typedef u32 phys_cpuid_t;
