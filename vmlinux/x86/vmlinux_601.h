@@ -12588,3 +12588,53 @@ struct acpi_table_fadt {
 } __attribute__((packed));
 
 typedef u32 phys_cpuid_t;
+
+struct thermal_cooling_device_ops {
+	int (*get_max_state)(struct thermal_cooling_device *, long unsigned int *);
+	int (*get_cur_state)(struct thermal_cooling_device *, long unsigned int *);
+	int (*set_cur_state)(struct thermal_cooling_device *, long unsigned int);
+	int (*get_requested_power)(struct thermal_cooling_device *, u32 *);
+	int (*state2power)(struct thermal_cooling_device *, long unsigned int, u32 *);
+	int (*power2state)(struct thermal_cooling_device *, u32, long unsigned int *);
+};
+
+struct acpi_processor_cx {
+	u8 valid;
+	u8 type;
+	u32 address;
+	u8 entry_method;
+	u8 index;
+	u32 latency;
+	u8 bm_sts_skip;
+	char desc[32];
+};
+
+struct acpi_lpi_state {
+	u32 min_residency;
+	u32 wake_latency;
+	u32 flags;
+	u32 arch_flags;
+	u32 res_cnt_freq;
+	u32 enable_parent_state;
+	u64 address;
+	u8 index;
+	u8 entry_method;
+	char desc[32];
+};
+
+struct acpi_processor_power {
+	int count;
+	union {
+		struct acpi_processor_cx states[8];
+		struct acpi_lpi_state lpi_states[8];
+	};
+	int timer_broadcast_on_state;
+};
+
+struct acpi_psd_package {
+	u64 num_entries;
+	u64 revision;
+	u64 domain;
+	u64 coord_type;
+	u64 num_processors;
+};
