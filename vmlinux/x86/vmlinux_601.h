@@ -12694,3 +12694,86 @@ struct acpi_processor_tx {
 };
 
 struct acpi_processor;
+
+struct acpi_processor_throttling {
+	unsigned int state;
+	unsigned int platform_limit;
+	struct acpi_pct_register control_register;
+	struct acpi_pct_register status_register;
+	long: 0;
+	unsigned int state_count;
+	long: 0;
+	struct acpi_processor_tx_tss *states_tss;
+	struct acpi_tsd_package domain_info;
+	cpumask_var_t shared_cpu_map;
+	int (*acpi_processor_get_throttling)(struct acpi_processor *);
+	int (*acpi_processor_set_throttling)(struct acpi_processor *, int, bool);
+	u32 address;
+	u8 duty_offset;
+	u8 duty_width;
+	u8 tsd_valid_flag;
+	long: 0;
+	unsigned int shared_type;
+	struct acpi_processor_tx states[16];
+} __attribute__((packed));
+
+struct acpi_processor_flags {
+	u8 power: 1;
+	u8 performance: 1;
+	u8 throttling: 1;
+	u8 limit: 1;
+	u8 bm_control: 1;
+	u8 bm_check: 1;
+	u8 has_cst: 1;
+	u8 has_lpi: 1;
+	u8 power_setup_done: 1;
+	u8 bm_rld_set: 1;
+	u8 need_hotplug_init: 1;
+};
+
+struct acpi_processor_lx {
+	int px;
+	int tx;
+};
+
+struct acpi_processor_limit {
+	struct acpi_processor_lx state;
+	struct acpi_processor_lx thermal;
+	struct acpi_processor_lx user;
+};
+
+struct acpi_processor {
+	acpi_handle handle;
+	u32 acpi_id;
+	phys_cpuid_t phys_id;
+	u32 id;
+	u32 pblk;
+	int performance_platform_limit;
+	int throttling_platform_limit;
+	struct acpi_processor_flags flags;
+	struct acpi_processor_power power;
+	struct acpi_processor_performance *performance;
+	struct acpi_processor_throttling throttling;
+	struct acpi_processor_limit limit;
+	struct thermal_cooling_device *cdev;
+	struct device *dev;
+	struct freq_qos_request perflib_req;
+	struct freq_qos_request thermal_req;
+};
+
+typedef unsigned int uint;
+
+struct ld_semaphore {
+	atomic_long_t count;
+	raw_spinlock_t wait_lock;
+	unsigned int wait_readers;
+	struct list_head read_wait;
+	struct list_head write_wait;
+	struct lockdep_map dep_map;
+};
+
+typedef unsigned int tcflag_t;
+
+typedef unsigned char cc_t;
+
+typedef unsigned int speed_t;
