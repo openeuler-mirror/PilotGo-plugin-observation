@@ -2545,3 +2545,69 @@ static int linker_append_btf_ext(struct bpf_linker *linker, struct src_obj *obj)
 
     return 0;
 }
+
+int bpf_linker__finalize(struct bpf_linker *linker)
+{
+    struct dst_sec *sec;
+    size_t strs_sz;
+    const void *strs;
+    int err, i;
+
+    if (!linker->elf)
+        return libbpf_err(-EINVAL);
+
+    err = finalize_btf(linker);
+    if (err)
+        return libbpf_err(err);
+
+    /* Finalize strings */
+    strs_sz = strset__data_size(linker->strtab_strs);
+    strs = strset__data(linker->strtab_strs);
+
+    sec = &linker->secs[linker->strtab_sec_idx];
+    sec->data->d_align = 1;
+    sec->data->d_off = 0LL;
+    sec->data->d_buf = (void *)strs;
+    sec->data->d_type = ELF_T_BYTE;
+    sec->data->d_size = strs_sz;
+    sec->shdr->sh_size = strs_sz;
+
+    for (i = 1; i < linker->sec_cnt; i++)
+    {
+        sec = &linker->secs[i];
+
+        /* STRTAB is handled specially above */
+        if (sec->sec_idx == linker->strtab_sec_idx)
+            continue;
+
+        /* special ephemeral sections (.ksyms, .kconfig, etc) */
+        if (!sec->scn)
+            continue;
+
+        sec->data->d_buf = sec->raw_data;
+    }
+
+    /* Finalize ELF layout */
+    if (elf_update(linker->elf, ELF_C_NULL) < 0)
+    {
+        err = -errno;
+        pr_warn_elf("failed to finalize ELF layout");
+        return libbpf_err(err);
+    }
+
+    /* Write out final ELF contents */
+    if (elf_update(linker->elf, ELF_C_WRITE) < 0)
+    {
+        err = -errno;
+        pr_warn_elf("failed to write ELF contents");
+        return libbpf_err(err);
+    }
+
+    elf_end(linker->elf);
+    close(linker->fd);
+
+    linker->elf = NULL;
+    linker->fd = -1;
+
+    return 0;
+}
