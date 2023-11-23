@@ -12261,3 +12261,64 @@ struct genl_split_ops {
 	u8 flags;
 	u8 validate;
 };
+
+struct genl_info {
+	u32 snd_seq;
+	u32 snd_portid;
+	struct nlmsghdr *nlhdr;
+	struct genlmsghdr *genlhdr;
+	void *userhdr;
+	struct nlattr **attrs;
+	possible_net_t _net;
+	void *user_ptr[2];
+	struct netlink_ext_ack *extack;
+};
+
+struct genl_ops {
+	int (*doit)(struct sk_buff *, struct genl_info *);
+	int (*start)(struct netlink_callback *);
+	int (*dumpit)(struct sk_buff *, struct netlink_callback *);
+	int (*done)(struct netlink_callback *);
+	const struct nla_policy *policy;
+	unsigned int maxattr;
+	u8 cmd;
+	u8 internal_flags;
+	u8 flags;
+	u8 validate;
+};
+
+struct genl_small_ops {
+	int (*doit)(struct sk_buff *, struct genl_info *);
+	int (*dumpit)(struct sk_buff *, struct netlink_callback *);
+	u8 cmd;
+	u8 internal_flags;
+	u8 flags;
+	u8 validate;
+};
+
+struct acpi_genl_event {
+	acpi_device_class device_class;
+	char bus_id[15];
+	u32 type;
+	u32 data;
+};
+
+enum {
+	ACPI_GENL_ATTR_UNSPEC = 0,
+	ACPI_GENL_ATTR_EVENT = 1,
+	__ACPI_GENL_ATTR_MAX = 2,
+};
+
+enum {
+	ACPI_GENL_CMD_UNSPEC = 0,
+	ACPI_GENL_CMD_EVENT = 1,
+	__ACPI_GENL_CMD_MAX = 2,
+};
+
+struct clk;
+
+enum pm_qos_type {
+	PM_QOS_UNITIALIZED = 0,
+	PM_QOS_MAX = 1,
+	PM_QOS_MIN = 2,
+};
