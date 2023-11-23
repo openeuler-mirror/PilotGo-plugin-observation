@@ -12199,3 +12199,65 @@ enum netns_bpf_attach_type {
 	NETNS_BPF_SK_LOOKUP = 1,
 	MAX_NETNS_BPF_ATTACH_TYPE = 2,
 };
+
+typedef struct {
+	struct net *net;
+} possible_net_t;
+
+struct genl_multicast_group {
+	char name[16];
+	u8 flags;
+};
+
+struct genl_split_ops;
+
+struct genl_info;
+
+struct genl_ops;
+
+struct genl_small_ops;
+
+struct genl_family {
+	unsigned int hdrsize;
+	char name[16];
+	unsigned int version;
+	unsigned int maxattr;
+	u8 netnsok: 1;
+	u8 parallel_ops: 1;
+	u8 n_ops;
+	u8 n_small_ops;
+	u8 n_split_ops;
+	u8 n_mcgrps;
+	u8 resv_start_op;
+	const struct nla_policy *policy;
+	int (*pre_doit)(const struct genl_split_ops *, struct sk_buff *, struct genl_info *);
+	void (*post_doit)(const struct genl_split_ops *, struct sk_buff *, struct genl_info *);
+	const struct genl_ops *ops;
+	const struct genl_small_ops *small_ops;
+	const struct genl_split_ops *split_ops;
+	const struct genl_multicast_group *mcgrps;
+	struct module *module;
+	int id;
+	unsigned int mcgrp_offset;
+};
+
+struct genl_split_ops {
+	union {
+		struct {
+			int (*pre_doit)(const struct genl_split_ops *, struct sk_buff *, struct genl_info *);
+			int (*doit)(struct sk_buff *, struct genl_info *);
+			void (*post_doit)(const struct genl_split_ops *, struct sk_buff *, struct genl_info *);
+		};
+		struct {
+			int (*start)(struct netlink_callback *);
+			int (*dumpit)(struct sk_buff *, struct netlink_callback *);
+			int (*done)(struct netlink_callback *);
+		};
+	};
+	const struct nla_policy *policy;
+	unsigned int maxattr;
+	u8 cmd;
+	u8 internal_flags;
+	u8 flags;
+	u8 validate;
+};
