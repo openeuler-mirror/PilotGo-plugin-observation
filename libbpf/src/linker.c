@@ -2215,3 +2215,182 @@ static int linker_fixup_btf(struct src_obj *obj)
 
     return 0;
 }
+
+static int remap_type_id(__u32 *type_id, void *ctx)
+{
+    int *id_map = ctx;
+    int new_id = id_map[*type_id];
+
+    /* Error out if the type wasn't remapped. Ignore VOID which stays VOID. */
+    if (new_id == 0 && *type_id != 0)
+    {
+        pr_warn("failed to find new ID mapping for original BTF type ID %u\n", *type_id);
+        return -EINVAL;
+    }
+
+    *type_id = id_map[*type_id];
+
+    return 0;
+}
+
+static int linker_append_btf(struct bpf_linker *linker, struct src_obj *obj)
+{
+    const struct btf_type *t;
+    int i, j, n, start_id, id;
+    const char *name;
+
+    if (!obj->btf)
+        return 0;
+
+    start_id = btf__type_cnt(linker->btf);
+    n = btf__type_cnt(obj->btf);
+
+    obj->btf_type_map = calloc(n + 1, sizeof(int));
+    if (!obj->btf_type_map)
+        return -ENOMEM;
+
+    for (i = 1; i < n; i++)
+    {
+        struct glob_sym *glob_sym = NULL;
+
+        t = btf__type_by_id(obj->btf, i);
+
+        /* DATASECs are handled specially below */
+        if (btf_kind(t) == BTF_KIND_DATASEC)
+            continue;
+
+        if (btf_is_non_static(t))
+        {
+            /* there should be glob_sym already */
+            name = btf__str_by_offset(obj->btf, t->name_off);
+            glob_sym = find_glob_sym(linker, name);
+            if (!glob_sym)
+                continue;
+
+            if (glob_sym->underlying_btf_id == 0)
+                glob_sym->underlying_btf_id = -t->type;
+
+            if (glob_sym->btf_id)
+            {
+                /* reuse existing BTF type for global var/func */
+                obj->btf_type_map[i] = glob_sym->btf_id;
+                continue;
+            }
+        }
+
+        id = btf__add_type(linker->btf, obj->btf, t);
+        if (id < 0)
+        {
+            pr_warn("failed to append BTF type #%d from file '%s'\n", i, obj->filename);
+            return id;
+        }
+
+        obj->btf_type_map[i] = id;
+
+        /* record just appended BTF type for var/func */
+        if (glob_sym)
+        {
+            glob_sym->btf_id = id;
+            glob_sym->underlying_btf_id = -t->type;
+        }
+    }
+
+    /* remap all the types except DATASECs */
+    n = btf__type_cnt(linker->btf);
+    for (i = start_id; i < n; i++)
+    {
+        struct btf_type *dst_t = btf_type_by_id(linker->btf, i);
+
+        if (btf_type_visit_type_ids(dst_t, remap_type_id, obj->btf_type_map))
+            return -EINVAL;
+    }
+
+    for (i = 0; i < linker->glob_sym_cnt; i++)
+    {
+        struct glob_sym *glob_sym = &linker->glob_syms[i];
+        struct btf_type *glob_t;
+
+        if (glob_sym->underlying_btf_id >= 0)
+            continue;
+
+        glob_sym->underlying_btf_id = obj->btf_type_map[-glob_sym->underlying_btf_id];
+
+        glob_t = btf_type_by_id(linker->btf, glob_sym->btf_id);
+        glob_t->type = glob_sym->underlying_btf_id;
+    }
+
+    /* append DATASEC info */
+    for (i = 1; i < obj->sec_cnt; i++)
+    {
+        struct src_sec *src_sec;
+        struct dst_sec *dst_sec;
+        const struct btf_var_secinfo *src_var;
+        struct btf_var_secinfo *dst_var;
+
+        src_sec = &obj->secs[i];
+        if (!src_sec->sec_type_id || src_sec->skipped)
+            continue;
+        dst_sec = &linker->secs[src_sec->dst_id];
+
+        dst_sec->has_btf = true;
+
+        t = btf__type_by_id(obj->btf, src_sec->sec_type_id);
+        src_var = btf_var_secinfos(t);
+        n = btf_vlen(t);
+        for (j = 0; j < n; j++, src_var++)
+        {
+            void *sec_vars = dst_sec->sec_vars;
+            int new_id = obj->btf_type_map[src_var->type];
+            struct glob_sym *glob_sym = NULL;
+
+            t = btf_type_by_id(linker->btf, new_id);
+            if (btf_is_non_static(t))
+            {
+                name = btf__str_by_offset(linker->btf, t->name_off);
+                glob_sym = find_glob_sym(linker, name);
+                if (glob_sym->sec_id != dst_sec->id)
+                {
+                    pr_warn("global '%s': section mismatch %d vs %d\n",
+                            name, glob_sym->sec_id, dst_sec->id);
+                    return -EINVAL;
+                }
+            }
+
+            if (glob_sym && glob_sym->var_idx >= 0)
+            {
+                __s64 sz;
+
+                dst_var = &dst_sec->sec_vars[glob_sym->var_idx];
+
+                sz = btf__resolve_size(linker->btf, glob_sym->underlying_btf_id);
+                if (sz < 0)
+                {
+                    pr_warn("global '%s': failed to resolve size of underlying type: %d\n",
+                            name, (int)sz);
+                    return -EINVAL;
+                }
+                dst_var->size = sz;
+                continue;
+            }
+
+            sec_vars = libbpf_reallocarray(sec_vars,
+                                           dst_sec->sec_var_cnt + 1,
+                                           sizeof(*dst_sec->sec_vars));
+            if (!sec_vars)
+                return -ENOMEM;
+
+            dst_sec->sec_vars = sec_vars;
+            dst_sec->sec_var_cnt++;
+
+            dst_var = &dst_sec->sec_vars[dst_sec->sec_var_cnt - 1];
+            dst_var->type = obj->btf_type_map[src_var->type];
+            dst_var->size = src_var->size;
+            dst_var->offset = src_sec->dst_off + src_var->offset;
+
+            if (glob_sym)
+                glob_sym->var_idx = dst_sec->sec_var_cnt - 1;
+        }
+    }
+
+    return 0;
+}
