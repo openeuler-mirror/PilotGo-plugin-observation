@@ -2611,3 +2611,43 @@ int bpf_linker__finalize(struct bpf_linker *linker)
 
     return 0;
 }
+
+static int emit_elf_data_sec(struct bpf_linker *linker, const char *sec_name,
+                             size_t align, const void *raw_data, size_t raw_sz)
+{
+    Elf_Scn *scn;
+    Elf_Data *data;
+    Elf64_Shdr *shdr;
+    int name_off;
+
+    name_off = strset__add_str(linker->strtab_strs, sec_name);
+    if (name_off < 0)
+        return name_off;
+
+    scn = elf_newscn(linker->elf);
+    if (!scn)
+        return -ENOMEM;
+    data = elf_newdata(scn);
+    if (!data)
+        return -ENOMEM;
+    shdr = elf64_getshdr(scn);
+    if (!shdr)
+        return -EINVAL;
+
+    shdr->sh_name = name_off;
+    shdr->sh_type = SHT_PROGBITS;
+    shdr->sh_flags = 0;
+    shdr->sh_size = raw_sz;
+    shdr->sh_link = 0;
+    shdr->sh_info = 0;
+    shdr->sh_addralign = align;
+    shdr->sh_entsize = 0;
+
+    data->d_type = ELF_T_BYTE;
+    data->d_size = raw_sz;
+    data->d_buf = (void *)raw_data;
+    data->d_align = align;
+    data->d_off = 0;
+
+    return 0;
+}
