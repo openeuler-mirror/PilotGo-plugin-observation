@@ -2404,3 +2404,41 @@ struct srcu_data {
 	long: 64;
 	long: 64;
 };
+
+struct srcu_node {
+	spinlock_t lock;
+	long unsigned int srcu_have_cbs[4];
+	long unsigned int srcu_data_have_cbs[4];
+	long unsigned int srcu_gp_seq_needed_exp;
+	struct srcu_node *srcu_parent;
+	int grplo;
+	int grphi;
+};
+
+struct srcu_struct {
+	struct srcu_node *node;
+	struct srcu_node *level[3];
+	int srcu_size_state;
+	struct mutex srcu_cb_mutex;
+	spinlock_t lock;
+	struct mutex srcu_gp_mutex;
+	unsigned int srcu_idx;
+	long unsigned int srcu_gp_seq;
+	long unsigned int srcu_gp_seq_needed;
+	long unsigned int srcu_gp_seq_needed_exp;
+	long unsigned int srcu_gp_start;
+	long unsigned int srcu_last_gp_end;
+	long unsigned int srcu_size_jiffies;
+	long unsigned int srcu_n_lock_retries;
+	long unsigned int srcu_n_exp_nodelay;
+	struct srcu_data *sda;
+	bool sda_is_static;
+	long unsigned int srcu_barrier_seq;
+	struct mutex srcu_barrier_mutex;
+	struct completion srcu_barrier_completion;
+	atomic_t srcu_barrier_cpu_cnt;
+	long unsigned int reschedule_jiffies;
+	long unsigned int reschedule_count;
+	struct delayed_work work;
+	struct lockdep_map dep_map;
+};
