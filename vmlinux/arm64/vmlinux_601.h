@@ -2569,3 +2569,15 @@ struct attribute {
 struct kobject;
 
 struct bin_attribute;
+
+struct attribute_group {
+	const char *name;
+	umode_t (*is_visible)(struct kobject *, struct attribute *, int);
+	umode_t (*is_bin_visible)(struct kobject *, struct bin_attribute *, int);
+	struct attribute **attrs;
+	struct bin_attribute **bin_attrs;
+};
+
+struct kset;
+
+struct kobj_type;
