@@ -881,3 +881,52 @@ static void btf_dump_emit_enum64_val(struct btf_dump *d,
 		}
 	}
 }
+
+static void btf_dump_emit_enum_def(struct btf_dump *d, __u32 id,
+				   const struct btf_type *t,
+				   int lvl)
+{
+	__u16 vlen = btf_vlen(t);
+
+	btf_dump_printf(d, "enum%s%s",
+			t->name_off ? " " : "",
+			btf_dump_type_name(d, id));
+
+	if (!vlen)
+		return;
+
+	btf_dump_printf(d, " {");
+	if (btf_is_enum(t))
+		btf_dump_emit_enum32_val(d, t, lvl, vlen);
+	else
+		btf_dump_emit_enum64_val(d, t, lvl, vlen);
+	btf_dump_printf(d, "\n%s}", pfx(lvl));
+
+	/* special case enums with special sizes */
+	if (t->size == 1) {
+		/* one-byte enums can be forced with mode(byte) attribute */
+		btf_dump_printf(d, " __attribute__((mode(byte)))");
+	} else if (t->size == 8 && d->ptr_sz == 8) {
+
+		bool needs_word_mode;
+
+		if (btf_is_enum(t)) {
+			/* enum can't represent 64-bit values, so we need word mode */
+			needs_word_mode = true;
+		} else {
+
+			int i;
+
+			needs_word_mode = true;
+			for (i = 0; i < vlen; i++) {
+				if (btf_enum64(t)[i].val_hi32 != 0) {
+					needs_word_mode = false;
+					break;
+				}
+			}
+		}
+		if (needs_word_mode)
+			btf_dump_printf(d, " __attribute__((mode(word)))");
+	}
+
+}
