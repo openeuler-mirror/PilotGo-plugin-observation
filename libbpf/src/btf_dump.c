@@ -254,3 +254,94 @@ void btf_dump__free(struct btf_dump *d)
 
 	free(d);
 }
+
+static int btf_dump_order_type(struct btf_dump *d, __u32 id, bool through_ptr);
+static void btf_dump_emit_type(struct btf_dump *d, __u32 id, __u32 cont_id);
+
+int btf_dump__dump_type(struct btf_dump *d, __u32 id)
+{
+	int err, i;
+
+	if (id >= btf__type_cnt(d->btf))
+		return libbpf_err(-EINVAL);
+
+	err = btf_dump_resize(d);
+	if (err)
+		return libbpf_err(err);
+
+	d->emit_queue_cnt = 0;
+	err = btf_dump_order_type(d, id, false);
+	if (err < 0)
+		return libbpf_err(err);
+
+	for (i = 0; i < d->emit_queue_cnt; i++)
+		btf_dump_emit_type(d, d->emit_queue[i], 0 /*top-level*/);
+
+	return 0;
+}
+
+static int btf_dump_mark_referenced(struct btf_dump *d)
+{
+	int i, j, n = btf__type_cnt(d->btf);
+	const struct btf_type *t;
+	__u16 vlen;
+
+	for (i = d->last_id + 1; i < n; i++) {
+		t = btf__type_by_id(d->btf, i);
+		vlen = btf_vlen(t);
+
+		switch (btf_kind(t)) {
+		case BTF_KIND_INT:
+		case BTF_KIND_ENUM:
+		case BTF_KIND_ENUM64:
+		case BTF_KIND_FWD:
+		case BTF_KIND_FLOAT:
+			break;
+
+		case BTF_KIND_VOLATILE:
+		case BTF_KIND_CONST:
+		case BTF_KIND_RESTRICT:
+		case BTF_KIND_PTR:
+		case BTF_KIND_TYPEDEF:
+		case BTF_KIND_FUNC:
+		case BTF_KIND_VAR:
+		case BTF_KIND_DECL_TAG:
+		case BTF_KIND_TYPE_TAG:
+			d->type_states[t->type].referenced = 1;
+			break;
+
+		case BTF_KIND_ARRAY: {
+			const struct btf_array *a = btf_array(t);
+
+			d->type_states[a->index_type].referenced = 1;
+			d->type_states[a->type].referenced = 1;
+			break;
+		}
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION: {
+			const struct btf_member *m = btf_members(t);
+
+			for (j = 0; j < vlen; j++, m++)
+				d->type_states[m->type].referenced = 1;
+			break;
+		}
+		case BTF_KIND_FUNC_PROTO: {
+			const struct btf_param *p = btf_params(t);
+
+			for (j = 0; j < vlen; j++, p++)
+				d->type_states[p->type].referenced = 1;
+			break;
+		}
+		case BTF_KIND_DATASEC: {
+			const struct btf_var_secinfo *v = btf_var_secinfos(t);
+
+			for (j = 0; j < vlen; j++, v++)
+				d->type_states[v->type].referenced = 1;
+			break;
+		}
+		default:
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
