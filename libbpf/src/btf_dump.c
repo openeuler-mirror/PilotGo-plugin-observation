@@ -1362,3 +1362,51 @@ static const char *btf_dump_ident_name(struct btf_dump *d, __u32 id)
 {
 	return btf_dump_resolve_name(d, id, d->ident_names);
 }
+
+static int btf_dump_dump_type_data(struct btf_dump *d,
+				   const char *fname,
+				   const struct btf_type *t,
+				   __u32 id,
+				   const void *data,
+				   __u8 bits_offset,
+				   __u8 bit_sz);
+
+static const char *btf_dump_data_newline(struct btf_dump *d)
+{
+	return d->typed_dump->compact || d->typed_dump->depth == 0 ? "" : "\n";
+}
+
+static const char *btf_dump_data_delim(struct btf_dump *d)
+{
+	return d->typed_dump->depth == 0 ? "" : ",";
+}
+
+static void btf_dump_data_pfx(struct btf_dump *d)
+{
+	int i, lvl = d->typed_dump->indent_lvl + d->typed_dump->depth;
+
+	if (d->typed_dump->compact)
+		return;
+
+	for (i = 0; i < lvl; i++)
+		btf_dump_printf(d, "%s", d->typed_dump->indent_str);
+}
+
+/* A macro is used here as btf_type_value[s]() appends format specifiers
+ * to the format specifier passed in; these do the work of appending
+ * delimiters etc while the caller simply has to specify the type values
+ * in the format specifier + value(s).
+ */
+#define btf_dump_type_values(d, fmt, ...)				\
+	btf_dump_printf(d, fmt "%s%s",					\
+			##__VA_ARGS__,					\
+			btf_dump_data_delim(d),				\
+			btf_dump_data_newline(d))
+
+static int btf_dump_unsupported_data(struct btf_dump *d,
+				     const struct btf_type *t,
+				     __u32 id)
+{
+	btf_dump_printf(d, "<unsupported kind:%u>", btf_kind(t));
+	return -ENOTSUP;
+}
