@@ -1104,3 +1104,161 @@ static void btf_dump_drop_mods(struct btf_dump *d, struct id_stack *decl_stack)
 		decl_stack->cnt--;
 	}
 }
+
+static void btf_dump_emit_name(const struct btf_dump *d,
+			       const char *name, bool last_was_ptr)
+{
+	bool separate = name[0] && !last_was_ptr;
+
+	btf_dump_printf(d, "%s%s", separate ? " " : "", name);
+}
+
+static void btf_dump_emit_type_chain(struct btf_dump *d,
+				     struct id_stack *decls,
+				     const char *fname, int lvl)
+{
+	bool last_was_ptr = true;
+	const struct btf_type *t;
+	const char *name;
+	__u16 kind;
+	__u32 id;
+
+	while (decls->cnt) {
+		id = decls->ids[--decls->cnt];
+		if (id == 0) {
+			/* VOID is a special snowflake */
+			btf_dump_emit_mods(d, decls);
+			btf_dump_printf(d, "void");
+			last_was_ptr = false;
+			continue;
+		}
+
+		t = btf__type_by_id(d->btf, id);
+		kind = btf_kind(t);
+
+		switch (kind) {
+		case BTF_KIND_INT:
+		case BTF_KIND_FLOAT:
+			btf_dump_emit_mods(d, decls);
+			name = btf_name_of(d, t->name_off);
+			btf_dump_printf(d, "%s", name);
+			break;
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+			btf_dump_emit_mods(d, decls);
+			/* inline anonymous struct/union */
+			if (t->name_off == 0 && !d->skip_anon_defs)
+				btf_dump_emit_struct_def(d, id, t, lvl);
+			else
+				btf_dump_emit_struct_fwd(d, id, t);
+			break;
+		case BTF_KIND_ENUM:
+		case BTF_KIND_ENUM64:
+			btf_dump_emit_mods(d, decls);
+			/* inline anonymous enum */
+			if (t->name_off == 0 && !d->skip_anon_defs)
+				btf_dump_emit_enum_def(d, id, t, lvl);
+			else
+				btf_dump_emit_enum_fwd(d, id, t);
+			break;
+		case BTF_KIND_FWD:
+			btf_dump_emit_mods(d, decls);
+			btf_dump_emit_fwd_def(d, id, t);
+			break;
+		case BTF_KIND_TYPEDEF:
+			btf_dump_emit_mods(d, decls);
+			btf_dump_printf(d, "%s", btf_dump_ident_name(d, id));
+			break;
+		case BTF_KIND_PTR:
+			btf_dump_printf(d, "%s", last_was_ptr ? "*" : " *");
+			break;
+		case BTF_KIND_VOLATILE:
+			btf_dump_printf(d, " volatile");
+			break;
+		case BTF_KIND_CONST:
+			btf_dump_printf(d, " const");
+			break;
+		case BTF_KIND_RESTRICT:
+			btf_dump_printf(d, " restrict");
+			break;
+		case BTF_KIND_TYPE_TAG:
+			btf_dump_emit_mods(d, decls);
+			name = btf_name_of(d, t->name_off);
+			btf_dump_printf(d, " __attribute__((btf_type_tag(\"%s\")))", name);
+			break;
+		case BTF_KIND_ARRAY: {
+			const struct btf_array *a = btf_array(t);
+			const struct btf_type *next_t;
+			__u32 next_id;
+			bool multidim;
+			btf_dump_drop_mods(d, decls);
+
+			if (decls->cnt == 0) {
+				btf_dump_emit_name(d, fname, last_was_ptr);
+				btf_dump_printf(d, "[%u]", a->nelems);
+				return;
+			}
+
+			next_id = decls->ids[decls->cnt - 1];
+			next_t = btf__type_by_id(d->btf, next_id);
+			multidim = btf_is_array(next_t);
+			/* we need space if we have named non-pointer */
+			if (fname[0] && !last_was_ptr)
+				btf_dump_printf(d, " ");
+			/* no parentheses for multi-dimensional array */
+			if (!multidim)
+				btf_dump_printf(d, "(");
+			btf_dump_emit_type_chain(d, decls, fname, lvl);
+			if (!multidim)
+				btf_dump_printf(d, ")");
+			btf_dump_printf(d, "[%u]", a->nelems);
+			return;
+		}
+		case BTF_KIND_FUNC_PROTO: {
+			const struct btf_param *p = btf_params(t);
+			__u16 vlen = btf_vlen(t);
+			int i;
+
+			btf_dump_drop_mods(d, decls);
+			if (decls->cnt) {
+				btf_dump_printf(d, " (");
+				btf_dump_emit_type_chain(d, decls, fname, lvl);
+				btf_dump_printf(d, ")");
+			} else {
+				btf_dump_emit_name(d, fname, last_was_ptr);
+			}
+			btf_dump_printf(d, "(");
+
+			if (vlen == 1 && p->type == 0) {
+				btf_dump_printf(d, ")");
+				return;
+			}
+
+			for (i = 0; i < vlen; i++, p++) {
+				if (i > 0)
+					btf_dump_printf(d, ", ");
+
+				/* last arg of type void is vararg */
+				if (i == vlen - 1 && p->type == 0) {
+					btf_dump_printf(d, "...");
+					break;
+				}
+
+				name = btf_name_of(d, p->name_off);
+				btf_dump_emit_type_decl(d, p->type, name, lvl);
+			}
+
+			btf_dump_printf(d, ")");
+			return;
+		}
+		default:
+			pr_warn("unexpected type in decl chain, kind:%u, id:[%u]\n",
+				kind, id);
+			return;
+		}
+
+		last_was_ptr = kind == BTF_KIND_PTR;
+	}
+
+	btf_dump_emit_name(d, fname, last_was_ptr);
+}
