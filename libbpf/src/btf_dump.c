@@ -1262,3 +1262,60 @@ static void btf_dump_emit_type_chain(struct btf_dump *d,
 
 	btf_dump_emit_name(d, fname, last_was_ptr);
 }
+
+/* show type name as (type_name) */
+static void btf_dump_emit_type_cast(struct btf_dump *d, __u32 id,
+				    bool top_level)
+{
+	const struct btf_type *t;
+
+	/* for array members, we don't bother emitting type name for each
+	 * member to avoid the redundancy of
+	 * .name = (char[4])[(char)'f',(char)'o',(char)'o',]
+	 */
+	if (d->typed_dump->is_array_member)
+		return;
+
+	/* avoid type name specification for variable/section; it will be done
+	 * for the associated variable value(s).
+	 */
+	t = btf__type_by_id(d->btf, id);
+	if (btf_is_var(t) || btf_is_datasec(t))
+		return;
+
+	if (top_level)
+		btf_dump_printf(d, "(");
+
+	d->skip_anon_defs = true;
+	d->strip_mods = true;
+	btf_dump_emit_type_decl(d, id, "", 0);
+	d->strip_mods = false;
+	d->skip_anon_defs = false;
+
+	if (top_level)
+		btf_dump_printf(d, ")");
+}
+
+/* return number of duplicates (occurrences) of a given name */
+static size_t btf_dump_name_dups(struct btf_dump *d, struct hashmap *name_map,
+				 const char *orig_name)
+{
+	char *old_name, *new_name;
+	size_t dup_cnt = 0;
+	int err;
+
+	new_name = strdup(orig_name);
+	if (!new_name)
+		return 1;
+
+	(void)hashmap__find(name_map, orig_name, &dup_cnt);
+	dup_cnt++;
+
+	err = hashmap__set(name_map, new_name, dup_cnt, &old_name, NULL);
+	if (err)
+		free(new_name);
+
+	free(old_name);
+
+	return dup_cnt;
+}
