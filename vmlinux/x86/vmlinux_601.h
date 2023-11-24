@@ -12930,3 +12930,75 @@ struct tty_operations {
 	void (*show_fdinfo)(struct tty_struct *, struct seq_file *);
 	int (*proc_show)(struct seq_file *, void *);
 };
+
+struct tty_driver {
+	struct kref kref;
+	struct cdev **cdevs;
+	struct module *owner;
+	const char *driver_name;
+	const char *name;
+	int name_base;
+	int major;
+	int minor_start;
+	unsigned int num;
+	short int type;
+	short int subtype;
+	struct ktermios init_termios;
+	long unsigned int flags;
+	struct proc_dir_entry *proc_entry;
+	struct tty_driver *other;
+	struct tty_struct **ttys;
+	struct tty_port **ports;
+	struct ktermios **termios;
+	void *driver_state;
+	const struct tty_operations *ops;
+	struct list_head tty_drivers;
+};
+
+struct serial_icounter_struct {
+	int cts;
+	int dsr;
+	int rng;
+	int dcd;
+	int rx;
+	int tx;
+	int frame;
+	int overrun;
+	int parity;
+	int brk;
+	int buf_overrun;
+	int reserved[9];
+};
+
+struct serial_struct {
+	int type;
+	int line;
+	unsigned int port;
+	int irq;
+	int flags;
+	int xmit_fifo_size;
+	int custom_divisor;
+	int baud_base;
+	short unsigned int close_delay;
+	char io_type;
+	char reserved_char[1];
+	int hub6;
+	short unsigned int closing_wait;
+	short unsigned int closing_wait2;
+	unsigned char *iomem_base;
+	short unsigned int iomem_reg_shift;
+	unsigned int port_high;
+	long unsigned int iomap_base;
+};
+
+struct __kfifo {
+	unsigned int in;
+	unsigned int out;
+	unsigned int mask;
+	unsigned int esize;
+	void *data;
+};
+
+struct tty_port_operations;
+
+struct tty_port_client_operations;
