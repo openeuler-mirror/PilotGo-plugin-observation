@@ -364,6 +364,7 @@ static int btf_dump_add_emit_queue_id(struct btf_dump *d, __u32 id)
 	return 0;
 }
 
+
 static int btf_dump_order_type(struct btf_dump *d, __u32 id, bool through_ptr)
 {
 	struct btf_dump_type_aux_state *tstate = &d->type_states[id];
@@ -498,4 +499,55 @@ static int btf_dump_order_type(struct btf_dump *d, __u32 id, bool through_ptr)
 	default:
 		return -EINVAL;
 	}
+}
+
+static void btf_dump_emit_missing_aliases(struct btf_dump *d, __u32 id,
+					  const struct btf_type *t);
+
+static void btf_dump_emit_struct_fwd(struct btf_dump *d, __u32 id,
+				     const struct btf_type *t);
+static void btf_dump_emit_struct_def(struct btf_dump *d, __u32 id,
+				     const struct btf_type *t, int lvl);
+
+static void btf_dump_emit_enum_fwd(struct btf_dump *d, __u32 id,
+				   const struct btf_type *t);
+static void btf_dump_emit_enum_def(struct btf_dump *d, __u32 id,
+				   const struct btf_type *t, int lvl);
+
+static void btf_dump_emit_fwd_def(struct btf_dump *d, __u32 id,
+				  const struct btf_type *t);
+
+static void btf_dump_emit_typedef_def(struct btf_dump *d, __u32 id,
+				      const struct btf_type *t, int lvl);
+
+/* a local view into a shared stack */
+struct id_stack {
+	const __u32 *ids;
+	int cnt;
+};
+
+static void btf_dump_emit_type_decl(struct btf_dump *d, __u32 id,
+				    const char *fname, int lvl);
+static void btf_dump_emit_type_chain(struct btf_dump *d,
+				     struct id_stack *decl_stack,
+				     const char *fname, int lvl);
+
+static const char *btf_dump_type_name(struct btf_dump *d, __u32 id);
+static const char *btf_dump_ident_name(struct btf_dump *d, __u32 id);
+static size_t btf_dump_name_dups(struct btf_dump *d, struct hashmap *name_map,
+				 const char *orig_name);
+
+static bool btf_dump_is_blacklisted(struct btf_dump *d, __u32 id)
+{
+	const struct btf_type *t = btf__type_by_id(d->btf, id);
+
+	/* __builtin_va_list is a compiler built-in, which causes compilation
+	 * errors, when compiling w/ different compiler, then used to compile
+	 * original code (e.g., GCC to compile kernel, Clang to use generated
+	 * C header from BTF). As it is built-in, it should be already defined
+	 * properly internally in compiler.
+	 */
+	if (t->name_off == 0)
+		return false;
+	return strcmp(btf_name_of(d, t->name_off), "__builtin_va_list") == 0;
 }
