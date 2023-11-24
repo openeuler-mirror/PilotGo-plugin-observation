@@ -345,3 +345,157 @@ static int btf_dump_mark_referenced(struct btf_dump *d)
 	}
 	return 0;
 }
+
+static int btf_dump_add_emit_queue_id(struct btf_dump *d, __u32 id)
+{
+	__u32 *new_queue;
+	size_t new_cap;
+
+	if (d->emit_queue_cnt >= d->emit_queue_cap) {
+		new_cap = max(16, d->emit_queue_cap * 3 / 2);
+		new_queue = libbpf_reallocarray(d->emit_queue, new_cap, sizeof(new_queue[0]));
+		if (!new_queue)
+			return -ENOMEM;
+		d->emit_queue = new_queue;
+		d->emit_queue_cap = new_cap;
+	}
+
+	d->emit_queue[d->emit_queue_cnt++] = id;
+	return 0;
+}
+
+static int btf_dump_order_type(struct btf_dump *d, __u32 id, bool through_ptr)
+{
+	struct btf_dump_type_aux_state *tstate = &d->type_states[id];
+	const struct btf_type *t;
+	__u16 vlen;
+	int err, i;
+
+	/* return true, letting typedefs know that it's ok to be emitted */
+	if (tstate->order_state == ORDERED)
+		return 1;
+
+	t = btf__type_by_id(d->btf, id);
+
+	if (tstate->order_state == ORDERING) {
+		/* type loop, but resolvable through fwd declaration */
+		if (btf_is_composite(t) && through_ptr && t->name_off != 0)
+			return 0;
+		pr_warn("unsatisfiable type cycle, id:[%u]\n", id);
+		return -ELOOP;
+	}
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_INT:
+	case BTF_KIND_FLOAT:
+		tstate->order_state = ORDERED;
+		return 0;
+
+	case BTF_KIND_PTR:
+		err = btf_dump_order_type(d, t->type, true);
+		tstate->order_state = ORDERED;
+		return err;
+
+	case BTF_KIND_ARRAY:
+		return btf_dump_order_type(d, btf_array(t)->type, false);
+
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION: {
+		const struct btf_member *m = btf_members(t);
+		/*
+		 * struct/union is part of strong link, only if it's embedded
+		 * (so no ptr in a path) or it's anonymous (so has to be
+		 * defined inline, even if declared through ptr)
+		 */
+		if (through_ptr && t->name_off != 0)
+			return 0;
+
+		tstate->order_state = ORDERING;
+
+		vlen = btf_vlen(t);
+		for (i = 0; i < vlen; i++, m++) {
+			err = btf_dump_order_type(d, m->type, false);
+			if (err < 0)
+				return err;
+		}
+
+		if (t->name_off != 0) {
+			err = btf_dump_add_emit_queue_id(d, id);
+			if (err < 0)
+				return err;
+		}
+
+		tstate->order_state = ORDERED;
+		return 1;
+	}
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+	case BTF_KIND_FWD:
+		/*
+		 * non-anonymous or non-referenced enums are top-level
+		 * declarations and should be emitted. Same logic can be
+		 * applied to FWDs, it won't hurt anyways.
+		 */
+		if (t->name_off != 0 || !tstate->referenced) {
+			err = btf_dump_add_emit_queue_id(d, id);
+			if (err)
+				return err;
+		}
+		tstate->order_state = ORDERED;
+		return 1;
+
+	case BTF_KIND_TYPEDEF: {
+		int is_strong;
+
+		is_strong = btf_dump_order_type(d, t->type, through_ptr);
+		if (is_strong < 0)
+			return is_strong;
+
+		/* typedef is similar to struct/union w.r.t. fwd-decls */
+		if (through_ptr && !is_strong)
+			return 0;
+
+		/* typedef is always a named definition */
+		err = btf_dump_add_emit_queue_id(d, id);
+		if (err)
+			return err;
+
+		d->type_states[id].order_state = ORDERED;
+		return 1;
+	}
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_CONST:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_TYPE_TAG:
+		return btf_dump_order_type(d, t->type, through_ptr);
+
+	case BTF_KIND_FUNC_PROTO: {
+		const struct btf_param *p = btf_params(t);
+		bool is_strong;
+
+		err = btf_dump_order_type(d, t->type, through_ptr);
+		if (err < 0)
+			return err;
+		is_strong = err > 0;
+
+		vlen = btf_vlen(t);
+		for (i = 0; i < vlen; i++, p++) {
+			err = btf_dump_order_type(d, p->type, through_ptr);
+			if (err < 0)
+				return err;
+			if (err > 0)
+				is_strong = true;
+		}
+		return is_strong;
+	}
+	case BTF_KIND_FUNC:
+	case BTF_KIND_VAR:
+	case BTF_KIND_DATASEC:
+	case BTF_KIND_DECL_TAG:
+		d->type_states[id].order_state = ORDERED;
+		return 0;
+
+	default:
+		return -EINVAL;
+	}
+}
