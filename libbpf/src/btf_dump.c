@@ -930,3 +930,53 @@ static void btf_dump_emit_enum_def(struct btf_dump *d, __u32 id,
 	}
 
 }
+
+static void btf_dump_emit_fwd_def(struct btf_dump *d, __u32 id,
+				  const struct btf_type *t)
+{
+	const char *name = btf_dump_type_name(d, id);
+
+	if (btf_kflag(t))
+		btf_dump_printf(d, "union %s", name);
+	else
+		btf_dump_printf(d, "struct %s", name);
+}
+
+static void btf_dump_emit_typedef_def(struct btf_dump *d, __u32 id,
+				     const struct btf_type *t, int lvl)
+{
+	const char *name = btf_dump_ident_name(d, id);
+
+	/*
+	 * Old GCC versions are emitting invalid typedef for __gnuc_va_list
+	 * pointing to VOID. This generates warnings from btf_dump() and
+	 * results in uncompilable header file, so we are fixing it up here
+	 * with valid typedef into __builtin_va_list.
+	 */
+	if (t->type == 0 && strcmp(name, "__gnuc_va_list") == 0) {
+		btf_dump_printf(d, "typedef __builtin_va_list __gnuc_va_list");
+		return;
+	}
+
+	btf_dump_printf(d, "typedef ");
+	btf_dump_emit_type_decl(d, t->type, name, lvl);
+}
+
+static int btf_dump_push_decl_stack_id(struct btf_dump *d, __u32 id)
+{
+	__u32 *new_stack;
+	size_t new_cap;
+
+	if (d->decl_stack_cnt >= d->decl_stack_cap) {
+		new_cap = max(16, d->decl_stack_cap * 3 / 2);
+		new_stack = libbpf_reallocarray(d->decl_stack, new_cap, sizeof(new_stack[0]));
+		if (!new_stack)
+			return -ENOMEM;
+		d->decl_stack = new_stack;
+		d->decl_stack_cap = new_cap;
+	}
+
+	d->decl_stack[d->decl_stack_cnt++] = id;
+
+	return 0;
+}
