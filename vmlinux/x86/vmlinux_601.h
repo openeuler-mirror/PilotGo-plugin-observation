@@ -12638,3 +12638,59 @@ struct acpi_psd_package {
 	u64 coord_type;
 	u64 num_processors;
 };
+
+struct acpi_pct_register {
+	u8 descriptor;
+	u16 length;
+	u8 space_id;
+	u8 bit_width;
+	u8 bit_offset;
+	u8 reserved;
+	u64 address;
+} __attribute__((packed));
+
+struct acpi_processor_px {
+	u64 core_frequency;
+	u64 power;
+	u64 transition_latency;
+	u64 bus_master_latency;
+	u64 control;
+	u64 status;
+};
+
+struct acpi_processor_performance {
+	unsigned int state;
+	unsigned int platform_limit;
+	struct acpi_pct_register control_register;
+	struct acpi_pct_register status_register;
+	long: 0;
+	unsigned int state_count;
+	long: 0;
+	struct acpi_processor_px *states;
+	struct acpi_psd_package domain_info;
+	cpumask_var_t shared_cpu_map;
+	unsigned int shared_type;
+} __attribute__((packed));
+
+struct acpi_tsd_package {
+	u64 num_entries;
+	u64 revision;
+	u64 domain;
+	u64 coord_type;
+	u64 num_processors;
+};
+
+struct acpi_processor_tx_tss {
+	u64 freqpercentage;
+	u64 power;
+	u64 transition_latency;
+	u64 control;
+	u64 status;
+};
+
+struct acpi_processor_tx {
+	u16 power;
+	u16 performance;
+};
+
+struct acpi_processor;
