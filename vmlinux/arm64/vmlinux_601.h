@@ -2557,3 +2557,15 @@ struct kstat {
 	u32 dio_mem_align;
 	u32 dio_offset_align;
 };
+
+struct attribute {
+	const char *name;
+	umode_t mode;
+	bool ignore_lockdep: 1;
+	struct lock_class_key *key;
+	struct lock_class_key skey;
+};
+
+struct kobject;
+
+struct bin_attribute;
