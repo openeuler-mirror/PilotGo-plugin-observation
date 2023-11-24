@@ -792,3 +792,92 @@ static void btf_dump_emit_bit_padding(const struct btf_dump *d,
 		}
 	}
 }
+
+static const char *missing_base_types[][2] = {
+	/*
+	 * GCC emits typedefs to its internal __PolyX_t types when compiling Arm
+	 * SIMD intrinsics. Alias them to standard base types.
+	 */
+	{ "__Poly8_t",		"unsigned char" },
+	{ "__Poly16_t",		"unsigned short" },
+	{ "__Poly64_t",		"unsigned long long" },
+	{ "__Poly128_t",	"unsigned __int128" },
+};
+
+static void btf_dump_emit_missing_aliases(struct btf_dump *d, __u32 id,
+					  const struct btf_type *t)
+{
+	const char *name = btf_dump_type_name(d, id);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(missing_base_types); i++) {
+		if (strcmp(name, missing_base_types[i][0]) == 0) {
+			btf_dump_printf(d, "typedef %s %s;\n\n",
+					missing_base_types[i][1], name);
+			break;
+		}
+	}
+}
+
+static void btf_dump_emit_enum_fwd(struct btf_dump *d, __u32 id,
+				   const struct btf_type *t)
+{
+	btf_dump_printf(d, "enum %s", btf_dump_type_name(d, id));
+}
+
+static void btf_dump_emit_enum32_val(struct btf_dump *d,
+				     const struct btf_type *t,
+				     int lvl, __u16 vlen)
+{
+	const struct btf_enum *v = btf_enum(t);
+	bool is_signed = btf_kflag(t);
+	const char *fmt_str;
+	const char *name;
+	size_t dup_cnt;
+	int i;
+
+	for (i = 0; i < vlen; i++, v++) {
+		name = btf_name_of(d, v->name_off);
+		/* enumerators share namespace with typedef idents */
+		dup_cnt = btf_dump_name_dups(d, d->ident_names, name);
+		if (dup_cnt > 1) {
+			fmt_str = is_signed ? "\n%s%s___%zd = %d," : "\n%s%s___%zd = %u,";
+			btf_dump_printf(d, fmt_str, pfx(lvl + 1), name, dup_cnt, v->val);
+		} else {
+			fmt_str = is_signed ? "\n%s%s = %d," : "\n%s%s = %u,";
+			btf_dump_printf(d, fmt_str, pfx(lvl + 1), name, v->val);
+		}
+	}
+}
+
+static void btf_dump_emit_enum64_val(struct btf_dump *d,
+				     const struct btf_type *t,
+				     int lvl, __u16 vlen)
+{
+	const struct btf_enum64 *v = btf_enum64(t);
+	bool is_signed = btf_kflag(t);
+	const char *fmt_str;
+	const char *name;
+	size_t dup_cnt;
+	__u64 val;
+	int i;
+
+	for (i = 0; i < vlen; i++, v++) {
+		name = btf_name_of(d, v->name_off);
+		dup_cnt = btf_dump_name_dups(d, d->ident_names, name);
+		val = btf_enum64_value(v);
+		if (dup_cnt > 1) {
+			fmt_str = is_signed ? "\n%s%s___%zd = %lldLL,"
+					    : "\n%s%s___%zd = %lluULL,";
+			btf_dump_printf(d, fmt_str,
+					pfx(lvl + 1), name, dup_cnt,
+					(unsigned long long)val);
+		} else {
+			fmt_str = is_signed ? "\n%s%s = %lldLL,"
+					    : "\n%s%s = %lluULL,";
+			btf_dump_printf(d, fmt_str,
+					pfx(lvl + 1), name,
+					(unsigned long long)val);
+		}
+	}
+}
