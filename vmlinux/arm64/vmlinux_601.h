@@ -2534,3 +2534,26 @@ struct kobj_ns_type_operations {
 	const void * (*initial_ns)();
 	void (*drop_ns)(void *);
 };
+
+struct kstat {
+	u32 result_mask;
+	umode_t mode;
+	unsigned int nlink;
+	uint32_t blksize;
+	u64 attributes;
+	u64 attributes_mask;
+	u64 ino;
+	dev_t dev;
+	dev_t rdev;
+	kuid_t uid;
+	kgid_t gid;
+	loff_t size;
+	struct timespec64 atime;
+	struct timespec64 mtime;
+	struct timespec64 ctime;
+	struct timespec64 btime;
+	u64 blocks;
+	u64 mnt_id;
+	u32 dio_mem_align;
+	u32 dio_offset_align;
+};
