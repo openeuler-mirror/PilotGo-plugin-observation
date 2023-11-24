@@ -2517,3 +2517,20 @@ struct kernfs_open_file {
 	bool released: 1;
 	const struct vm_operations_struct *vm_ops;
 };
+
+enum kobj_ns_type {
+	KOBJ_NS_TYPE_NONE = 0,
+	KOBJ_NS_TYPE_NET = 1,
+	KOBJ_NS_TYPES = 2,
+};
+
+struct sock;
+
+struct kobj_ns_type_operations {
+	enum kobj_ns_type type;
+	bool (*current_may_mount)();
+	void * (*grab_current_ns)();
+	const void * (*netlink_ns)(struct sock *);
+	const void * (*initial_ns)();
+	void (*drop_ns)(void *);
+};
