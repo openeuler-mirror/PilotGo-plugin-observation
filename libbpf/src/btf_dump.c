@@ -551,3 +551,151 @@ static bool btf_dump_is_blacklisted(struct btf_dump *d, __u32 id)
 		return false;
 	return strcmp(btf_name_of(d, t->name_off), "__builtin_va_list") == 0;
 }
+
+static void btf_dump_emit_type(struct btf_dump *d, __u32 id, __u32 cont_id)
+{
+	struct btf_dump_type_aux_state *tstate = &d->type_states[id];
+	bool top_level_def = cont_id == 0;
+	const struct btf_type *t;
+	__u16 kind;
+
+	if (tstate->emit_state == EMITTED)
+		return;
+
+	t = btf__type_by_id(d->btf, id);
+	kind = btf_kind(t);
+
+	if (tstate->emit_state == EMITTING) {
+		if (tstate->fwd_emitted)
+			return;
+
+		switch (kind) {
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+			/*
+			 * if we are referencing a struct/union that we are
+			 * part of - then no need for fwd declaration
+			 */
+			if (id == cont_id)
+				return;
+			if (t->name_off == 0) {
+				pr_warn("anonymous struct/union loop, id:[%u]\n",
+					id);
+				return;
+			}
+			btf_dump_emit_struct_fwd(d, id, t);
+			btf_dump_printf(d, ";\n\n");
+			tstate->fwd_emitted = 1;
+			break;
+		case BTF_KIND_TYPEDEF:
+			/*
+			 * for typedef fwd_emitted means typedef definition
+			 * was emitted, but it can be used only for "weak"
+			 * references through pointer only, not for embedding
+			 */
+			if (!btf_dump_is_blacklisted(d, id)) {
+				btf_dump_emit_typedef_def(d, id, t, 0);
+				btf_dump_printf(d, ";\n\n");
+			}
+			tstate->fwd_emitted = 1;
+			break;
+		default:
+			break;
+		}
+
+		return;
+	}
+
+	switch (kind) {
+	case BTF_KIND_INT:
+		/* Emit type alias definitions if necessary */
+		btf_dump_emit_missing_aliases(d, id, t);
+
+		tstate->emit_state = EMITTED;
+		break;
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		if (top_level_def) {
+			btf_dump_emit_enum_def(d, id, t, 0);
+			btf_dump_printf(d, ";\n\n");
+		}
+		tstate->emit_state = EMITTED;
+		break;
+	case BTF_KIND_PTR:
+	case BTF_KIND_VOLATILE:
+	case BTF_KIND_CONST:
+	case BTF_KIND_RESTRICT:
+	case BTF_KIND_TYPE_TAG:
+		btf_dump_emit_type(d, t->type, cont_id);
+		break;
+	case BTF_KIND_ARRAY:
+		btf_dump_emit_type(d, btf_array(t)->type, cont_id);
+		break;
+	case BTF_KIND_FWD:
+		btf_dump_emit_fwd_def(d, id, t);
+		btf_dump_printf(d, ";\n\n");
+		tstate->emit_state = EMITTED;
+		break;
+	case BTF_KIND_TYPEDEF:
+		tstate->emit_state = EMITTING;
+		btf_dump_emit_type(d, t->type, id);
+		/*
+		 * typedef can server as both definition and forward
+		 * declaration; at this stage someone depends on
+		 * typedef as a forward declaration (refers to it
+		 * through pointer), so unless we already did it,
+		 * emit typedef as a forward declaration
+		 */
+		if (!tstate->fwd_emitted && !btf_dump_is_blacklisted(d, id)) {
+			btf_dump_emit_typedef_def(d, id, t, 0);
+			btf_dump_printf(d, ";\n\n");
+		}
+		tstate->emit_state = EMITTED;
+		break;
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+		tstate->emit_state = EMITTING;
+		/* if it's a top-level struct/union definition or struct/union
+		 * is anonymous, then in C we'll be emitting all fields and
+		 * their types (as opposed to just `struct X`), so we need to
+		 * make sure that all types, referenced from struct/union
+		 * members have necessary forward-declarations, where
+		 * applicable
+		 */
+		if (top_level_def || t->name_off == 0) {
+			const struct btf_member *m = btf_members(t);
+			__u16 vlen = btf_vlen(t);
+			int i, new_cont_id;
+
+			new_cont_id = t->name_off == 0 ? cont_id : id;
+			for (i = 0; i < vlen; i++, m++)
+				btf_dump_emit_type(d, m->type, new_cont_id);
+		} else if (!tstate->fwd_emitted && id != cont_id) {
+			btf_dump_emit_struct_fwd(d, id, t);
+			btf_dump_printf(d, ";\n\n");
+			tstate->fwd_emitted = 1;
+		}
+
+		if (top_level_def) {
+			btf_dump_emit_struct_def(d, id, t, 0);
+			btf_dump_printf(d, ";\n\n");
+			tstate->emit_state = EMITTED;
+		} else {
+			tstate->emit_state = NOT_EMITTED;
+		}
+		break;
+	case BTF_KIND_FUNC_PROTO: {
+		const struct btf_param *p = btf_params(t);
+		__u16 n = btf_vlen(t);
+		int i;
+
+		btf_dump_emit_type(d, t->type, cont_id);
+		for (i = 0; i < n; i++, p++)
+			btf_dump_emit_type(d, p->type, cont_id);
+
+		break;
+	}
+	default:
+		break;
+	}
+}
