@@ -131,3 +131,51 @@ $(STATIC_OBJDIR)/%.o: %.c | $(STATIC_OBJDIR)
 $(SHARED_OBJDIR)/%.o: %.c | $(SHARED_OBJDIR)
 	$(call msg,CC,$@)
 	$(Q)$(CC) $(ALL_CFLAGS) $(SHARED_CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+	define do_install
+	$(call msg,INSTALL,$1)
+	$(Q)if [ ! -d '$(DESTDIR)$2' ]; then		\
+		$(INSTALL) -d -m 755 '$(DESTDIR)$2';	\
+	fi;
+	$(Q)$(INSTALL) $(if $3,-m $3,) $1 '$(DESTDIR)$2'
+endef
+
+# Preserve symlinks at installation.
+define do_s_install
+	$(call msg,INSTALL,$1)
+	$(Q)if [ ! -d '$(DESTDIR)$2' ]; then		\
+		$(INSTALL) -d -m 755 '$(DESTDIR)$2';	\
+	fi;
+	$(Q)cp -fR $1 '$(DESTDIR)$2'
+endef
+
+install: all install_headers install_pkgconfig
+	$(call do_s_install,$(STATIC_LIBS) $(SHARED_LIBS),$(LIBDIR))
+
+install_headers:
+	$(call do_install,$(HEADERS),$(INCLUDEDIR)/bpf,644)
+
+# UAPI headers can be installed by a different package so they're not installed
+# in by install rule.
+install_uapi_headers:
+	$(call do_install,$(UAPI_HEADERS),$(UAPIDIR)/linux,644)
+
+install_pkgconfig: $(PC_FILE)
+	$(call do_install,$(PC_FILE),$(LIBDIR)/pkgconfig,644)
+
+clean:
+	$(call msg,CLEAN)
+	$(Q)rm -rf *.o *.a *.so *.so.* *.pc $(SHARED_OBJDIR) $(STATIC_OBJDIR)
+
+.PHONY: cscope tags force
+cscope:
+	$(call msg,CSCOPE)
+	$(Q)ls *.c *.h > cscope.files
+	$(Q)cscope -b -q -f cscope.out
+
+tags:
+	$(call msg,CTAGS)
+	$(Q)rm -f TAGS tags
+	$(Q)ls *.c *.h | xargs $(TAGS_PROG) -a
+
+force:
