@@ -1064,3 +1064,43 @@ done:
 	btf_dump_emit_type_chain(d, &decl_stack, fname, lvl);
 	d->decl_stack_cnt = stack_start;
 }
+
+static void btf_dump_emit_mods(struct btf_dump *d, struct id_stack *decl_stack)
+{
+	const struct btf_type *t;
+	__u32 id;
+
+	while (decl_stack->cnt) {
+		id = decl_stack->ids[decl_stack->cnt - 1];
+		t = btf__type_by_id(d->btf, id);
+
+		switch (btf_kind(t)) {
+		case BTF_KIND_VOLATILE:
+			btf_dump_printf(d, "volatile ");
+			break;
+		case BTF_KIND_CONST:
+			btf_dump_printf(d, "const ");
+			break;
+		case BTF_KIND_RESTRICT:
+			btf_dump_printf(d, "restrict ");
+			break;
+		default:
+			return;
+		}
+		decl_stack->cnt--;
+	}
+}
+
+static void btf_dump_drop_mods(struct btf_dump *d, struct id_stack *decl_stack)
+{
+	const struct btf_type *t;
+	__u32 id;
+
+	while (decl_stack->cnt) {
+		id = decl_stack->ids[decl_stack->cnt - 1];
+		t = btf__type_by_id(d->btf, id);
+		if (!btf_is_mod(t))
+			return;
+		decl_stack->cnt--;
+	}
+}
