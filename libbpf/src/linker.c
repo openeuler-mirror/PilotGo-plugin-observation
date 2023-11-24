@@ -2732,3 +2732,199 @@ static int finalize_btf(struct bpf_linker *linker)
 
     return 0;
 }
+static int emit_btf_ext_data(struct bpf_linker *linker, void *output,
+                             const char *sec_name, struct btf_ext_sec_data *sec_data)
+{
+    struct btf_ext_info_sec *sec_info;
+    void *cur = output;
+    int str_off;
+    size_t sz;
+
+    if (!sec_data->rec_cnt)
+        return 0;
+
+    str_off = btf__add_str(linker->btf, sec_name);
+    if (str_off < 0)
+        return -ENOMEM;
+
+    sec_info = cur;
+    sec_info->sec_name_off = str_off;
+    sec_info->num_info = sec_data->rec_cnt;
+    cur += sizeof(struct btf_ext_info_sec);
+
+    sz = sec_data->rec_cnt * sec_data->rec_sz;
+    memcpy(cur, sec_data->recs, sz);
+    cur += sz;
+
+    return cur - output;
+}
+
+static int finalize_btf_ext(struct bpf_linker *linker)
+{
+    size_t funcs_sz = 0, lines_sz = 0, core_relos_sz = 0, total_sz = 0;
+    size_t func_rec_sz = 0, line_rec_sz = 0, core_relo_rec_sz = 0;
+    struct btf_ext_header *hdr;
+    void *data, *cur;
+    int i, err, sz;
+
+    /* validate that all sections have the same .BTF.ext record sizes
+     * and calculate total data size for each type of data (func info,
+     * line info, core relos)
+     */
+    for (i = 1; i < linker->sec_cnt; i++)
+    {
+        struct dst_sec *sec = &linker->secs[i];
+
+        if (sec->func_info.rec_cnt)
+        {
+            if (func_rec_sz == 0)
+                func_rec_sz = sec->func_info.rec_sz;
+            if (func_rec_sz != sec->func_info.rec_sz)
+            {
+                pr_warn("mismatch in func_info record size %zu != %u\n",
+                        func_rec_sz, sec->func_info.rec_sz);
+                return -EINVAL;
+            }
+
+            funcs_sz += sizeof(struct btf_ext_info_sec) + func_rec_sz * sec->func_info.rec_cnt;
+        }
+        if (sec->line_info.rec_cnt)
+        {
+            if (line_rec_sz == 0)
+                line_rec_sz = sec->line_info.rec_sz;
+            if (line_rec_sz != sec->line_info.rec_sz)
+            {
+                pr_warn("mismatch in line_info record size %zu != %u\n",
+                        line_rec_sz, sec->line_info.rec_sz);
+                return -EINVAL;
+            }
+
+            lines_sz += sizeof(struct btf_ext_info_sec) + line_rec_sz * sec->line_info.rec_cnt;
+        }
+        if (sec->core_relo_info.rec_cnt)
+        {
+            if (core_relo_rec_sz == 0)
+                core_relo_rec_sz = sec->core_relo_info.rec_sz;
+            if (core_relo_rec_sz != sec->core_relo_info.rec_sz)
+            {
+                pr_warn("mismatch in core_relo_info record size %zu != %u\n",
+                        core_relo_rec_sz, sec->core_relo_info.rec_sz);
+                return -EINVAL;
+            }
+
+            core_relos_sz += sizeof(struct btf_ext_info_sec) + core_relo_rec_sz * sec->core_relo_info.rec_cnt;
+        }
+    }
+
+    if (!funcs_sz && !lines_sz && !core_relos_sz)
+        return 0;
+
+    total_sz += sizeof(struct btf_ext_header);
+    if (funcs_sz)
+    {
+        funcs_sz += sizeof(__u32); /* record size prefix */
+        total_sz += funcs_sz;
+    }
+    if (lines_sz)
+    {
+        lines_sz += sizeof(__u32); /* record size prefix */
+        total_sz += lines_sz;
+    }
+    if (core_relos_sz)
+    {
+        core_relos_sz += sizeof(__u32); /* record size prefix */
+        total_sz += core_relos_sz;
+    }
+
+    cur = data = calloc(1, total_sz);
+    if (!data)
+        return -ENOMEM;
+
+    hdr = cur;
+    hdr->magic = BTF_MAGIC;
+    hdr->version = BTF_VERSION;
+    hdr->flags = 0;
+    hdr->hdr_len = sizeof(struct btf_ext_header);
+    cur += sizeof(struct btf_ext_header);
+
+    /* All offsets are in bytes relative to the end of this header */
+    hdr->func_info_off = 0;
+    hdr->func_info_len = funcs_sz;
+    hdr->line_info_off = funcs_sz;
+    hdr->line_info_len = lines_sz;
+    hdr->core_relo_off = funcs_sz + lines_sz;
+    hdr->core_relo_len = core_relos_sz;
+
+    if (funcs_sz)
+    {
+        *(__u32 *)cur = func_rec_sz;
+        cur += sizeof(__u32);
+
+        for (i = 1; i < linker->sec_cnt; i++)
+        {
+            struct dst_sec *sec = &linker->secs[i];
+
+            sz = emit_btf_ext_data(linker, cur, sec->sec_name, &sec->func_info);
+            if (sz < 0)
+            {
+                err = sz;
+                goto out;
+            }
+
+            cur += sz;
+        }
+    }
+
+    if (lines_sz)
+    {
+        *(__u32 *)cur = line_rec_sz;
+        cur += sizeof(__u32);
+
+        for (i = 1; i < linker->sec_cnt; i++)
+        {
+            struct dst_sec *sec = &linker->secs[i];
+
+            sz = emit_btf_ext_data(linker, cur, sec->sec_name, &sec->line_info);
+            if (sz < 0)
+            {
+                err = sz;
+                goto out;
+            }
+
+            cur += sz;
+        }
+    }
+
+    if (core_relos_sz)
+    {
+        *(__u32 *)cur = core_relo_rec_sz;
+        cur += sizeof(__u32);
+
+        for (i = 1; i < linker->sec_cnt; i++)
+        {
+            struct dst_sec *sec = &linker->secs[i];
+
+            sz = emit_btf_ext_data(linker, cur, sec->sec_name, &sec->core_relo_info);
+            if (sz < 0)
+            {
+                err = sz;
+                goto out;
+            }
+
+            cur += sz;
+        }
+    }
+
+    linker->btf_ext = btf_ext__new(data, total_sz);
+    err = libbpf_get_error(linker->btf_ext);
+    if (err)
+    {
+        linker->btf_ext = NULL;
+        pr_warn("failed to parse final .BTF.ext data: %d\n", err);
+        goto out;
+    }
+
+out:
+    free(data);
+    return err;
+}
