@@ -1001,3 +1001,66 @@ int btf_dump__emit_type_decl(struct btf_dump *d, __u32 id,
 	d->strip_mods = false;
 	return 0;
 }
+
+static void btf_dump_emit_type_decl(struct btf_dump *d, __u32 id,
+				    const char *fname, int lvl)
+{
+	struct id_stack decl_stack;
+	const struct btf_type *t;
+	int err, stack_start;
+
+	stack_start = d->decl_stack_cnt;
+	for (;;) {
+		t = btf__type_by_id(d->btf, id);
+		if (d->strip_mods && btf_is_mod(t))
+			goto skip_mod;
+
+		err = btf_dump_push_decl_stack_id(d, id);
+		if (err < 0) {
+			/*
+			 * if we don't have enough memory for entire type decl
+			 * chain, restore stack, emit warning, and try to
+			 * proceed nevertheless
+			 */
+			pr_warn("not enough memory for decl stack:%d", err);
+			d->decl_stack_cnt = stack_start;
+			return;
+		}
+skip_mod:
+		/* VOID */
+		if (id == 0)
+			break;
+
+		switch (btf_kind(t)) {
+		case BTF_KIND_PTR:
+		case BTF_KIND_VOLATILE:
+		case BTF_KIND_CONST:
+		case BTF_KIND_RESTRICT:
+		case BTF_KIND_FUNC_PROTO:
+		case BTF_KIND_TYPE_TAG:
+			id = t->type;
+			break;
+		case BTF_KIND_ARRAY:
+			id = btf_array(t)->type;
+			break;
+		case BTF_KIND_INT:
+		case BTF_KIND_ENUM:
+		case BTF_KIND_ENUM64:
+		case BTF_KIND_FWD:
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+		case BTF_KIND_TYPEDEF:
+		case BTF_KIND_FLOAT:
+			goto done;
+		default:
+			pr_warn("unexpected type in decl chain, kind:%u, id:[%u]\n",
+				btf_kind(t), id);
+			goto done;
+		}
+	}
+done:
+	decl_stack.ids = d->decl_stack + stack_start;
+	decl_stack.cnt = d->decl_stack_cnt - stack_start;
+	btf_dump_emit_type_chain(d, &decl_stack, fname, lvl);
+	d->decl_stack_cnt = stack_start;
+}
