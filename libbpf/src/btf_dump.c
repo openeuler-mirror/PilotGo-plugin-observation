@@ -699,3 +699,96 @@ static void btf_dump_emit_type(struct btf_dump *d, __u32 id, __u32 cont_id)
 		break;
 	}
 }
+
+static bool btf_is_struct_packed(const struct btf *btf, __u32 id,
+				 const struct btf_type *t)
+{
+	const struct btf_member *m;
+	int max_align = 1, align, i, bit_sz;
+	__u16 vlen;
+
+	m = btf_members(t);
+	vlen = btf_vlen(t);
+	/* all non-bitfield fields have to be naturally aligned */
+	for (i = 0; i < vlen; i++, m++) {
+		align = btf__align_of(btf, m->type);
+		bit_sz = btf_member_bitfield_size(t, i);
+		if (align && bit_sz == 0 && m->offset % (8 * align) != 0)
+			return true;
+		max_align = max(align, max_align);
+	}
+	/* size of a non-packed struct has to be a multiple of its alignment */
+	if (t->size % max_align != 0)
+		return true;
+	/*
+	 * if original struct was marked as packed, but its layout is
+	 * naturally aligned, we'll detect that it's not packed
+	 */
+	return false;
+}
+
+static void btf_dump_emit_bit_padding(const struct btf_dump *d,
+				      int cur_off, int next_off, int next_align,
+				      bool in_bitfield, int lvl)
+{
+	const struct {
+		const char *name;
+		int bits;
+	} pads[] = {
+		{"long", d->ptr_sz * 8}, {"int", 32}, {"short", 16}, {"char", 8}
+	};
+	int new_off, pad_bits, bits, i;
+	const char *pad_type;
+
+	if (cur_off >= next_off)
+		return; /* no gap */
+	for (i = 0; i < ARRAY_SIZE(pads); i++) {
+		pad_bits = pads[i].bits;
+		pad_type = pads[i].name;
+
+		new_off = roundup(cur_off, pad_bits);
+		if (new_off <= next_off)
+			break;
+	}
+
+	if (new_off > cur_off && new_off <= next_off) {
+		if (in_bitfield ||
+		    (new_off == next_off && roundup(cur_off, next_align * 8) != new_off) ||
+		    (new_off != next_off && next_off - new_off <= new_off - cur_off))
+			/* but for bitfields we'll emit explicit bit count */
+			btf_dump_printf(d, "\n%s%s: %d;", pfx(lvl), pad_type,
+					in_bitfield ? new_off - cur_off : 0);
+		cur_off = new_off;
+	}
+
+	/* Now we know we start at naturally aligned offset for a chosen
+	 * padding type (long, int, short, or char), and so the rest is just
+	 * a straightforward filling of remaining padding gap with full
+	 * `<type>: sizeof(<type>);` markers, except for the last one, which
+	 * might need smaller than sizeof(<type>) padding.
+	 */
+	while (cur_off != next_off) {
+		bits = min(next_off - cur_off, pad_bits);
+		if (bits == pad_bits) {
+			btf_dump_printf(d, "\n%s%s: %d;", pfx(lvl), pad_type, pad_bits);
+			cur_off += bits;
+			continue;
+		}
+		/* For the remainder padding that doesn't cover entire
+		 * pad_type bit length, we pick the smallest necessary type.
+		 * This is pure aesthetics, we could have just used `long`,
+		 * but having smallest necessary one communicates better the
+		 * scale of the padding gap.
+		 */
+		for (i = ARRAY_SIZE(pads) - 1; i >= 0; i--) {
+			pad_type = pads[i].name;
+			pad_bits = pads[i].bits;
+			if (pad_bits < bits)
+				continue;
+
+			btf_dump_printf(d, "\n%s%s: %d;", pfx(lvl), pad_type, bits);
+			cur_off += bits;
+			break;
+		}
+	}
+}
