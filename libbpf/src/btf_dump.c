@@ -980,3 +980,24 @@ static int btf_dump_push_decl_stack_id(struct btf_dump *d, __u32 id)
 
 	return 0;
 }
+
+int btf_dump__emit_type_decl(struct btf_dump *d, __u32 id,
+			     const struct btf_dump_emit_type_decl_opts *opts)
+{
+	const char *fname;
+	int lvl, err;
+
+	if (!OPTS_VALID(opts, btf_dump_emit_type_decl_opts))
+		return libbpf_err(-EINVAL);
+
+	err = btf_dump_resize(d);
+	if (err)
+		return libbpf_err(err);
+
+	fname = OPTS_GET(opts, field_name, "");
+	lvl = OPTS_GET(opts, indent_level, 0);
+	d->strip_mods = OPTS_GET(opts, strip_mods, false);
+	btf_dump_emit_type_decl(d, id, fname, lvl);
+	d->strip_mods = false;
+	return 0;
+}
