@@ -12777,3 +12777,81 @@ typedef unsigned int tcflag_t;
 typedef unsigned char cc_t;
 
 typedef unsigned int speed_t;
+
+struct ktermios {
+	tcflag_t c_iflag;
+	tcflag_t c_oflag;
+	tcflag_t c_cflag;
+	tcflag_t c_lflag;
+	cc_t c_line;
+	cc_t c_cc[19];
+	speed_t c_ispeed;
+	speed_t c_ospeed;
+};
+
+struct winsize {
+	short unsigned int ws_row;
+	short unsigned int ws_col;
+	short unsigned int ws_xpixel;
+	short unsigned int ws_ypixel;
+};
+
+struct tty_driver;
+
+struct tty_operations;
+
+struct tty_ldisc;
+
+struct tty_port;
+
+struct tty_struct {
+	struct kref kref;
+	struct device *dev;
+	struct tty_driver *driver;
+	const struct tty_operations *ops;
+	int index;
+	struct ld_semaphore ldisc_sem;
+	struct tty_ldisc *ldisc;
+	struct mutex atomic_write_lock;
+	struct mutex legacy_mutex;
+	struct mutex throttle_mutex;
+	struct rw_semaphore termios_rwsem;
+	struct mutex winsize_mutex;
+	struct ktermios termios;
+	struct ktermios termios_locked;
+	char name[64];
+	long unsigned int flags;
+	int count;
+	struct winsize winsize;
+	struct {
+		spinlock_t lock;
+		bool stopped;
+		bool tco_stopped;
+		long unsigned int unused[0];
+	} flow;
+	struct {
+		spinlock_t lock;
+		struct pid *pgrp;
+		struct pid *session;
+		unsigned char pktstatus;
+		bool packet;
+		long unsigned int unused[0];
+	} ctrl;
+	int hw_stopped;
+	unsigned int receive_room;
+	int flow_change;
+	struct tty_struct *link;
+	struct fasync_struct *fasync;
+	wait_queue_head_t write_wait;
+	wait_queue_head_t read_wait;
+	struct work_struct hangup_work;
+	void *disc_data;
+	void *driver_data;
+	spinlock_t files_lock;
+	struct list_head tty_files;
+	int closing;
+	unsigned char *write_buf;
+	int write_cnt;
+	struct work_struct SAK_work;
+	struct tty_port *port;
+};
