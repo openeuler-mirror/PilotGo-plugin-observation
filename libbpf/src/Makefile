@@ -61,3 +61,73 @@ ifndef BUILD_STATIC_ONLY
 		       $(OBJDIR)/libbpf.so.$(LIBBPF_VERSION)
 	VERSION_SCRIPT := libbpf.map
 endif
+
+HEADERS := bpf.h libbpf.h btf.h libbpf_common.h libbpf_legacy.h \
+	   bpf_helpers.h bpf_helper_defs.h bpf_tracing.h \
+	   bpf_endian.h bpf_core_read.h skel_internal.h libbpf_version.h \
+	   usdt.bpf.h
+UAPI_HEADERS := $(addprefix $(TOPDIR)/include/uapi/linux/,\
+			    bpf.h bpf_common.h btf.h)
+
+PC_FILE := $(OBJDIR)/libbpf.pc
+
+INSTALL = install
+
+DESTDIR ?=
+
+HOSTARCH = $(firstword $(subst -, ,$(shell $(CC) -dumpmachine)))
+ifeq ($(filter-out %64 %64be %64eb %64le %64el s390x, $(HOSTARCH)),)
+	LIBSUBDIR := lib64
+else
+	LIBSUBDIR := lib
+endif
+
+# By default let the pc file itself use ${prefix} in includedir/libdir so that
+# the prefix can be overridden at runtime (eg: --define-prefix)
+ifndef LIBDIR
+	LIBDIR_PC := $$\{prefix\}/$(LIBSUBDIR)
+else
+	LIBDIR_PC := $(LIBDIR)
+endif
+PREFIX ?= /usr
+LIBDIR ?= $(PREFIX)/$(LIBSUBDIR)
+INCLUDEDIR ?= $(PREFIX)/include
+UAPIDIR ?= $(PREFIX)/include
+
+TAGS_PROG := $(if $(shell which etags 2>/dev/null),etags,ctags)
+
+all: $(STATIC_LIBS) $(SHARED_LIBS) $(PC_FILE)
+
+$(OBJDIR)/libbpf.a: $(STATIC_OBJS)
+	$(call msg,AR,$@)
+	$(Q)$(AR) rcs $@ $^
+
+$(OBJDIR)/libbpf.so: $(OBJDIR)/libbpf.so.$(LIBBPF_MAJOR_VERSION)
+	$(Q)ln -sf $(^F) $@
+
+$(OBJDIR)/libbpf.so.$(LIBBPF_MAJOR_VERSION): $(OBJDIR)/libbpf.so.$(LIBBPF_VERSION)
+	$(Q)ln -sf $(^F) $@
+
+$(OBJDIR)/libbpf.so.$(LIBBPF_VERSION): $(SHARED_OBJS)
+	$(call msg,CC,$@)
+	$(Q)$(CC) -shared -Wl,--version-script=$(VERSION_SCRIPT) \
+		  -Wl,-soname,libbpf.so.$(LIBBPF_MAJOR_VERSION) \
+		  $^ $(ALL_LDFLAGS) -o $@
+
+$(OBJDIR)/libbpf.pc: force
+	$(Q)sed -e "s|@PREFIX@|$(PREFIX)|" \
+		-e "s|@LIBDIR@|$(LIBDIR_PC)|" \
+		-e "s|@VERSION@|$(LIBBPF_VERSION)|" \
+		< libbpf.pc.template > $@
+
+$(STATIC_OBJDIR) $(SHARED_OBJDIR):
+	$(call msg,MKDIR,$@)
+	$(Q)mkdir -p $@
+
+$(STATIC_OBJDIR)/%.o: %.c | $(STATIC_OBJDIR)
+	$(call msg,CC,$@)
+	$(Q)$(CC) $(ALL_CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+$(SHARED_OBJDIR)/%.o: %.c | $(SHARED_OBJDIR)
+	$(call msg,CC,$@)
+	$(Q)$(CC) $(ALL_CFLAGS) $(SHARED_CFLAGS) $(CPPFLAGS) -c $< -o $@
