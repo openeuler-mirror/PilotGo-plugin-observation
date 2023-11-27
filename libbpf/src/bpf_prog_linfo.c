@@ -97,6 +97,86 @@ void bpf_prog_linfo__free(struct bpf_prog_linfo *prog_linfo)
 	free(prog_linfo);
 }
 
+struct bpf_prog_linfo *bpf_prog_linfo__new(const struct bpf_prog_info *info)
+{
+	struct bpf_prog_linfo *prog_linfo;
+	__u32 nr_linfo, nr_jited_func;
+	__u64 data_sz;
+
+	nr_linfo = info->nr_line_info;
+
+	if (!nr_linfo)
+		return errno = EINVAL, NULL;
+
+	/*
+	 * The min size that bpf_prog_linfo has to access for
+	 * searching purpose.
+	 */
+	if (info->line_info_rec_size <
+	    offsetof(struct bpf_line_info, file_name_off))
+		return errno = EINVAL, NULL;
+
+	prog_linfo = calloc(1, sizeof(*prog_linfo));
+	if (!prog_linfo)
+		return errno = ENOMEM, NULL;
+
+	/* Copy xlated line_info */
+	prog_linfo->nr_linfo = nr_linfo;
+	prog_linfo->rec_size = info->line_info_rec_size;
+	data_sz = (__u64)nr_linfo * prog_linfo->rec_size;
+	prog_linfo->raw_linfo = malloc(data_sz);
+	if (!prog_linfo->raw_linfo)
+		goto err_free;
+	memcpy(prog_linfo->raw_linfo, (void *)(long)info->line_info, data_sz);
+
+	nr_jited_func = info->nr_jited_ksyms;
+	if (!nr_jited_func ||
+	    !info->jited_line_info ||
+	    info->nr_jited_line_info != nr_linfo ||
+	    info->jited_line_info_rec_size < sizeof(__u64) ||
+	    info->nr_jited_func_lens != nr_jited_func ||
+	    !info->jited_ksyms ||
+	    !info->jited_func_lens)
+		/* Not enough info to provide jited_line_info */
+		return prog_linfo;
+
+	/* Copy jited_line_info */
+	prog_linfo->nr_jited_func = nr_jited_func;
+	prog_linfo->jited_rec_size = info->jited_line_info_rec_size;
+	data_sz = (__u64)nr_linfo * prog_linfo->jited_rec_size;
+	prog_linfo->raw_jited_linfo = malloc(data_sz);
+	if (!prog_linfo->raw_jited_linfo)
+		goto err_free;
+	memcpy(prog_linfo->raw_jited_linfo,
+	       (void *)(long)info->jited_line_info, data_sz);
+
+	/* Number of jited_line_info per jited func */
+	prog_linfo->nr_jited_linfo_per_func = malloc(nr_jited_func *
+						     sizeof(__u32));
+	if (!prog_linfo->nr_jited_linfo_per_func)
+		goto err_free;
+
+	/*
+	 * For each jited func,
+	 * the start idx to the "linfo" and "jited_linfo" array,
+	 */
+	prog_linfo->jited_linfo_func_idx = malloc(nr_jited_func *
+						  sizeof(__u32));
+	if (!prog_linfo->jited_linfo_func_idx)
+		goto err_free;
+
+	if (dissect_jited_func(prog_linfo,
+			       (__u64 *)(long)info->jited_ksyms,
+			       (__u32 *)(long)info->jited_func_lens))
+		goto err_free;
+
+	return prog_linfo;
+
+err_free:
+	bpf_prog_linfo__free(prog_linfo);
+	return errno = EINVAL, NULL;
+}
+
 const struct bpf_line_info *
 bpf_prog_linfo__lfind(const struct bpf_prog_linfo *prog_linfo,
 		      __u32 insn_off, __u32 nr_skip)
