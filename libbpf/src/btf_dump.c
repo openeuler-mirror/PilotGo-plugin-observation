@@ -2039,3 +2039,95 @@ static int btf_dump_type_data_check_zero(struct btf_dump *d,
 		return 0;
 	}
 }
+
+/* returns size of data dumped, or error. */
+static int btf_dump_dump_type_data(struct btf_dump *d,
+				   const char *fname,
+				   const struct btf_type *t,
+				   __u32 id,
+				   const void *data,
+				   __u8 bits_offset,
+				   __u8 bit_sz)
+{
+	int size, err = 0;
+
+	size = btf_dump_type_data_check_overflow(d, t, id, data, bits_offset);
+	if (size < 0)
+		return size;
+	err = btf_dump_type_data_check_zero(d, t, id, data, bits_offset, bit_sz);
+	if (err) {
+		/* zeroed data is expected and not an error, so simply skip
+		 * dumping such data.  Record other errors however.
+		 */
+		if (err == -ENODATA)
+			return size;
+		return err;
+	}
+	btf_dump_data_pfx(d);
+
+	if (!d->typed_dump->skip_names) {
+		if (fname && strlen(fname) > 0)
+			btf_dump_printf(d, ".%s = ", fname);
+		btf_dump_emit_type_cast(d, id, true);
+	}
+
+	t = skip_mods_and_typedefs(d->btf, id, NULL);
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_UNKN:
+	case BTF_KIND_FWD:
+	case BTF_KIND_FUNC:
+	case BTF_KIND_FUNC_PROTO:
+	case BTF_KIND_DECL_TAG:
+		err = btf_dump_unsupported_data(d, t, id);
+		break;
+	case BTF_KIND_INT:
+		if (bit_sz)
+			err = btf_dump_bitfield_data(d, t, data, bits_offset, bit_sz);
+		else
+			err = btf_dump_int_data(d, t, id, data, bits_offset);
+		break;
+	case BTF_KIND_FLOAT:
+		err = btf_dump_float_data(d, t, id, data);
+		break;
+	case BTF_KIND_PTR:
+		err = btf_dump_ptr_data(d, t, id, data);
+		break;
+	case BTF_KIND_ARRAY:
+		err = btf_dump_array_data(d, t, id, data);
+		break;
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+		err = btf_dump_struct_data(d, t, id, data);
+		break;
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		/* handle bitfield and int enum values */
+		if (bit_sz) {
+			__u64 print_num;
+			__s64 enum_val;
+
+			err = btf_dump_get_bitfield_value(d, t, data, bits_offset, bit_sz,
+							  &print_num);
+			if (err)
+				break;
+			enum_val = (__s64)print_num;
+			err = btf_dump_enum_data(d, t, id, &enum_val);
+		} else
+			err = btf_dump_enum_data(d, t, id, data);
+		break;
+	case BTF_KIND_VAR:
+		err = btf_dump_var_data(d, t, id, data);
+		break;
+	case BTF_KIND_DATASEC:
+		err = btf_dump_datasec_data(d, t, id, data);
+		break;
+	default:
+		pr_warn("unexpected kind [%u] for id [%u]\n",
+			BTF_INFO_KIND(t->info), id);
+		return -EINVAL;
+	}
+	if (err < 0)
+		return err;
+	return size;
+}
