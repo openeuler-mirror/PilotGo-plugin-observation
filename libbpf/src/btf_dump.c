@@ -1792,3 +1792,60 @@ union ptr_data {
 	unsigned int p;
 	unsigned long long lp;
 };
+
+static int btf_dump_ptr_data(struct btf_dump *d,
+			      const struct btf_type *t,
+			      __u32 id,
+			      const void *data)
+{
+	if (ptr_is_aligned(d->btf, id, data) && d->ptr_sz == sizeof(void *)) {
+		btf_dump_type_values(d, "%p", *(void **)data);
+	} else {
+		union ptr_data pt;
+
+		memcpy(&pt, data, d->ptr_sz);
+		if (d->ptr_sz == 4)
+			btf_dump_type_values(d, "0x%x", pt.p);
+		else
+			btf_dump_type_values(d, "0x%llx", pt.lp);
+	}
+	return 0;
+}
+
+static int btf_dump_get_enum_value(struct btf_dump *d,
+				   const struct btf_type *t,
+				   const void *data,
+				   __u32 id,
+				   __s64 *value)
+{
+	bool is_signed = btf_kflag(t);
+
+	if (!ptr_is_aligned(d->btf, id, data)) {
+		__u64 val;
+		int err;
+
+		err = btf_dump_get_bitfield_value(d, t, data, 0, 0, &val);
+		if (err)
+			return err;
+		*value = (__s64)val;
+		return 0;
+	}
+
+	switch (t->size) {
+	case 8:
+		*value = *(__s64 *)data;
+		return 0;
+	case 4:
+		*value = is_signed ? (__s64)*(__s32 *)data : *(__u32 *)data;
+		return 0;
+	case 2:
+		*value = is_signed ? *(__s16 *)data : *(__u16 *)data;
+		return 0;
+	case 1:
+		*value = is_signed ? *(__s8 *)data : *(__u8 *)data;
+		return 0;
+	default:
+		pr_warn("unexpected size %d for enum, id:[%u]\n", t->size, id);
+		return -EINVAL;
+	}
+}
