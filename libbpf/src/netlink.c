@@ -614,3 +614,54 @@ static int tc_qdisc_modify(struct bpf_tc_hook *hook, int cmd, int flags)
 
     return libbpf_netlink_send_recv(&req, NETLINK_ROUTE, NULL, NULL, NULL);
 }
+static int tc_qdisc_create_excl(struct bpf_tc_hook *hook)
+{
+    return tc_qdisc_modify(hook, RTM_NEWQDISC, NLM_F_CREATE | NLM_F_EXCL);
+}
+
+static int tc_qdisc_delete(struct bpf_tc_hook *hook)
+{
+    return tc_qdisc_modify(hook, RTM_DELQDISC, 0);
+}
+
+int bpf_tc_hook_create(struct bpf_tc_hook *hook)
+{
+    int ret;
+
+    if (!hook || !OPTS_VALID(hook, bpf_tc_hook) ||
+        OPTS_GET(hook, ifindex, 0) <= 0)
+        return libbpf_err(-EINVAL);
+
+    ret = tc_qdisc_create_excl(hook);
+    return libbpf_err(ret);
+}
+
+static int __bpf_tc_detach(const struct bpf_tc_hook *hook,
+                           const struct bpf_tc_opts *opts,
+                           const bool flush);
+
+int bpf_tc_hook_destroy(struct bpf_tc_hook *hook)
+{
+    if (!hook || !OPTS_VALID(hook, bpf_tc_hook) ||
+        OPTS_GET(hook, ifindex, 0) <= 0)
+        return libbpf_err(-EINVAL);
+
+    switch (OPTS_GET(hook, attach_point, 0))
+    {
+    case BPF_TC_INGRESS:
+    case BPF_TC_EGRESS:
+        return libbpf_err(__bpf_tc_detach(hook, NULL, true));
+    case BPF_TC_INGRESS | BPF_TC_EGRESS:
+        return libbpf_err(tc_qdisc_delete(hook));
+    case BPF_TC_CUSTOM:
+        return libbpf_err(-EOPNOTSUPP);
+    default:
+        return libbpf_err(-EINVAL);
+    }
+}
+
+struct bpf_cb_ctx
+{
+    struct bpf_tc_opts *opts;
+    bool processed;
+};
