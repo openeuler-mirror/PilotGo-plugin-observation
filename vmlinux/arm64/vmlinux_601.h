@@ -2639,3 +2639,11 @@ struct kobj_type {
 	const void * (*namespace)(struct kobject *);
 	void (*get_ownership)(struct kobject *, kuid_t *, kgid_t *);
 };
+
+struct kobj_uevent_env {
+	char *argv[3];
+	char *envp[64];
+	int envp_idx;
+	char buf[2048];
+	int buflen;
+};
