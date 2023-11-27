@@ -665,3 +665,41 @@ struct bpf_cb_ctx
     struct bpf_tc_opts *opts;
     bool processed;
 };
+static int __get_tc_info(void *cookie, struct tcmsg *tc, struct nlattr **tb,
+                         bool unicast)
+{
+    struct nlattr *tbb[TCA_BPF_MAX + 1];
+    struct bpf_cb_ctx *info = cookie;
+
+    if (!info || !info->opts)
+        return -EINVAL;
+    if (unicast && info->processed)
+        return -EINVAL;
+    if (!tb[TCA_OPTIONS])
+        return NL_CONT;
+
+    libbpf_nla_parse_nested(tbb, TCA_BPF_MAX, tb[TCA_OPTIONS], NULL);
+    if (!tbb[TCA_BPF_ID])
+        return -EINVAL;
+
+    OPTS_SET(info->opts, prog_id, libbpf_nla_getattr_u32(tbb[TCA_BPF_ID]));
+    OPTS_SET(info->opts, handle, tc->tcm_handle);
+    OPTS_SET(info->opts, priority, TC_H_MAJ(tc->tcm_info) >> 16);
+
+    info->processed = true;
+    return unicast ? NL_NEXT : NL_DONE;
+}
+
+static int get_tc_info(struct nlmsghdr *nh, libbpf_dump_nlmsg_t fn,
+                       void *cookie)
+{
+    struct tcmsg *tc = NLMSG_DATA(nh);
+    struct nlattr *tb[TCA_MAX + 1];
+
+    libbpf_nla_parse(tb, TCA_MAX,
+                     (struct nlattr *)((void *)tc + NLMSG_ALIGN(sizeof(*tc))),
+                     NLMSG_PAYLOAD(nh, sizeof(*tc)), NULL);
+    if (!tb[TCA_KIND])
+        return NL_CONT;
+    return __get_tc_info(cookie, tc, tb, nh->nlmsg_flags & NLM_F_ECHO);
+}
