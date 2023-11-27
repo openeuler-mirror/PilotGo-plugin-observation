@@ -415,3 +415,102 @@ static int get_xdp_info(void *cookie, void *msg, struct nlattr **tb)
 
     return 0;
 }
+
+static int parse_xdp_features(struct nlmsghdr *nh, libbpf_dump_nlmsg_t fn,
+                              void *cookie)
+{
+    struct genlmsghdr *gnl = NLMSG_DATA(nh);
+    struct nlattr *na = (struct nlattr *)((void *)gnl + GENL_HDRLEN);
+    struct nlattr *tb[NETDEV_CMD_MAX + 1];
+    struct xdp_features_md *md = cookie;
+    __u32 ifindex;
+
+    libbpf_nla_parse(tb, NETDEV_CMD_MAX, na,
+                     NLMSG_PAYLOAD(nh, sizeof(*gnl)), NULL);
+
+    if (!tb[NETDEV_A_DEV_IFINDEX] || !tb[NETDEV_A_DEV_XDP_FEATURES])
+        return NL_CONT;
+
+    ifindex = libbpf_nla_getattr_u32(tb[NETDEV_A_DEV_IFINDEX]);
+    if (ifindex != md->ifindex)
+        return NL_CONT;
+
+    md->flags = libbpf_nla_getattr_u64(tb[NETDEV_A_DEV_XDP_FEATURES]);
+    return NL_DONE;
+}
+
+int bpf_xdp_query(int ifindex, int xdp_flags, struct bpf_xdp_query_opts *opts)
+{
+    struct libbpf_nla_req req = {
+        .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg)),
+        .nh.nlmsg_type = RTM_GETLINK,
+        .nh.nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST,
+        .ifinfo.ifi_family = AF_PACKET,
+    };
+    struct xdp_id_md xdp_id = {};
+    struct xdp_features_md md = {
+        .ifindex = ifindex,
+    };
+    __u16 id;
+    int err;
+
+    if (!OPTS_VALID(opts, bpf_xdp_query_opts))
+        return libbpf_err(-EINVAL);
+
+    if (xdp_flags & ~XDP_FLAGS_MASK)
+        return libbpf_err(-EINVAL);
+
+    /* Check whether the single {HW,DRV,SKB} mode is set */
+    xdp_flags &= XDP_FLAGS_SKB_MODE | XDP_FLAGS_DRV_MODE | XDP_FLAGS_HW_MODE;
+    if (xdp_flags & (xdp_flags - 1))
+        return libbpf_err(-EINVAL);
+
+    xdp_id.ifindex = ifindex;
+    xdp_id.flags = xdp_flags;
+
+    err = libbpf_netlink_send_recv(&req, NETLINK_ROUTE, __dump_link_nlmsg,
+                                   get_xdp_info, &xdp_id);
+    if (err)
+        return libbpf_err(err);
+
+    OPTS_SET(opts, prog_id, xdp_id.info.prog_id);
+    OPTS_SET(opts, drv_prog_id, xdp_id.info.drv_prog_id);
+    OPTS_SET(opts, hw_prog_id, xdp_id.info.hw_prog_id);
+    OPTS_SET(opts, skb_prog_id, xdp_id.info.skb_prog_id);
+    OPTS_SET(opts, attach_mode, xdp_id.info.attach_mode);
+
+    if (!OPTS_HAS(opts, feature_flags))
+        return 0;
+
+    err = libbpf_netlink_resolve_genl_family_id("netdev", sizeof("netdev"), &id);
+    if (err < 0)
+    {
+        if (err == -ENOENT)
+        {
+            opts->feature_flags = 0;
+            goto skip_feature_flags;
+        }
+        return libbpf_err(err);
+    }
+
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+    req.nh.nlmsg_flags = NLM_F_REQUEST;
+    req.nh.nlmsg_type = id;
+    req.gnl.cmd = NETDEV_CMD_DEV_GET;
+    req.gnl.version = 2;
+
+    err = nlattr_add(&req, NETDEV_A_DEV_IFINDEX, &ifindex, sizeof(ifindex));
+    if (err < 0)
+        return libbpf_err(err);
+
+    err = libbpf_netlink_send_recv(&req, NETLINK_GENERIC,
+                                   parse_xdp_features, NULL, &md);
+    if (err)
+        return libbpf_err(err);
+
+    opts->feature_flags = md.flags;
+
+skip_feature_flags:
+    return 0;
+}
