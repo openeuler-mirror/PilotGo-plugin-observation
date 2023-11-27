@@ -2660,3 +2660,22 @@ enum module_state {
 	MODULE_STATE_GOING = 2,
 	MODULE_STATE_UNFORMED = 3,
 };
+
+struct module_param_attrs;
+
+struct module_kobject {
+	struct kobject kobj;
+	struct module *mod;
+	struct kobject *drivers_dir;
+	struct module_param_attrs *mp;
+	struct completion *kobj_completion;
+};
+
+struct latch_tree_node {
+	struct rb_node node[2];
+};
+
+struct mod_tree_node {
+	struct module *mod;
+	struct latch_tree_node node;
+};
