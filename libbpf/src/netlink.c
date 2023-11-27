@@ -703,3 +703,100 @@ static int get_tc_info(struct nlmsghdr *nh, libbpf_dump_nlmsg_t fn,
         return NL_CONT;
     return __get_tc_info(cookie, tc, tb, nh->nlmsg_flags & NLM_F_ECHO);
 }
+
+static int tc_add_fd_and_name(struct libbpf_nla_req *req, int fd)
+{
+    struct bpf_prog_info info;
+    __u32 info_len = sizeof(info);
+    char name[256];
+    int len, ret;
+
+    memset(&info, 0, info_len);
+    ret = bpf_prog_get_info_by_fd(fd, &info, &info_len);
+    if (ret < 0)
+        return ret;
+
+    ret = nlattr_add(req, TCA_BPF_FD, &fd, sizeof(fd));
+    if (ret < 0)
+        return ret;
+    len = snprintf(name, sizeof(name), "%s:[%u]", info.name, info.id);
+    if (len < 0)
+        return -errno;
+    if (len >= sizeof(name))
+        return -ENAMETOOLONG;
+    return nlattr_add(req, TCA_BPF_NAME, name, len + 1);
+}
+
+int bpf_tc_attach(const struct bpf_tc_hook *hook, struct bpf_tc_opts *opts)
+{
+    __u32 protocol, bpf_flags, handle, priority, parent, prog_id, flags;
+    int ret, ifindex, attach_point, prog_fd;
+    struct bpf_cb_ctx info = {};
+    struct libbpf_nla_req req;
+    struct nlattr *nla;
+
+    if (!hook || !opts ||
+        !OPTS_VALID(hook, bpf_tc_hook) ||
+        !OPTS_VALID(opts, bpf_tc_opts))
+        return libbpf_err(-EINVAL);
+
+    ifindex = OPTS_GET(hook, ifindex, 0);
+    parent = OPTS_GET(hook, parent, 0);
+    attach_point = OPTS_GET(hook, attach_point, 0);
+
+    handle = OPTS_GET(opts, handle, 0);
+    priority = OPTS_GET(opts, priority, 0);
+    prog_fd = OPTS_GET(opts, prog_fd, 0);
+    prog_id = OPTS_GET(opts, prog_id, 0);
+    flags = OPTS_GET(opts, flags, 0);
+
+    if (ifindex <= 0 || !prog_fd || prog_id)
+        return libbpf_err(-EINVAL);
+    if (priority > UINT16_MAX)
+        return libbpf_err(-EINVAL);
+    if (flags & ~BPF_TC_F_REPLACE)
+        return libbpf_err(-EINVAL);
+
+    flags = (flags & BPF_TC_F_REPLACE) ? NLM_F_REPLACE : NLM_F_EXCL;
+    protocol = ETH_P_ALL;
+
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE |
+                         NLM_F_ECHO | flags;
+    req.nh.nlmsg_type = RTM_NEWTFILTER;
+    req.tc.tcm_family = AF_UNSPEC;
+    req.tc.tcm_ifindex = ifindex;
+    req.tc.tcm_handle = handle;
+    req.tc.tcm_info = TC_H_MAKE(priority << 16, htons(protocol));
+
+    ret = tc_get_tcm_parent(attach_point, &parent);
+    if (ret < 0)
+        return libbpf_err(ret);
+    req.tc.tcm_parent = parent;
+
+    ret = nlattr_add(&req, TCA_KIND, "bpf", sizeof("bpf"));
+    if (ret < 0)
+        return libbpf_err(ret);
+    nla = nlattr_begin_nested(&req, TCA_OPTIONS);
+    if (!nla)
+        return libbpf_err(-EMSGSIZE);
+    ret = tc_add_fd_and_name(&req, prog_fd);
+    if (ret < 0)
+        return libbpf_err(ret);
+    bpf_flags = TCA_BPF_FLAG_ACT_DIRECT;
+    ret = nlattr_add(&req, TCA_BPF_FLAGS, &bpf_flags, sizeof(bpf_flags));
+    if (ret < 0)
+        return libbpf_err(ret);
+    nlattr_end_nested(&req, nla);
+
+    info.opts = opts;
+
+    ret = libbpf_netlink_send_recv(&req, NETLINK_ROUTE, get_tc_info, NULL,
+                                   &info);
+    if (ret < 0)
+        return libbpf_err(ret);
+    if (!info.processed)
+        return libbpf_err(-ENOENT);
+    return ret;
+}
