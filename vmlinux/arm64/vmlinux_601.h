@@ -2859,3 +2859,26 @@ enum {
 	__SD_NUMA = 13,
 	__SD_FLAG_CNT = 14,
 };
+
+typedef __u64 Elf64_Addr;
+
+typedef __u16 Elf64_Half;
+
+typedef __u32 Elf64_Word;
+
+typedef __u64 Elf64_Xword;
+
+struct elf64_sym {
+	Elf64_Word st_name;
+	unsigned char st_info;
+	unsigned char st_other;
+	Elf64_Half st_shndx;
+	Elf64_Addr st_value;
+	Elf64_Xword st_size;
+};
+
+struct hlist_bl_node;
+
+struct hlist_bl_head {
+	struct hlist_bl_node *first;
+};
