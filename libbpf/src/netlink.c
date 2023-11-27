@@ -514,3 +514,57 @@ int bpf_xdp_query(int ifindex, int xdp_flags, struct bpf_xdp_query_opts *opts)
 skip_feature_flags:
     return 0;
 }
+
+int bpf_xdp_query_id(int ifindex, int flags, __u32 *prog_id)
+{
+    LIBBPF_OPTS(bpf_xdp_query_opts, opts);
+    int ret;
+
+    ret = bpf_xdp_query(ifindex, flags, &opts);
+    if (ret)
+        return libbpf_err(ret);
+
+    flags &= XDP_FLAGS_MODES;
+
+    if (opts.attach_mode != XDP_ATTACHED_MULTI && !flags)
+        *prog_id = opts.prog_id;
+    else if (flags & XDP_FLAGS_DRV_MODE)
+        *prog_id = opts.drv_prog_id;
+    else if (flags & XDP_FLAGS_HW_MODE)
+        *prog_id = opts.hw_prog_id;
+    else if (flags & XDP_FLAGS_SKB_MODE)
+        *prog_id = opts.skb_prog_id;
+    else
+        *prog_id = 0;
+
+    return 0;
+}
+
+typedef int (*qdisc_config_t)(struct libbpf_nla_req *req);
+
+static int clsact_config(struct libbpf_nla_req *req)
+{
+    req->tc.tcm_parent = TC_H_CLSACT;
+    req->tc.tcm_handle = TC_H_MAKE(TC_H_CLSACT, 0);
+
+    return nlattr_add(req, TCA_KIND, "clsact", sizeof("clsact"));
+}
+
+static int attach_point_to_config(struct bpf_tc_hook *hook,
+                                  qdisc_config_t *config)
+{
+    switch (OPTS_GET(hook, attach_point, 0))
+    {
+    case BPF_TC_INGRESS:
+    case BPF_TC_EGRESS:
+    case BPF_TC_INGRESS | BPF_TC_EGRESS:
+        if (OPTS_GET(hook, parent, 0))
+            return -EINVAL;
+        *config = &clsact_config;
+        return 0;
+    case BPF_TC_CUSTOM:
+        return -EOPNOTSUPP;
+    default:
+        return -EINVAL;
+    }
+}
