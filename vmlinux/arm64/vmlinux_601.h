@@ -2647,3 +2647,16 @@ struct kobj_uevent_env {
 	char buf[2048];
 	int buflen;
 };
+
+struct kset_uevent_ops {
+	int (* const filter)(struct kobject *);
+	const char * (* const name)(struct kobject *);
+	int (* const uevent)(struct kobject *, struct kobj_uevent_env *);
+};
+
+enum module_state {
+	MODULE_STATE_LIVE = 0,
+	MODULE_STATE_COMING = 1,
+	MODULE_STATE_GOING = 2,
+	MODULE_STATE_UNFORMED = 3,
+};
