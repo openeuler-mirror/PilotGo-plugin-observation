@@ -276,3 +276,61 @@ static int parse_genl_family_id(struct nlmsghdr *nh, libbpf_dump_nlmsg_t fn,
     *id = libbpf_nla_getattr_u16(tb[CTRL_ATTR_FAMILY_ID]);
     return NL_DONE;
 }
+
+static int libbpf_netlink_resolve_genl_family_id(const char *name,
+                                                 __u16 len, __u16 *id)
+{
+    struct libbpf_nla_req req = {
+        .nh.nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN),
+        .nh.nlmsg_type = GENL_ID_CTRL,
+        .nh.nlmsg_flags = NLM_F_REQUEST,
+        .gnl.cmd = CTRL_CMD_GETFAMILY,
+        .gnl.version = 2,
+    };
+    int err;
+
+    err = nlattr_add(&req, CTRL_ATTR_FAMILY_NAME, name, len);
+    if (err < 0)
+        return err;
+
+    return libbpf_netlink_send_recv(&req, NETLINK_GENERIC,
+                                    parse_genl_family_id, NULL, id);
+}
+
+static int __bpf_set_link_xdp_fd_replace(int ifindex, int fd, int old_fd,
+                                         __u32 flags)
+{
+    struct nlattr *nla;
+    int ret;
+    struct libbpf_nla_req req;
+
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+    req.nh.nlmsg_type = RTM_SETLINK;
+    req.ifinfo.ifi_family = AF_UNSPEC;
+    req.ifinfo.ifi_index = ifindex;
+
+    nla = nlattr_begin_nested(&req, IFLA_XDP);
+    if (!nla)
+        return -EMSGSIZE;
+    ret = nlattr_add(&req, IFLA_XDP_FD, &fd, sizeof(fd));
+    if (ret < 0)
+        return ret;
+    if (flags)
+    {
+        ret = nlattr_add(&req, IFLA_XDP_FLAGS, &flags, sizeof(flags));
+        if (ret < 0)
+            return ret;
+    }
+    if (flags & XDP_FLAGS_REPLACE)
+    {
+        ret = nlattr_add(&req, IFLA_XDP_EXPECTED_FD, &old_fd,
+                         sizeof(old_fd));
+        if (ret < 0)
+            return ret;
+    }
+    nlattr_end_nested(&req, nla);
+
+    return libbpf_netlink_send_recv(&req, NETLINK_ROUTE, NULL, NULL, NULL);
+}
