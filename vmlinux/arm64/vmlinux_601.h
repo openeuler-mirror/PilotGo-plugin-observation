@@ -2679,3 +2679,26 @@ struct mod_tree_node {
 	struct module *mod;
 	struct latch_tree_node node;
 };
+
+struct module_layout {
+	void *base;
+	unsigned int size;
+	unsigned int text_size;
+	unsigned int ro_size;
+	unsigned int ro_after_init_size;
+	struct mod_tree_node mtn;
+};
+
+struct mod_plt_sec {
+	int plt_shndx;
+	int plt_num_entries;
+	int plt_max_entries;
+};
+
+struct plt_entry;
+
+struct mod_arch_specific {
+	struct mod_plt_sec core;
+	struct mod_plt_sec init;
+	struct plt_entry *ftrace_trampolines;
+};
