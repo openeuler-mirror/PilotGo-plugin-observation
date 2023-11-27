@@ -47,3 +47,61 @@ struct xdp_features_md
     int ifindex;
     __u64 flags;
 };
+static int libbpf_netlink_open(__u32 *nl_pid, int proto)
+{
+    struct sockaddr_nl sa;
+    socklen_t addrlen;
+    int one = 1, ret;
+    int sock;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+
+    sock = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, proto);
+    if (sock < 0)
+        return -errno;
+
+    if (setsockopt(sock, SOL_NETLINK, NETLINK_EXT_ACK,
+                   &one, sizeof(one)) < 0)
+    {
+        pr_warn("Netlink error reporting not supported\n");
+    }
+
+    if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0)
+    {
+        ret = -errno;
+        goto cleanup;
+    }
+
+    addrlen = sizeof(sa);
+    if (getsockname(sock, (struct sockaddr *)&sa, &addrlen) < 0)
+    {
+        ret = -errno;
+        goto cleanup;
+    }
+
+    if (addrlen != sizeof(sa))
+    {
+        ret = -LIBBPF_ERRNO__INTERNAL;
+        goto cleanup;
+    }
+
+    *nl_pid = sa.nl_pid;
+    return sock;
+
+cleanup:
+    close(sock);
+    return ret;
+}
+
+static void libbpf_netlink_close(int sock)
+{
+    close(sock);
+}
+
+enum
+{
+    NL_CONT,
+    NL_NEXT,
+    NL_DONE,
+};
