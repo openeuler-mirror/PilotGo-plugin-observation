@@ -2809,3 +2809,20 @@ struct module {
 	long: 64;
 	long: 64;
 };
+
+struct tracepoint_func {
+	void *func;
+	void *data;
+	int prio;
+};
+
+struct tracepoint {
+	const char *name;
+	struct static_key key;
+	struct static_call_key *static_call_key;
+	void *static_call_tramp;
+	void *iterator;
+	int (*regfunc)();
+	void (*unregfunc)();
+	struct tracepoint_func *funcs;
+};
