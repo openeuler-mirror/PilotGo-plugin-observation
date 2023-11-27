@@ -1486,3 +1486,41 @@ static int btf_dump_bitfield_data(struct btf_dump *d,
 
 	return 0;
 }
+
+/* ints, floats and ptrs */
+static int btf_dump_base_type_check_zero(struct btf_dump *d,
+					 const struct btf_type *t,
+					 __u32 id,
+					 const void *data)
+{
+	static __u8 bytecmp[16] = {};
+	int nr_bytes;
+
+	/* For pointer types, pointer size is not defined on a per-type basis.
+	 * On dump creation however, we store the pointer size.
+	 */
+	if (btf_kind(t) == BTF_KIND_PTR)
+		nr_bytes = d->ptr_sz;
+	else
+		nr_bytes = t->size;
+
+	if (nr_bytes < 1 || nr_bytes > 16) {
+		pr_warn("unexpected size %d for id [%u]\n", nr_bytes, id);
+		return -EINVAL;
+	}
+
+	if (memcmp(data, bytecmp, nr_bytes) == 0)
+		return -ENODATA;
+	return 0;
+}
+
+static bool ptr_is_aligned(const struct btf *btf, __u32 type_id,
+			   const void *data)
+{
+	int alignment = btf__align_of(btf, type_id);
+
+	if (alignment == 0)
+		return false;
+
+	return ((uintptr_t)data) % alignment == 0;
+}
