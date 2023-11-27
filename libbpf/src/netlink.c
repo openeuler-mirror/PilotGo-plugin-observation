@@ -232,3 +232,47 @@ done:
     free(iov.iov_base);
     return ret;
 }
+static int libbpf_netlink_send_recv(struct libbpf_nla_req *req,
+                                    int proto, __dump_nlmsg_t parse_msg,
+                                    libbpf_dump_nlmsg_t parse_attr,
+                                    void *cookie)
+{
+    __u32 nl_pid = 0;
+    int sock, ret;
+
+    sock = libbpf_netlink_open(&nl_pid, proto);
+    if (sock < 0)
+        return sock;
+
+    req->nh.nlmsg_pid = 0;
+    req->nh.nlmsg_seq = time(NULL);
+
+    if (send(sock, req, req->nh.nlmsg_len, 0) < 0)
+    {
+        ret = -errno;
+        goto out;
+    }
+
+    ret = libbpf_netlink_recv(sock, nl_pid, req->nh.nlmsg_seq,
+                              parse_msg, parse_attr, cookie);
+out:
+    libbpf_netlink_close(sock);
+    return ret;
+}
+
+static int parse_genl_family_id(struct nlmsghdr *nh, libbpf_dump_nlmsg_t fn,
+                                void *cookie)
+{
+    struct genlmsghdr *gnl = NLMSG_DATA(nh);
+    struct nlattr *na = (struct nlattr *)((void *)gnl + GENL_HDRLEN);
+    struct nlattr *tb[CTRL_ATTR_FAMILY_ID + 1];
+    __u16 *id = cookie;
+
+    libbpf_nla_parse(tb, CTRL_ATTR_FAMILY_ID, na,
+                     NLMSG_PAYLOAD(nh, sizeof(*gnl)), NULL);
+    if (!tb[CTRL_ATTR_FAMILY_ID])
+        return NL_CONT;
+
+    *id = libbpf_nla_getattr_u16(tb[CTRL_ATTR_FAMILY_ID]);
+    return NL_DONE;
+}
