@@ -2702,3 +2702,34 @@ struct mod_arch_specific {
 	struct mod_plt_sec init;
 	struct plt_entry *ftrace_trampolines;
 };
+
+struct elf64_sym;
+
+typedef struct elf64_sym Elf64_Sym;
+
+struct mod_kallsyms {
+	Elf64_Sym *symtab;
+	unsigned int num_symtab;
+	char *strtab;
+	char *typetab;
+};
+
+typedef const int tracepoint_ptr_t;
+
+struct module_attribute;
+
+struct kernel_param;
+
+struct exception_table_entry;
+
+struct module_sect_attrs;
+
+struct module_notes_attrs;
+
+struct bpf_raw_event_map;
+
+struct trace_event_call;
+
+struct trace_eval_map;
+
+struct error_injection_entry;
