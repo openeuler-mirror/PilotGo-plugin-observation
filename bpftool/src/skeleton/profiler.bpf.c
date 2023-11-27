@@ -89,3 +89,30 @@ fexit_update_maps(u32 id, struct bpf_perf_event_value *after)
 		}
 	}
 }
+
+SEC("fexit/XXX")
+int BPF_PROG(fexit_XXX)
+{
+	struct bpf_perf_event_value readings[MAX_NUM_MATRICS];
+	u32 cpu = bpf_get_smp_processor_id();
+	u32 i, zero = 0;
+	int err;
+	u64 *count;
+
+	/* read all events before updating the maps, to reduce error */
+	for (i = 0; i < num_metric && i < MAX_NUM_MATRICS; i++) {
+		err = bpf_perf_event_read_value(&events, cpu + i * num_cpu,
+						readings + i, sizeof(*readings));
+		if (err)
+			return 0;
+	}
+	count = bpf_map_lookup_elem(&counts, &zero);
+	if (count) {
+		*count += 1;
+		for (i = 0; i < num_metric && i < MAX_NUM_MATRICS; i++)
+			fexit_update_maps(i, &readings[i]);
+	}
+	return 0;
+}
+
+char LICENSE[] SEC("license") = "Dual BSD/GPL";
