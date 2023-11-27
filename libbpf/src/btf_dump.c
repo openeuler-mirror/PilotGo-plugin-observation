@@ -1949,3 +1949,93 @@ static int btf_dump_type_data_check_overflow(struct btf_dump *d,
 	}
 	return (int)size;
 }
+
+static int btf_dump_type_data_check_zero(struct btf_dump *d,
+					 const struct btf_type *t,
+					 __u32 id,
+					 const void *data,
+					 __u8 bits_offset,
+					 __u8 bit_sz)
+{
+	__s64 value;
+	int i, err;
+
+	if (d->typed_dump->emit_zeroes || d->typed_dump->depth == 0 ||
+	    (d->typed_dump->is_array_member &&
+	     !d->typed_dump->is_array_char))
+		return 0;
+
+	t = skip_mods_and_typedefs(d->btf, id, NULL);
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_INT:
+		if (bit_sz)
+			return btf_dump_bitfield_check_zero(d, t, data, bits_offset, bit_sz);
+		return btf_dump_base_type_check_zero(d, t, id, data);
+	case BTF_KIND_FLOAT:
+	case BTF_KIND_PTR:
+		return btf_dump_base_type_check_zero(d, t, id, data);
+	case BTF_KIND_ARRAY: {
+		const struct btf_array *array = btf_array(t);
+		const struct btf_type *elem_type;
+		__u32 elem_type_id, elem_size;
+		bool ischar;
+
+		elem_type_id = array->type;
+		elem_size = btf__resolve_size(d->btf, elem_type_id);
+		elem_type = skip_mods_and_typedefs(d->btf, elem_type_id, NULL);
+
+		ischar = btf_is_int(elem_type) && elem_size == 1;
+
+		for (i = 0; i < array->nelems; i++) {
+			if (i == 0 && ischar && *(char *)data == 0)
+				return -ENODATA;
+			err = btf_dump_type_data_check_zero(d, elem_type,
+							    elem_type_id,
+							    data +
+							    (i * elem_size),
+							    bits_offset, 0);
+			if (err != -ENODATA)
+				return err;
+		}
+		return -ENODATA;
+	}
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION: {
+		const struct btf_member *m = btf_members(t);
+		__u16 n = btf_vlen(t);
+
+		/* if any struct/union member is non-zero, the struct/union
+		 * is considered non-zero and dumped.
+		 */
+		for (i = 0; i < n; i++, m++) {
+			const struct btf_type *mtype;
+			__u32 moffset;
+
+			mtype = btf__type_by_id(d->btf, m->type);
+			moffset = btf_member_bit_offset(t, i);
+
+			/* btf_int_bits() does not store member bitfield size;
+			 * bitfield size needs to be stored here so int display
+			 * of member can retrieve it.
+			 */
+			bit_sz = btf_member_bitfield_size(t, i);
+			err = btf_dump_type_data_check_zero(d, mtype, m->type, data + moffset / 8,
+							    moffset % 8, bit_sz);
+			if (err != ENODATA)
+				return err;
+		}
+		return -ENODATA;
+	}
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		err = btf_dump_get_enum_value(d, t, data, id, &value);
+		if (err)
+			return err;
+		if (value == 0)
+			return -ENODATA;
+		return 0;
+	default:
+		return 0;
+	}
+}
