@@ -1890,3 +1890,62 @@ static int btf_dump_enum_data(struct btf_dump *d,
 	}
 	return 0;
 }
+
+static int btf_dump_datasec_data(struct btf_dump *d,
+				 const struct btf_type *t,
+				 __u32 id,
+				 const void *data)
+{
+	const struct btf_var_secinfo *vsi;
+	const struct btf_type *var;
+	__u32 i;
+	int err;
+
+	btf_dump_type_values(d, "SEC(\"%s\") ", btf_name_of(d, t->name_off));
+
+	for (i = 0, vsi = btf_var_secinfos(t); i < btf_vlen(t); i++, vsi++) {
+		var = btf__type_by_id(d->btf, vsi->type);
+		err = btf_dump_dump_type_data(d, NULL, var, vsi->type, data + vsi->offset, 0, 0);
+		if (err < 0)
+			return err;
+		btf_dump_printf(d, ";");
+	}
+	return 0;
+}
+
+/* return size of type, or if base type overflows, return -E2BIG. */
+static int btf_dump_type_data_check_overflow(struct btf_dump *d,
+					     const struct btf_type *t,
+					     __u32 id,
+					     const void *data,
+					     __u8 bits_offset)
+{
+	__s64 size = btf__resolve_size(d->btf, id);
+
+	if (size < 0 || size >= INT_MAX) {
+		pr_warn("unexpected size [%zu] for id [%u]\n",
+			(size_t)size, id);
+		return -EINVAL;
+	}
+
+	t = skip_mods_and_typedefs(d->btf, id, NULL);
+	if (!t) {
+		pr_warn("unexpected error skipping mods/typedefs for id [%u]\n",
+			id);
+		return -EINVAL;
+	}
+
+	switch (btf_kind(t)) {
+	case BTF_KIND_INT:
+	case BTF_KIND_FLOAT:
+	case BTF_KIND_PTR:
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		if (data + bits_offset / 8 + size > d->typed_dump->data_end)
+			return -E2BIG;
+		break;
+	default:
+		break;
+	}
+	return (int)size;
+}
