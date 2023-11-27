@@ -568,3 +568,49 @@ static int attach_point_to_config(struct bpf_tc_hook *hook,
         return -EINVAL;
     }
 }
+
+static int tc_get_tcm_parent(enum bpf_tc_attach_point attach_point,
+                             __u32 *parent)
+{
+    switch (attach_point)
+    {
+    case BPF_TC_INGRESS:
+    case BPF_TC_EGRESS:
+        if (*parent)
+            return -EINVAL;
+        *parent = TC_H_MAKE(TC_H_CLSACT,
+                            attach_point == BPF_TC_INGRESS ? TC_H_MIN_INGRESS : TC_H_MIN_EGRESS);
+        break;
+    case BPF_TC_CUSTOM:
+        if (!*parent)
+            return -EINVAL;
+        break;
+    default:
+        return -EINVAL;
+    }
+    return 0;
+}
+
+static int tc_qdisc_modify(struct bpf_tc_hook *hook, int cmd, int flags)
+{
+    qdisc_config_t config;
+    int ret;
+    struct libbpf_nla_req req;
+
+    ret = attach_point_to_config(hook, &config);
+    if (ret < 0)
+        return ret;
+
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
+    req.nh.nlmsg_type = cmd;
+    req.tc.tcm_family = AF_UNSPEC;
+    req.tc.tcm_ifindex = OPTS_GET(hook, ifindex, 0);
+
+    ret = config(&req);
+    if (ret < 0)
+        return ret;
+
+    return libbpf_netlink_send_recv(&req, NETLINK_ROUTE, NULL, NULL, NULL);
+}
