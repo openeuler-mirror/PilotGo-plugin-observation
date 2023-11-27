@@ -2596,3 +2596,23 @@ struct kobject {
 	unsigned int state_remove_uevent_sent: 1;
 	unsigned int uevent_suppress: 1;
 };
+
+struct bin_attribute {
+	struct attribute attr;
+	size_t size;
+	void *private;
+	struct address_space * (*f_mapping)();
+	ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+	ssize_t (*write)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+	int (*mmap)(struct file *, struct kobject *, struct bin_attribute *, struct vm_area_struct *);
+};
+
+struct bin_attribute {
+	struct attribute attr;
+	size_t size;
+	void *private;
+	struct address_space * (*f_mapping)();
+	ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+	ssize_t (*write)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+	int (*mmap)(struct file *, struct kobject *, struct bin_attribute *, struct vm_area_struct *);
+};
