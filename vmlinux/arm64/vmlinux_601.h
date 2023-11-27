@@ -2630,3 +2630,12 @@ struct kset {
 	struct kobject kobj;
 	const struct kset_uevent_ops *uevent_ops;
 };
+
+struct kobj_type {
+	void (*release)(struct kobject *);
+	const struct sysfs_ops *sysfs_ops;
+	const struct attribute_group **default_groups;
+	const struct kobj_ns_type_operations * (*child_ns_type)(struct kobject *);
+	const void * (*namespace)(struct kobject *);
+	void (*get_ownership)(struct kobject *, kuid_t *, kgid_t *);
+};
