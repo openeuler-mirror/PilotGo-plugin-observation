@@ -66,3 +66,26 @@ int BPF_PROG(fentry_XXX)
 
 	return 0;
 }
+
+static inline void
+fexit_update_maps(u32 id, struct bpf_perf_event_value *after)
+{
+	struct bpf_perf_event_value *before, diff;
+
+	before = bpf_map_lookup_elem(&fentry_readings, &id);
+	/* only account samples with a valid fentry_reading */
+	if (before && before->counter) {
+		struct bpf_perf_event_value *accum;
+
+		diff.counter = after->counter - before->counter;
+		diff.enabled = after->enabled - before->enabled;
+		diff.running = after->running - before->running;
+
+		accum = bpf_map_lookup_elem(&accum_readings, &id);
+		if (accum) {
+			accum->counter += diff.counter;
+			accum->enabled += diff.enabled;
+			accum->running += diff.running;
+		}
+	}
+}
