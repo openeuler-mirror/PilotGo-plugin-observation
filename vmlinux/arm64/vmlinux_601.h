@@ -2882,3 +2882,30 @@ struct hlist_bl_node;
 struct hlist_bl_head {
 	struct hlist_bl_node *first;
 };
+
+struct hlist_bl_node {
+	struct hlist_bl_node *next;
+	struct hlist_bl_node **pprev;
+};
+
+struct lockref {
+	union {
+		struct {
+			spinlock_t lock;
+			int count;
+		};
+	};
+};
+
+struct qstr {
+	union {
+		struct {
+			u32 hash;
+			u32 len;
+		};
+		u64 hash_len;
+	};
+	const unsigned char *name;
+};
+
+struct dentry_operations;
