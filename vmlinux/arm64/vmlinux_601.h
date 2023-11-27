@@ -2826,3 +2826,36 @@ struct tracepoint {
 	void (*unregfunc)();
 	struct tracepoint_func *funcs;
 };
+
+struct bpf_raw_event_map {
+	struct tracepoint *tp;
+	void *bpf_func;
+	u32 num_args;
+	u32 writable_size;
+	long: 64;
+};
+
+enum cpu_idle_type {
+	CPU_IDLE = 0,
+	CPU_NOT_IDLE = 1,
+	CPU_NEWLY_IDLE = 2,
+	CPU_MAX_IDLE_TYPES = 3,
+};
+
+enum {
+	__SD_BALANCE_NEWIDLE = 0,
+	__SD_BALANCE_EXEC = 1,
+	__SD_BALANCE_FORK = 2,
+	__SD_BALANCE_WAKE = 3,
+	__SD_WAKE_AFFINE = 4,
+	__SD_ASYM_CPUCAPACITY = 5,
+	__SD_ASYM_CPUCAPACITY_FULL = 6,
+	__SD_SHARE_CPUCAPACITY = 7,
+	__SD_SHARE_PKG_RESOURCES = 8,
+	__SD_SERIALIZE = 9,
+	__SD_ASYM_PACKING = 10,
+	__SD_PREFER_SIBLING = 11,
+	__SD_OVERLAP = 12,
+	__SD_NUMA = 13,
+	__SD_FLAG_CNT = 14,
+};
