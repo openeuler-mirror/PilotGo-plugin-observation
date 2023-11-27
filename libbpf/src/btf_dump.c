@@ -1616,3 +1616,75 @@ static int btf_dump_int_data(struct btf_dump *d,
 	}
 	return 0;
 }
+
+union float_data {
+	long double ld;
+	double d;
+	float f;
+};
+
+static int btf_dump_float_data(struct btf_dump *d,
+			       const struct btf_type *t,
+			       __u32 type_id,
+			       const void *data)
+{
+	const union float_data *flp = data;
+	union float_data fl;
+	int sz = t->size;
+
+	/* handle unaligned data; copy to local union */
+	if (!ptr_is_aligned(d->btf, type_id, data)) {
+		memcpy(&fl, data, sz);
+		flp = &fl;
+	}
+
+	switch (sz) {
+	case 16:
+		btf_dump_type_values(d, "%Lf", flp->ld);
+		break;
+	case 8:
+		btf_dump_type_values(d, "%lf", flp->d);
+		break;
+	case 4:
+		btf_dump_type_values(d, "%f", flp->f);
+		break;
+	default:
+		pr_warn("unexpected size %d for id [%u]\n", sz, type_id);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int btf_dump_var_data(struct btf_dump *d,
+			     const struct btf_type *v,
+			     __u32 id,
+			     const void *data)
+{
+	enum btf_func_linkage linkage = btf_var(v)->linkage;
+	const struct btf_type *t;
+	const char *l;
+	__u32 type_id;
+
+	switch (linkage) {
+	case BTF_FUNC_STATIC:
+		l = "static ";
+		break;
+	case BTF_FUNC_EXTERN:
+		l = "extern ";
+		break;
+	case BTF_FUNC_GLOBAL:
+	default:
+		l = "";
+		break;
+	}
+
+	/* format of output here is [linkage] [type] [varname] = (type)value,
+	 * for example "static int cpu_profile_flip = (int)1"
+	 */
+	btf_dump_printf(d, "%s", l);
+	type_id = v->type;
+	t = btf__type_by_id(d->btf, type_id);
+	btf_dump_emit_type_cast(d, type_id, false);
+	btf_dump_printf(d, " %s = ", btf_name_of(d, v->name_off));
+	return btf_dump_dump_type_data(d, NULL, t, type_id, data, 0, 0);
+}
