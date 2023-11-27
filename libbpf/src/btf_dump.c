@@ -1849,3 +1849,44 @@ static int btf_dump_get_enum_value(struct btf_dump *d,
 		return -EINVAL;
 	}
 }
+
+static int btf_dump_enum_data(struct btf_dump *d,
+			      const struct btf_type *t,
+			      __u32 id,
+			      const void *data)
+{
+	bool is_signed;
+	__s64 value;
+	int i, err;
+
+	err = btf_dump_get_enum_value(d, t, data, id, &value);
+	if (err)
+		return err;
+
+	is_signed = btf_kflag(t);
+	if (btf_is_enum(t)) {
+		const struct btf_enum *e;
+
+		for (i = 0, e = btf_enum(t); i < btf_vlen(t); i++, e++) {
+			if (value != e->val)
+				continue;
+			btf_dump_type_values(d, "%s", btf_name_of(d, e->name_off));
+			return 0;
+		}
+
+		btf_dump_type_values(d, is_signed ? "%d" : "%u", value);
+	} else {
+		const struct btf_enum64 *e;
+
+		for (i = 0, e = btf_enum64(t); i < btf_vlen(t); i++, e++) {
+			if (value != btf_enum64_value(e))
+				continue;
+			btf_dump_type_values(d, "%s", btf_name_of(d, e->name_off));
+			return 0;
+		}
+
+		btf_dump_type_values(d, is_signed ? "%lldLL" : "%lluULL",
+				     (unsigned long long)value);
+	}
+	return 0;
+}
