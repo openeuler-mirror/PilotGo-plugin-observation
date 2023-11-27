@@ -1746,3 +1746,49 @@ static int btf_dump_array_data(struct btf_dump *d,
 
 	return 0;
 }
+
+static int btf_dump_struct_data(struct btf_dump *d,
+				const struct btf_type *t,
+				__u32 id,
+				const void *data)
+{
+	const struct btf_member *m = btf_members(t);
+	__u16 n = btf_vlen(t);
+	int i, err = 0;
+
+	/* note that we increment depth before calling btf_dump_print() below;
+	 * this is intentional.  btf_dump_data_newline() will not print a
+	 * newline for depth 0 (since this leaves us with trailing newlines
+	 * at the end of typed display), so depth is incremented first.
+	 * For similar reasons, we decrement depth before showing the closing
+	 * parenthesis.
+	 */
+	d->typed_dump->depth++;
+	btf_dump_printf(d, "{%s", btf_dump_data_newline(d));
+
+	for (i = 0; i < n; i++, m++) {
+		const struct btf_type *mtype;
+		const char *mname;
+		__u32 moffset;
+		__u8 bit_sz;
+
+		mtype = btf__type_by_id(d->btf, m->type);
+		mname = btf_name_of(d, m->name_off);
+		moffset = btf_member_bit_offset(t, i);
+
+		bit_sz = btf_member_bitfield_size(t, i);
+		err = btf_dump_dump_type_data(d, mname, mtype, m->type, data + moffset / 8,
+					      moffset % 8, bit_sz);
+		if (err < 0)
+			return err;
+	}
+	d->typed_dump->depth--;
+	btf_dump_data_pfx(d);
+	btf_dump_type_values(d, "}");
+	return err;
+}
+
+union ptr_data {
+	unsigned int p;
+	unsigned long long lp;
+};
