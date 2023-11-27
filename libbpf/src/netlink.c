@@ -371,3 +371,47 @@ static int __dump_link_nlmsg(struct nlmsghdr *nlh,
 
     return dump_link_nlmsg(cookie, ifi, tb);
 }
+static int get_xdp_info(void *cookie, void *msg, struct nlattr **tb)
+{
+    struct nlattr *xdp_tb[IFLA_XDP_MAX + 1];
+    struct xdp_id_md *xdp_id = cookie;
+    struct ifinfomsg *ifinfo = msg;
+    int ret;
+
+    if (xdp_id->ifindex && xdp_id->ifindex != ifinfo->ifi_index)
+        return 0;
+
+    if (!tb[IFLA_XDP])
+        return 0;
+
+    ret = libbpf_nla_parse_nested(xdp_tb, IFLA_XDP_MAX, tb[IFLA_XDP], NULL);
+    if (ret)
+        return ret;
+
+    if (!xdp_tb[IFLA_XDP_ATTACHED])
+        return 0;
+
+    xdp_id->info.attach_mode = libbpf_nla_getattr_u8(
+        xdp_tb[IFLA_XDP_ATTACHED]);
+
+    if (xdp_id->info.attach_mode == XDP_ATTACHED_NONE)
+        return 0;
+
+    if (xdp_tb[IFLA_XDP_PROG_ID])
+        xdp_id->info.prog_id = libbpf_nla_getattr_u32(
+            xdp_tb[IFLA_XDP_PROG_ID]);
+
+    if (xdp_tb[IFLA_XDP_SKB_PROG_ID])
+        xdp_id->info.skb_prog_id = libbpf_nla_getattr_u32(
+            xdp_tb[IFLA_XDP_SKB_PROG_ID]);
+
+    if (xdp_tb[IFLA_XDP_DRV_PROG_ID])
+        xdp_id->info.drv_prog_id = libbpf_nla_getattr_u32(
+            xdp_tb[IFLA_XDP_DRV_PROG_ID]);
+
+    if (xdp_tb[IFLA_XDP_HW_PROG_ID])
+        xdp_id->info.hw_prog_id = libbpf_nla_getattr_u32(
+            xdp_tb[IFLA_XDP_HW_PROG_ID]);
+
+    return 0;
+}
