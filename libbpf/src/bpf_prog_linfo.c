@@ -84,3 +84,45 @@ static int dissect_jited_func(struct bpf_prog_linfo *prog_linfo,
 errout:
 	return -EINVAL;
 }
+
+void bpf_prog_linfo__free(struct bpf_prog_linfo *prog_linfo)
+{
+	if (!prog_linfo)
+		return;
+
+	free(prog_linfo->raw_linfo);
+	free(prog_linfo->raw_jited_linfo);
+	free(prog_linfo->nr_jited_linfo_per_func);
+	free(prog_linfo->jited_linfo_func_idx);
+	free(prog_linfo);
+}
+
+const struct bpf_line_info *
+bpf_prog_linfo__lfind(const struct bpf_prog_linfo *prog_linfo,
+		      __u32 insn_off, __u32 nr_skip)
+{
+	const struct bpf_line_info *linfo;
+	__u32 rec_size, nr_linfo, i;
+	const void *raw_linfo;
+
+	nr_linfo = prog_linfo->nr_linfo;
+	if (nr_skip >= nr_linfo)
+		return errno = ENOENT, NULL;
+
+	rec_size = prog_linfo->rec_size;
+	raw_linfo = prog_linfo->raw_linfo + (nr_skip * rec_size);
+	linfo = raw_linfo;
+	if (insn_off < linfo->insn_off)
+		return errno = ENOENT, NULL;
+
+	nr_linfo -= nr_skip;
+	for (i = 0; i < nr_linfo; i++) {
+		if (insn_off < linfo->insn_off)
+			break;
+
+		raw_linfo += rec_size;
+		linfo = raw_linfo;
+	}
+
+	return raw_linfo - rec_size;
+}
