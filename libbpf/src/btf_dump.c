@@ -1524,3 +1524,95 @@ static bool ptr_is_aligned(const struct btf *btf, __u32 type_id,
 
 	return ((uintptr_t)data) % alignment == 0;
 }
+
+static int btf_dump_int_data(struct btf_dump *d,
+			     const struct btf_type *t,
+			     __u32 type_id,
+			     const void *data,
+			     __u8 bits_offset)
+{
+	__u8 encoding = btf_int_encoding(t);
+	bool sign = encoding & BTF_INT_SIGNED;
+	char buf[16] __attribute__((aligned(16)));
+	int sz = t->size;
+
+	if (sz == 0 || sz > sizeof(buf)) {
+		pr_warn("unexpected size %d for id [%u]\n", sz, type_id);
+		return -EINVAL;
+	}
+
+	/* handle packed int data - accesses of integers not aligned on
+	 * int boundaries can cause problems on some platforms.
+	 */
+	if (!ptr_is_aligned(d->btf, type_id, data)) {
+		memcpy(buf, data, sz);
+		data = buf;
+	}
+
+	switch (sz) {
+	case 16: {
+		const __u64 *ints = data;
+		__u64 lsi, msi;
+
+		/* avoid use of __int128 as some 32-bit platforms do not
+		 * support it.
+		 */
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		lsi = ints[0];
+		msi = ints[1];
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+		lsi = ints[1];
+		msi = ints[0];
+#else
+# error "Unrecognized __BYTE_ORDER__"
+#endif
+		if (msi == 0)
+			btf_dump_type_values(d, "0x%llx", (unsigned long long)lsi);
+		else
+			btf_dump_type_values(d, "0x%llx%016llx", (unsigned long long)msi,
+					     (unsigned long long)lsi);
+		break;
+	}
+	case 8:
+		if (sign)
+			btf_dump_type_values(d, "%lld", *(long long *)data);
+		else
+			btf_dump_type_values(d, "%llu", *(unsigned long long *)data);
+		break;
+	case 4:
+		if (sign)
+			btf_dump_type_values(d, "%d", *(__s32 *)data);
+		else
+			btf_dump_type_values(d, "%u", *(__u32 *)data);
+		break;
+	case 2:
+		if (sign)
+			btf_dump_type_values(d, "%d", *(__s16 *)data);
+		else
+			btf_dump_type_values(d, "%u", *(__u16 *)data);
+		break;
+	case 1:
+		if (d->typed_dump->is_array_char) {
+			/* check for null terminator */
+			if (d->typed_dump->is_array_terminated)
+				break;
+			if (*(char *)data == '\0') {
+				d->typed_dump->is_array_terminated = true;
+				break;
+			}
+			if (isprint(*(char *)data)) {
+				btf_dump_type_values(d, "'%c'", *(char *)data);
+				break;
+			}
+		}
+		if (sign)
+			btf_dump_type_values(d, "%d", *(__s8 *)data);
+		else
+			btf_dump_type_values(d, "%u", *(__u8 *)data);
+		break;
+	default:
+		pr_warn("unexpected sz %d for id [%u]\n", sz, type_id);
+		return -EINVAL;
+	}
+	return 0;
+}
