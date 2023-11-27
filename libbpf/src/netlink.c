@@ -334,3 +334,40 @@ static int __bpf_set_link_xdp_fd_replace(int ifindex, int fd, int old_fd,
 
     return libbpf_netlink_send_recv(&req, NETLINK_ROUTE, NULL, NULL, NULL);
 }
+int bpf_xdp_attach(int ifindex, int prog_fd, __u32 flags, const struct bpf_xdp_attach_opts *opts)
+{
+    int old_prog_fd, err;
+
+    if (!OPTS_VALID(opts, bpf_xdp_attach_opts))
+        return libbpf_err(-EINVAL);
+
+    old_prog_fd = OPTS_GET(opts, old_prog_fd, 0);
+    if (old_prog_fd)
+        flags |= XDP_FLAGS_REPLACE;
+    else
+        old_prog_fd = -1;
+
+    err = __bpf_set_link_xdp_fd_replace(ifindex, prog_fd, old_prog_fd, flags);
+    return libbpf_err(err);
+}
+
+int bpf_xdp_detach(int ifindex, __u32 flags, const struct bpf_xdp_attach_opts *opts)
+{
+    return bpf_xdp_attach(ifindex, -1, flags, opts);
+}
+
+static int __dump_link_nlmsg(struct nlmsghdr *nlh,
+                             libbpf_dump_nlmsg_t dump_link_nlmsg, void *cookie)
+{
+    struct nlattr *tb[IFLA_MAX + 1], *attr;
+    struct ifinfomsg *ifi = NLMSG_DATA(nlh);
+    int len;
+
+    len = nlh->nlmsg_len - NLMSG_LENGTH(sizeof(*ifi));
+    attr = (struct nlattr *)((void *)ifi + NLMSG_ALIGN(sizeof(*ifi)));
+
+    if (libbpf_nla_parse(tb, IFLA_MAX, attr, len, NULL) != 0)
+        return -LIBBPF_ERRNO__NLPARSE;
+
+    return dump_link_nlmsg(cookie, ifi, tb);
+}
