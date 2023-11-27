@@ -2131,3 +2131,40 @@ static int btf_dump_dump_type_data(struct btf_dump *d,
 		return err;
 	return size;
 }
+
+int btf_dump__dump_type_data(struct btf_dump *d, __u32 id,
+			     const void *data, size_t data_sz,
+			     const struct btf_dump_type_data_opts *opts)
+{
+	struct btf_dump_data typed_dump = {};
+	const struct btf_type *t;
+	int ret;
+
+	if (!OPTS_VALID(opts, btf_dump_type_data_opts))
+		return libbpf_err(-EINVAL);
+
+	t = btf__type_by_id(d->btf, id);
+	if (!t)
+		return libbpf_err(-ENOENT);
+
+	d->typed_dump = &typed_dump;
+	d->typed_dump->data_end = data + data_sz;
+	d->typed_dump->indent_lvl = OPTS_GET(opts, indent_level, 0);
+
+	/* default indent string is a tab */
+	if (!OPTS_GET(opts, indent_str, NULL))
+		d->typed_dump->indent_str[0] = '\t';
+	else
+		libbpf_strlcpy(d->typed_dump->indent_str, opts->indent_str,
+			       sizeof(d->typed_dump->indent_str));
+
+	d->typed_dump->compact = OPTS_GET(opts, compact, false);
+	d->typed_dump->skip_names = OPTS_GET(opts, skip_names, false);
+	d->typed_dump->emit_zeroes = OPTS_GET(opts, emit_zeroes, false);
+
+	ret = btf_dump_dump_type_data(d, NULL, t, id, data, 0, 0);
+
+	d->typed_dump = NULL;
+
+	return libbpf_err(ret);
+}
