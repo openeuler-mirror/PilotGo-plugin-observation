@@ -1688,3 +1688,61 @@ static int btf_dump_var_data(struct btf_dump *d,
 	btf_dump_printf(d, " %s = ", btf_name_of(d, v->name_off));
 	return btf_dump_dump_type_data(d, NULL, t, type_id, data, 0, 0);
 }
+
+static int btf_dump_array_data(struct btf_dump *d,
+			       const struct btf_type *t,
+			       __u32 id,
+			       const void *data)
+{
+	const struct btf_array *array = btf_array(t);
+	const struct btf_type *elem_type;
+	__u32 i, elem_type_id;
+	__s64 elem_size;
+	bool is_array_member;
+
+	elem_type_id = array->type;
+	elem_type = skip_mods_and_typedefs(d->btf, elem_type_id, NULL);
+	elem_size = btf__resolve_size(d->btf, elem_type_id);
+	if (elem_size <= 0) {
+		pr_warn("unexpected elem size %zd for array type [%u]\n",
+			(ssize_t)elem_size, id);
+		return -EINVAL;
+	}
+
+	if (btf_is_int(elem_type)) {
+		/*
+		 * BTF_INT_CHAR encoding never seems to be set for
+		 * char arrays, so if size is 1 and element is
+		 * printable as a char, we'll do that.
+		 */
+		if (elem_size == 1)
+			d->typed_dump->is_array_char = true;
+	}
+
+	/* note that we increment depth before calling btf_dump_print() below;
+	 * this is intentional.  btf_dump_data_newline() will not print a
+	 * newline for depth 0 (since this leaves us with trailing newlines
+	 * at the end of typed display), so depth is incremented first.
+	 * For similar reasons, we decrement depth before showing the closing
+	 * parenthesis.
+	 */
+	d->typed_dump->depth++;
+	btf_dump_printf(d, "[%s", btf_dump_data_newline(d));
+
+	/* may be a multidimensional array, so store current "is array member"
+	 * status so we can restore it correctly later.
+	 */
+	is_array_member = d->typed_dump->is_array_member;
+	d->typed_dump->is_array_member = true;
+	for (i = 0; i < array->nelems; i++, data += elem_size) {
+		if (d->typed_dump->is_array_terminated)
+			break;
+		btf_dump_dump_type_data(d, NULL, elem_type, elem_type_id, data, 0, 0);
+	}
+	d->typed_dump->is_array_member = is_array_member;
+	d->typed_dump->depth--;
+	btf_dump_data_pfx(d);
+	btf_dump_type_values(d, "]");
+
+	return 0;
+}
