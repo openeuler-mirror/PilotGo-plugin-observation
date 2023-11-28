@@ -446,3 +446,42 @@ struct kernel_param_ops {
 	int (*get)(char *, const struct kernel_param *);
 	void (*free)(void *);
 };
+
+typedef void *fl_owner_t;
+
+struct file;
+
+struct kiocb;
+
+struct iov_iter;
+
+struct io_comp_batch;
+
+struct dir_context;
+
+struct poll_table_struct;
+
+struct vm_area_struct;
+
+struct inode;
+
+struct file_lock;
+
+struct page;
+
+struct pipe_inode_info;
+
+struct seq_file;
+
+struct io_uring_cmd;
+
+struct static_call_key {
+	void *func;
+};
+
+struct bug_entry {
+	int bug_addr_disp;
+	int file_disp;
+	short unsigned int line;
+	short unsigned int flags;
+};
