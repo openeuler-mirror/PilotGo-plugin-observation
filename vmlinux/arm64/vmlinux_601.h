@@ -3252,3 +3252,27 @@ struct key_match_data;
 struct kernel_pkey_params;
 
 struct kernel_pkey_query;
+
+struct key_type {
+	const char *name;
+	size_t def_datalen;
+	unsigned int flags;
+	int (*vet_description)(const char *);
+	int (*preparse)(struct key_preparsed_payload *);
+	void (*free_preparse)(struct key_preparsed_payload *);
+	int (*instantiate)(struct key *, struct key_preparsed_payload *);
+	int (*update)(struct key *, struct key_preparsed_payload *);
+	int (*match_preparse)(struct key_match_data *);
+	void (*match_free)(struct key_match_data *);
+	void (*revoke)(struct key *);
+	void (*destroy)(struct key *);
+	void (*describe)(const struct key *, struct seq_file *);
+	long int (*read)(const struct key *, char *, size_t);
+	request_key_actor_t request_key;
+	struct key_restriction * (*lookup_restriction)(const char *);
+	int (*asym_query)(const struct kernel_pkey_params *, struct kernel_pkey_query *);
+	int (*asym_eds_op)(struct kernel_pkey_params *, const void *, void *);
+	int (*asym_verify_signature)(struct kernel_pkey_params *, const void *, const void *);
+	struct list_head link;
+	struct lock_class_key lock_class;
+};
