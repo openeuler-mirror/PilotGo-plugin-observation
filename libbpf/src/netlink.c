@@ -865,3 +865,73 @@ static int __bpf_tc_detach(const struct bpf_tc_hook *hook,
 
     return libbpf_netlink_send_recv(&req, NETLINK_ROUTE, NULL, NULL, NULL);
 }
+int bpf_tc_detach(const struct bpf_tc_hook *hook,
+                  const struct bpf_tc_opts *opts)
+{
+    int ret;
+
+    if (!opts)
+        return libbpf_err(-EINVAL);
+
+    ret = __bpf_tc_detach(hook, opts, false);
+    return libbpf_err(ret);
+}
+
+int bpf_tc_query(const struct bpf_tc_hook *hook, struct bpf_tc_opts *opts)
+{
+    __u32 protocol, handle, priority, parent, prog_id, flags;
+    int ret, ifindex, attach_point, prog_fd;
+    struct bpf_cb_ctx info = {};
+    struct libbpf_nla_req req;
+
+    if (!hook || !opts ||
+        !OPTS_VALID(hook, bpf_tc_hook) ||
+        !OPTS_VALID(opts, bpf_tc_opts))
+        return libbpf_err(-EINVAL);
+
+    ifindex = OPTS_GET(hook, ifindex, 0);
+    parent = OPTS_GET(hook, parent, 0);
+    attach_point = OPTS_GET(hook, attach_point, 0);
+
+    handle = OPTS_GET(opts, handle, 0);
+    priority = OPTS_GET(opts, priority, 0);
+    prog_fd = OPTS_GET(opts, prog_fd, 0);
+    prog_id = OPTS_GET(opts, prog_id, 0);
+    flags = OPTS_GET(opts, flags, 0);
+
+    if (ifindex <= 0 || flags || prog_fd || prog_id ||
+        !handle || !priority)
+        return libbpf_err(-EINVAL);
+    if (priority > UINT16_MAX)
+        return libbpf_err(-EINVAL);
+
+    protocol = ETH_P_ALL;
+
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST;
+    req.nh.nlmsg_type = RTM_GETTFILTER;
+    req.tc.tcm_family = AF_UNSPEC;
+    req.tc.tcm_ifindex = ifindex;
+    req.tc.tcm_handle = handle;
+    req.tc.tcm_info = TC_H_MAKE(priority << 16, htons(protocol));
+
+    ret = tc_get_tcm_parent(attach_point, &parent);
+    if (ret < 0)
+        return libbpf_err(ret);
+    req.tc.tcm_parent = parent;
+
+    ret = nlattr_add(&req, TCA_KIND, "bpf", sizeof("bpf"));
+    if (ret < 0)
+        return libbpf_err(ret);
+
+    info.opts = opts;
+
+    ret = libbpf_netlink_send_recv(&req, NETLINK_ROUTE, get_tc_info, NULL,
+                                   &info);
+    if (ret < 0)
+        return libbpf_err(ret);
+    if (!info.processed)
+        return libbpf_err(-ENOENT);
+    return ret;
+}
