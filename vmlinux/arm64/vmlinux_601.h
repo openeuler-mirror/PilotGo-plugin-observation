@@ -3302,3 +3302,25 @@ struct user_struct {
 	atomic_long_t locked_vm;
 	struct ratelimit_state ratelimit;
 };
+
+struct group_info {
+	atomic_t usage;
+	int ngroups;
+	kgid_t gid[0];
+};
+
+struct core_thread {
+	struct task_struct *task;
+	struct core_thread *next;
+};
+
+struct core_state {
+	atomic_t nr_threads;
+	struct core_thread dumper;
+	struct completion startup;
+};
+
+struct delayed_call {
+	void (*fn)(void *);
+	void *arg;
+};
