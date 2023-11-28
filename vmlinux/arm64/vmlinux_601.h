@@ -3083,3 +3083,38 @@ struct percpu_rw_semaphore {
 	atomic_t block;
 	struct lockdep_map dep_map;
 };
+
+struct sb_writers {
+	int frozen;
+	wait_queue_head_t wait_unfrozen;
+	struct percpu_rw_semaphore rw_sem[3];
+};
+
+typedef struct {
+	__u8 b[16];
+} uuid_t;
+
+struct shrink_control;
+
+struct shrinker {
+	long unsigned int (*count_objects)(struct shrinker *, struct shrink_control *);
+	long unsigned int (*scan_objects)(struct shrinker *, struct shrink_control *);
+	long int batch;
+	int seeks;
+	unsigned int flags;
+	struct list_head list;
+	int id;
+	atomic_long_t *nr_deferred;
+};
+
+struct super_operations;
+
+struct dquot_operations;
+
+struct quotactl_ops;
+
+struct export_operations;
+
+struct xattr_handler;
+
+struct block_device;
