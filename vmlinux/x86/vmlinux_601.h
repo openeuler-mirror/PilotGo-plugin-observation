@@ -13112,3 +13112,67 @@ struct serial_rs485 {
 		};
 	};
 };
+
+struct serial_iso7816 {
+	__u32 flags;
+	__u32 tg;
+	__u32 sc_fi;
+	__u32 sc_di;
+	__u32 clk;
+	__u32 reserved[5];
+};
+
+struct circ_buf {
+	char *buf;
+	int head;
+	int tail;
+};
+
+struct uart_port;
+
+struct uart_ops {
+	unsigned int (*tx_empty)(struct uart_port *);
+	void (*set_mctrl)(struct uart_port *, unsigned int);
+	unsigned int (*get_mctrl)(struct uart_port *);
+	void (*stop_tx)(struct uart_port *);
+	void (*start_tx)(struct uart_port *);
+	void (*throttle)(struct uart_port *);
+	void (*unthrottle)(struct uart_port *);
+	void (*send_xchar)(struct uart_port *, char);
+	void (*stop_rx)(struct uart_port *);
+	void (*start_rx)(struct uart_port *);
+	void (*enable_ms)(struct uart_port *);
+	void (*break_ctl)(struct uart_port *, int);
+	int (*startup)(struct uart_port *);
+	void (*shutdown)(struct uart_port *);
+	void (*flush_buffer)(struct uart_port *);
+	void (*set_termios)(struct uart_port *, struct ktermios *, const struct ktermios *);
+	void (*set_ldisc)(struct uart_port *, struct ktermios *);
+	void (*pm)(struct uart_port *, unsigned int, unsigned int);
+	const char * (*type)(struct uart_port *);
+	void (*release_port)(struct uart_port *);
+	int (*request_port)(struct uart_port *);
+	void (*config_port)(struct uart_port *, int);
+	int (*verify_port)(struct uart_port *, struct serial_struct *);
+	int (*ioctl)(struct uart_port *, unsigned int, long unsigned int);
+};
+
+struct uart_icount {
+	__u32 cts;
+	__u32 dsr;
+	__u32 rng;
+	__u32 dcd;
+	__u32 rx;
+	__u32 tx;
+	__u32 frame;
+	__u32 overrun;
+	__u32 parity;
+	__u32 brk;
+	__u32 buf_overrun;
+};
+
+typedef u64 upf_t;
+
+typedef unsigned int upstat_t;
+
+struct gpio_desc;
