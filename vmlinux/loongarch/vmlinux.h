@@ -522,3 +522,39 @@ struct bug_entry {
 	short unsigned int line;
 	short unsigned int flags;
 };
+
+struct static_call_key {
+	void *func;
+};
+
+struct bug_entry {
+	int bug_addr_disp;
+	int file_disp;
+	short unsigned int line;
+	short unsigned int flags;
+};
+
+typedef __s64 time64_t;
+
+struct __kernel_timespec {
+	__kernel_time64_t tv_sec;
+	long long int tv_nsec;
+};
+
+struct timespec64 {
+	time64_t tv_sec;
+	long int tv_nsec;
+};
+
+enum timespec_type {
+	TT_NONE = 0,
+	TT_NATIVE = 1,
+	TT_COMPAT = 2,
+};
+
+typedef s32 old_time32_t;
+
+struct old_timespec32 {
+	old_time32_t tv_sec;
+	s32 tv_nsec;
+};
