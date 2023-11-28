@@ -13176,3 +13176,75 @@ typedef u64 upf_t;
 typedef unsigned int upstat_t;
 
 struct gpio_desc;
+
+struct uart_state;
+
+struct uart_port {
+	spinlock_t lock;
+	long unsigned int iobase;
+	unsigned char *membase;
+	unsigned int (*serial_in)(struct uart_port *, int);
+	void (*serial_out)(struct uart_port *, int, int);
+	void (*set_termios)(struct uart_port *, struct ktermios *, const struct ktermios *);
+	void (*set_ldisc)(struct uart_port *, struct ktermios *);
+	unsigned int (*get_mctrl)(struct uart_port *);
+	void (*set_mctrl)(struct uart_port *, unsigned int);
+	unsigned int (*get_divisor)(struct uart_port *, unsigned int, unsigned int *);
+	void (*set_divisor)(struct uart_port *, unsigned int, unsigned int, unsigned int);
+	int (*startup)(struct uart_port *);
+	void (*shutdown)(struct uart_port *);
+	void (*throttle)(struct uart_port *);
+	void (*unthrottle)(struct uart_port *);
+	int (*handle_irq)(struct uart_port *);
+	void (*pm)(struct uart_port *, unsigned int, unsigned int);
+	void (*handle_break)(struct uart_port *);
+	int (*rs485_config)(struct uart_port *, struct ktermios *, struct serial_rs485 *);
+	int (*iso7816_config)(struct uart_port *, struct serial_iso7816 *);
+	unsigned int irq;
+	long unsigned int irqflags;
+	unsigned int uartclk;
+	unsigned int fifosize;
+	unsigned char x_char;
+	unsigned char regshift;
+	unsigned char iotype;
+	unsigned char quirks;
+	unsigned int read_status_mask;
+	unsigned int ignore_status_mask;
+	struct uart_state *state;
+	struct uart_icount icount;
+	struct console *cons;
+	upf_t flags;
+	upstat_t status;
+	int hw_stopped;
+	unsigned int mctrl;
+	unsigned int frame_time;
+	unsigned int type;
+	const struct uart_ops *ops;
+	unsigned int custom_divisor;
+	unsigned int line;
+	unsigned int minor;
+	resource_size_t mapbase;
+	resource_size_t mapsize;
+	struct device *dev;
+	long unsigned int sysrq;
+	unsigned int sysrq_ch;
+	unsigned char has_sysrq;
+	unsigned char sysrq_seq;
+	unsigned char hub6;
+	unsigned char suspended;
+	unsigned char console_reinit;
+	const char *name;
+	struct attribute_group *attr_group;
+	const struct attribute_group **tty_groups;
+	struct serial_rs485 rs485;
+	struct serial_rs485 rs485_supported;
+	struct gpio_desc *rs485_term_gpio;
+	struct serial_iso7816 iso7816;
+	void *private_data;
+};
+
+enum uart_pm_state {
+	UART_PM_STATE_ON = 0,
+	UART_PM_STATE_OFF = 3,
+	UART_PM_STATE_UNDEFINED = 4,
+};
