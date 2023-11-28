@@ -479,6 +479,43 @@ struct static_call_key {
 	void *func;
 };
 
+struct file_operations {
+	struct module *owner;
+	loff_t (*llseek)(struct file *, loff_t, int);
+	ssize_t (*read)(struct file *, char *, size_t, loff_t *);
+	ssize_t (*write)(struct file *, const char *, size_t, loff_t *);
+	ssize_t (*read_iter)(struct kiocb *, struct iov_iter *);
+	ssize_t (*write_iter)(struct kiocb *, struct iov_iter *);
+	int (*iopoll)(struct kiocb *, struct io_comp_batch *, unsigned int);
+	int (*iterate)(struct file *, struct dir_context *);
+	int (*iterate_shared)(struct file *, struct dir_context *);
+	__poll_t (*poll)(struct file *, struct poll_table_struct *);
+	long int (*unlocked_ioctl)(struct file *, unsigned int, long unsigned int);
+	long int (*compat_ioctl)(struct file *, unsigned int, long unsigned int);
+	int (*mmap)(struct file *, struct vm_area_struct *);
+	long unsigned int mmap_supported_flags;
+	int (*open)(struct inode *, struct file *);
+	int (*flush)(struct file *, fl_owner_t);
+	int (*release)(struct inode *, struct file *);
+	int (*fsync)(struct file *, loff_t, loff_t, int);
+	int (*fasync)(int, struct file *, int);
+	int (*lock)(struct file *, int, struct file_lock *);
+	ssize_t (*sendpage)(struct file *, struct page *, int, size_t, loff_t *, int);
+	long unsigned int (*get_unmapped_area)(struct file *, long unsigned int, long unsigned int, long unsigned int, long unsigned int);
+	int (*check_flags)(int);
+	int (*flock)(struct file *, int, struct file_lock *);
+	ssize_t (*splice_write)(struct pipe_inode_info *, struct file *, loff_t *, size_t, unsigned int);
+	ssize_t (*splice_read)(struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
+	int (*setlease)(struct file *, long int, struct file_lock **, void **);
+	long int (*fallocate)(struct file *, int, loff_t, loff_t);
+	void (*show_fdinfo)(struct seq_file *, struct file *);
+	ssize_t (*copy_file_range)(struct file *, loff_t, struct file *, loff_t, size_t, unsigned int);
+	loff_t (*remap_file_range)(struct file *, loff_t, struct file *, loff_t, loff_t, unsigned int);
+	int (*fadvise)(struct file *, loff_t, loff_t, int);
+	int (*uring_cmd)(struct io_uring_cmd *, unsigned int);
+	int (*uring_cmd_iopoll)(struct io_uring_cmd *, struct io_comp_batch *, unsigned int);
+};
+
 struct bug_entry {
 	int bug_addr_disp;
 	int file_disp;
