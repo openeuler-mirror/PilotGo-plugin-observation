@@ -3190,3 +3190,42 @@ struct super_block {
 	long: 64;
 	long: 64;
 };
+
+struct mnt_idmap;
+
+struct vfsmount {
+	struct dentry *mnt_root;
+	struct super_block *mnt_sb;
+	int mnt_flags;
+	struct mnt_idmap *mnt_idmap;
+};
+
+struct shrink_control {
+	gfp_t gfp_mask;
+	int nid;
+	long unsigned int nr_to_scan;
+	long unsigned int nr_scanned;
+	struct mem_cgroup *memcg;
+};
+
+struct list_lru_one {
+	struct list_head list;
+	long int nr_items;
+};
+
+struct list_lru_node {
+	spinlock_t lock;
+	struct list_lru_one lru;
+	long int nr_items;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+enum migrate_mode {
+	MIGRATE_ASYNC = 0,
+	MIGRATE_SYNC_LIGHT = 1,
+	MIGRATE_SYNC = 2,
+	MIGRATE_SYNC_NO_COPY = 3,
+};
