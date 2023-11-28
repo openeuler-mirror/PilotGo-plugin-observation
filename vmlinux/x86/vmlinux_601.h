@@ -13318,3 +13318,72 @@ struct driver_private {
 	struct module_kobject *mkobj;
 	struct device_driver *driver;
 };
+
+typedef void (*dr_release_t)(struct device *, void *);
+
+typedef int (*dr_match_t)(struct device *, void *, void *);
+
+struct device_private {
+	struct klist klist_children;
+	struct klist_node knode_parent;
+	struct klist_node knode_driver;
+	struct klist_node knode_bus;
+	struct klist_node knode_class;
+	struct list_head deferred_probe;
+	struct device_driver *async_driver;
+	char *deferred_probe_reason;
+	struct device *device;
+	u8 dead: 1;
+};
+
+struct devres_node {
+	struct list_head entry;
+	dr_release_t release;
+	const char *name;
+	size_t size;
+};
+
+struct devres {
+	struct devres_node node;
+	u8 data[0];
+};
+
+struct devres_group {
+	struct devres_node node[2];
+	void *id;
+	int color;
+};
+
+struct action_devres {
+	void *data;
+	void (*action)(void *);
+};
+
+struct pages_devres {
+	long unsigned int addr;
+	unsigned int order;
+};
+
+typedef __u16 __sum16;
+
+typedef unsigned int slab_flags_t;
+
+struct debugfs_u32_array {
+	u32 *array;
+	u32 n_elements;
+};
+
+typedef short unsigned int __kernel_sa_family_t;
+
+typedef __kernel_sa_family_t sa_family_t;
+
+struct sockaddr {
+	sa_family_t sa_family;
+	union {
+		char sa_data_min[14];
+		struct {
+			struct {} __empty_sa_data;
+			char sa_data[0];
+		};
+	};
+};
