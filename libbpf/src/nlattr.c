@@ -70,3 +70,42 @@ static int validate_nla(struct nlattr *nla, int maxtype,
 
     return 0;
 }
+
+static inline int nlmsg_len(const struct nlmsghdr *nlh)
+{
+    return nlh->nlmsg_len - NLMSG_HDRLEN;
+}
+int libbpf_nla_parse(struct nlattr *tb[], int maxtype, struct nlattr *head,
+                     int len, struct libbpf_nla_policy *policy)
+{
+    struct nlattr *nla;
+    int rem, err;
+
+    memset(tb, 0, sizeof(struct nlattr *) * (maxtype + 1));
+
+    libbpf_nla_for_each_attr(nla, head, len, rem)
+    {
+        int type = nla_type(nla);
+
+        if (type > maxtype)
+            continue;
+
+        if (policy)
+        {
+            err = validate_nla(nla, maxtype, policy);
+            if (err < 0)
+                goto errout;
+        }
+
+        if (tb[type])
+            pr_warn("Attribute of type %#x found multiple times in message, "
+                    "previous attribute is being ignored.\n",
+                    type);
+
+        tb[type] = nla;
+    }
+
+    err = 0;
+errout:
+    return err;
+}
