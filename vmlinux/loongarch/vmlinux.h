@@ -194,3 +194,43 @@ struct qspinlock {
 		};
 	};
 };
+
+typedef struct qspinlock arch_spinlock_t;
+
+struct qrwlock {
+	union {
+		atomic_t cnts;
+		struct {
+			u8 wlocked;
+			u8 __lstate[3];
+		};
+	};
+	arch_spinlock_t wait_lock;
+};
+
+typedef struct qrwlock arch_rwlock_t;
+
+struct lockdep_map {};
+
+struct raw_spinlock {
+	arch_spinlock_t raw_lock;
+};
+
+typedef struct raw_spinlock raw_spinlock_t;
+
+struct ratelimit_state {
+	raw_spinlock_t lock;
+	int interval;
+	int burst;
+	int printed;
+	int missed;
+	long unsigned int begin;
+	long unsigned int flags;
+};
+
+enum module_state {
+	MODULE_STATE_LIVE = 0,
+	MODULE_STATE_COMING = 1,
+	MODULE_STATE_GOING = 2,
+	MODULE_STATE_UNFORMED = 3,
+};
