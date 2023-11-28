@@ -558,3 +558,48 @@ struct old_timespec32 {
 	old_time32_t tv_sec;
 	s32 tv_nsec;
 };
+
+struct pollfd {
+	int fd;
+	short int events;
+	short int revents;
+};
+
+struct restart_block {
+	long unsigned int arch_data;
+	long int (*fn)(struct restart_block *);
+	union {
+		struct {
+			u32 *uaddr;
+			u32 val;
+			u32 flags;
+			u32 bitset;
+			u64 time;
+			u32 *uaddr2;
+		} futex;
+		struct {
+			clockid_t clockid;
+			enum timespec_type type;
+			union {
+				struct __kernel_timespec *rmtp;
+				struct old_timespec32 *compat_rmtp;
+			};
+			u64 expires;
+		} nanosleep;
+		struct {
+			struct pollfd *ufds;
+			int nfds;
+			int has_timeout;
+			long unsigned int tv_sec;
+			long unsigned int tv_nsec;
+		} poll;
+	};
+};
+
+struct cpumask {
+	long unsigned int bits[1];
+};
+
+typedef struct cpumask cpumask_t;
+
+typedef struct cpumask cpumask_var_t[1];
