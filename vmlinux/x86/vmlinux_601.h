@@ -14221,3 +14221,129 @@ struct net_device {
 	long: 64;
 	long: 64;
 };
+
+struct dql {
+	unsigned int num_queued;
+	unsigned int adj_limit;
+	unsigned int last_obj_cnt;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	unsigned int limit;
+	unsigned int num_completed;
+	unsigned int prev_ovlimit;
+	unsigned int prev_num_queued;
+	unsigned int prev_last_obj_cnt;
+	unsigned int lowest_slack;
+	long unsigned int slack_start_time;
+	unsigned int max_limit;
+	unsigned int min_limit;
+	unsigned int slack_hold_time;
+	long: 64;
+	long: 64;
+};
+
+struct prot_inuse {
+	int all;
+	int val[64];
+};
+
+typedef struct {
+	local64_t v;
+} u64_stats_t;
+
+struct icmpv6_mib_device {
+	atomic_long_t mibs[6];
+};
+
+struct icmpv6msg_mib_device {
+	atomic_long_t mibs[512];
+};
+
+struct udp_hslot;
+
+struct udp_table {
+	struct udp_hslot *hash;
+	struct udp_hslot *hash2;
+	unsigned int mask;
+	unsigned int log;
+};
+
+struct ip_ra_chain {
+	struct ip_ra_chain *next;
+	struct sock *sk;
+	union {
+		void (*destructor)(struct sock *);
+		struct sock *saved_sk;
+	};
+	struct callback_head rcu;
+};
+
+struct fib_rule;
+
+struct fib_lookup_arg;
+
+struct fib_rule_hdr;
+
+struct fib_rules_ops {
+	int family;
+	struct list_head list;
+	int rule_size;
+	int addr_size;
+	int unresolved_rules;
+	int nr_goto_rules;
+	unsigned int fib_rules_seq;
+	int (*action)(struct fib_rule *, struct flowi *, int, struct fib_lookup_arg *);
+	bool (*suppress)(struct fib_rule *, int, struct fib_lookup_arg *);
+	int (*match)(struct fib_rule *, struct flowi *, int);
+	int (*configure)(struct fib_rule *, struct sk_buff *, struct fib_rule_hdr *, struct nlattr **, struct netlink_ext_ack *);
+	int (*delete)(struct fib_rule *);
+	int (*compare)(struct fib_rule *, struct fib_rule_hdr *, struct nlattr **);
+	int (*fill)(struct fib_rule *, struct sk_buff *, struct fib_rule_hdr *);
+	size_t (*nlmsg_payload)(struct fib_rule *);
+	void (*flush_cache)(struct fib_rules_ops *);
+	int nlgroup;
+	struct list_head rules_list;
+	struct module *owner;
+	struct net *fro_net;
+	struct callback_head rcu;
+};
+
+struct fib_table {
+	struct hlist_node tb_hlist;
+	u32 tb_id;
+	int tb_num_default;
+	struct callback_head rcu;
+	long unsigned int *tb_data;
+	long unsigned int __data[0];
+};
+
+struct inet_peer_base {
+	struct rb_root rb_root;
+	seqlock_t lock;
+	int total;
+};
+
+struct fib_notifier_ops {
+	int family;
+	struct list_head list;
+	unsigned int (*fib_seq_read)(struct net *);
+	int (*fib_dump)(struct net *, struct notifier_block *, struct netlink_ext_ack *);
+	struct module *owner;
+	struct callback_head rcu;
+};
+
+struct hh_cache {
+	unsigned int hh_len;
+	seqlock_t hh_lock;
+	long unsigned int hh_data[12];
+};
+
+struct neigh_table;
+
+struct neigh_parms;
+
+struct neigh_ops;
