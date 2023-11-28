@@ -3423,3 +3423,40 @@ struct quota_format_type {
 	struct module *qf_owner;
 	struct quota_format_type *qf_next;
 };
+
+enum {
+	DQST_LOOKUPS = 0,
+	DQST_DROPS = 1,
+	DQST_READS = 2,
+	DQST_WRITES = 3,
+	DQST_CACHE_HITS = 4,
+	DQST_ALLOC_DQUOTS = 5,
+	DQST_FREE_DQUOTS = 6,
+	DQST_SYNCS = 7,
+	_DQST_DQSTAT_LAST = 8,
+};
+
+struct quota_format_ops {
+	int (*check_quota_file)(struct super_block *, int);
+	int (*read_file_info)(struct super_block *, int);
+	int (*write_file_info)(struct super_block *, int);
+	int (*free_file_info)(struct super_block *, int);
+	int (*read_dqblk)(struct dquot *);
+	int (*commit_dqblk)(struct dquot *);
+	int (*release_dqblk)(struct dquot *);
+	int (*get_next_id)(struct super_block *, struct kqid *);
+};
+
+struct dquot_operations {
+	int (*write_dquot)(struct dquot *);
+	struct dquot * (*alloc_dquot)(struct super_block *, int);
+	void (*destroy_dquot)(struct dquot *);
+	int (*acquire_dquot)(struct dquot *);
+	int (*release_dquot)(struct dquot *);
+	int (*mark_dirty)(struct dquot *);
+	int (*write_info)(struct super_block *, int);
+	qsize_t * (*get_reserved_space)(struct inode *);
+	int (*get_projid)(struct inode *, kprojid_t *);
+	int (*get_inode_usage)(struct inode *, qsize_t *);
+	int (*get_next_id)(struct super_block *, struct kqid *);
+};
