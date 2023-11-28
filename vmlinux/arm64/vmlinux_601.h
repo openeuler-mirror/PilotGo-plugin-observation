@@ -3053,3 +3053,33 @@ struct mem_dqinfo {
 	qsize_t dqi_max_ino_limit;
 	void *dqi_priv;
 };
+
+struct quota_format_ops;
+
+struct quota_info {
+	unsigned int flags;
+	struct rw_semaphore dqio_sem;
+	struct inode *files[3];
+	struct mem_dqinfo info[3];
+	const struct quota_format_ops *ops[3];
+};
+
+struct rcu_sync {
+	int gp_state;
+	int gp_count;
+	wait_queue_head_t gp_wait;
+	struct callback_head cb_head;
+};
+
+struct rcuwait {
+	struct task_struct *task;
+};
+
+struct percpu_rw_semaphore {
+	struct rcu_sync rss;
+	unsigned int *read_count;
+	struct rcuwait writer;
+	wait_queue_head_t waiters;
+	atomic_t block;
+	struct lockdep_map dep_map;
+};
