@@ -3344,3 +3344,27 @@ struct kiocb {
 	u16 ki_ioprio;
 	struct wait_page_queue *ki_waitq;
 };
+
+struct iattr {
+	unsigned int ia_valid;
+	umode_t ia_mode;
+	union {
+		kuid_t ia_uid;
+		vfsuid_t ia_vfsuid;
+	};
+	union {
+		kgid_t ia_gid;
+		vfsgid_t ia_vfsgid;
+	};
+	loff_t ia_size;
+	struct timespec64 ia_atime;
+	struct timespec64 ia_mtime;
+	struct timespec64 ia_ctime;
+	struct file *ia_file;
+};
+
+typedef __kernel_uid32_t projid_t;
+
+typedef struct {
+	projid_t val;
+} kprojid_t;
