@@ -667,3 +667,51 @@ struct thread_struct {
 	long: 64;
 	long: 64;
 };
+
+typedef unsigned int vm_fault_t;
+
+struct vm_fault;
+
+struct vm_special_mapping {
+	const char *name;
+	struct page **pages;
+	vm_fault_t (*fault)(const struct vm_special_mapping *, struct vm_area_struct *, struct vm_fault *);
+	int (*mremap)(const struct vm_special_mapping *, struct vm_area_struct *);
+};
+
+struct loongarch_vdso_info {
+	void *vdso;
+	long unsigned int size;
+	long unsigned int offset_sigreturn;
+	struct vm_special_mapping code_mapping;
+	struct vm_special_mapping data_mapping;
+};
+
+struct task_struct;
+
+struct pt_regs;
+
+struct thread_info {
+	struct task_struct *task;
+	long unsigned int flags;
+	long unsigned int tp_value;
+	__u32 cpu;
+	int preempt_count;
+	struct pt_regs *regs;
+	long unsigned int syscall;
+	long unsigned int syscall_work;
+};
+
+struct llist_node {
+	struct llist_node *next;
+};
+
+struct __call_single_node {
+	struct llist_node llist;
+	union {
+		unsigned int u_flags;
+		atomic_t a_flags;
+	};
+	u16 src;
+	u16 dst;
+};
