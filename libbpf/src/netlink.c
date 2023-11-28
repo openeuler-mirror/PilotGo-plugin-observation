@@ -800,3 +800,68 @@ int bpf_tc_attach(const struct bpf_tc_hook *hook, struct bpf_tc_opts *opts)
         return libbpf_err(-ENOENT);
     return ret;
 }
+static int __bpf_tc_detach(const struct bpf_tc_hook *hook,
+                           const struct bpf_tc_opts *opts,
+                           const bool flush)
+{
+    __u32 protocol = 0, handle, priority, parent, prog_id, flags;
+    int ret, ifindex, attach_point, prog_fd;
+    struct libbpf_nla_req req;
+
+    if (!hook ||
+        !OPTS_VALID(hook, bpf_tc_hook) ||
+        !OPTS_VALID(opts, bpf_tc_opts))
+        return -EINVAL;
+
+    ifindex = OPTS_GET(hook, ifindex, 0);
+    parent = OPTS_GET(hook, parent, 0);
+    attach_point = OPTS_GET(hook, attach_point, 0);
+
+    handle = OPTS_GET(opts, handle, 0);
+    priority = OPTS_GET(opts, priority, 0);
+    prog_fd = OPTS_GET(opts, prog_fd, 0);
+    prog_id = OPTS_GET(opts, prog_id, 0);
+    flags = OPTS_GET(opts, flags, 0);
+
+    if (ifindex <= 0 || flags || prog_fd || prog_id)
+        return -EINVAL;
+    if (priority > UINT16_MAX)
+        return -EINVAL;
+    if (!flush)
+    {
+        if (!handle || !priority)
+            return -EINVAL;
+        protocol = ETH_P_ALL;
+    }
+    else
+    {
+        if (handle || priority)
+            return -EINVAL;
+    }
+
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+    req.nh.nlmsg_type = RTM_DELTFILTER;
+    req.tc.tcm_family = AF_UNSPEC;
+    req.tc.tcm_ifindex = ifindex;
+    if (!flush)
+    {
+        req.tc.tcm_handle = handle;
+        req.tc.tcm_info = TC_H_MAKE(priority << 16, htons(protocol));
+    }
+
+    ret = tc_get_tcm_parent(attach_point, &parent);
+    if (ret < 0)
+        return ret;
+    req.tc.tcm_parent = parent;
+
+    if (!flush)
+    {
+        ret = nlattr_add(&req, TCA_KIND, "bpf", sizeof("bpf"));
+        if (ret < 0)
+            return ret;
+    }
+
+    return libbpf_netlink_send_recv(&req, NETLINK_ROUTE, NULL, NULL, NULL);
+}
