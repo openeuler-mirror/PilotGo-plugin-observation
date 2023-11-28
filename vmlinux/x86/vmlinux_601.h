@@ -13063,3 +13063,52 @@ struct tty_ldisc {
 	struct tty_ldisc_ops *ops;
 	struct tty_struct *tty;
 };
+
+struct tty_port_operations {
+	int (*carrier_raised)(struct tty_port *);
+	void (*dtr_rts)(struct tty_port *, int);
+	void (*shutdown)(struct tty_port *);
+	int (*activate)(struct tty_port *, struct tty_struct *);
+	void (*destruct)(struct tty_port *);
+};
+
+struct tty_port_client_operations {
+	int (*receive_buf)(struct tty_port *, const unsigned char *, const unsigned char *, size_t);
+	void (*lookahead_buf)(struct tty_port *, const unsigned char *, const unsigned char *, unsigned int);
+	void (*write_wakeup)(struct tty_port *);
+};
+
+struct console {
+	char name[16];
+	void (*write)(struct console *, const char *, unsigned int);
+	int (*read)(struct console *, char *, unsigned int);
+	struct tty_driver * (*device)(struct console *, int *);
+	void (*unblank)();
+	int (*setup)(struct console *, char *);
+	int (*exit)(struct console *);
+	int (*match)(struct console *, char *, int, char *);
+	short int flags;
+	short int index;
+	int cflag;
+	uint ispeed;
+	uint ospeed;
+	u64 seq;
+	long unsigned int dropped;
+	void *data;
+	struct console *next;
+};
+
+struct serial_rs485 {
+	__u32 flags;
+	__u32 delay_rts_before_send;
+	__u32 delay_rts_after_send;
+	union {
+		__u32 padding[5];
+		struct {
+			__u8 addr_recv;
+			__u8 addr_dest;
+			__u8 padding0[2];
+			__u32 padding1[4];
+		};
+	};
+};
