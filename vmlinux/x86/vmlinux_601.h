@@ -13002,3 +13002,64 @@ struct __kfifo {
 struct tty_port_operations;
 
 struct tty_port_client_operations;
+
+struct tty_port {
+	struct tty_bufhead buf;
+	struct tty_struct *tty;
+	struct tty_struct *itty;
+	const struct tty_port_operations *ops;
+	const struct tty_port_client_operations *client_ops;
+	spinlock_t lock;
+	int blocked_open;
+	int count;
+	wait_queue_head_t open_wait;
+	wait_queue_head_t delta_msr_wait;
+	long unsigned int flags;
+	long unsigned int iflags;
+	unsigned char console: 1;
+	struct mutex mutex;
+	struct mutex buf_mutex;
+	unsigned char *xmit_buf;
+	struct {
+		union {
+			struct __kfifo kfifo;
+			unsigned char *type;
+			const unsigned char *const_type;
+			char (*rectype)[0];
+			unsigned char *ptr;
+			const unsigned char *ptr_const;
+		};
+		unsigned char buf[0];
+	} xmit_fifo;
+	unsigned int close_delay;
+	unsigned int closing_wait;
+	int drain_delay;
+	struct kref kref;
+	void *client_data;
+};
+
+struct tty_ldisc_ops {
+	char *name;
+	int num;
+	int (*open)(struct tty_struct *);
+	void (*close)(struct tty_struct *);
+	void (*flush_buffer)(struct tty_struct *);
+	ssize_t (*read)(struct tty_struct *, struct file *, unsigned char *, size_t, void **, long unsigned int);
+	ssize_t (*write)(struct tty_struct *, struct file *, const unsigned char *, size_t);
+	int (*ioctl)(struct tty_struct *, unsigned int, long unsigned int);
+	int (*compat_ioctl)(struct tty_struct *, unsigned int, long unsigned int);
+	void (*set_termios)(struct tty_struct *, const struct ktermios *);
+	__poll_t (*poll)(struct tty_struct *, struct file *, struct poll_table_struct *);
+	void (*hangup)(struct tty_struct *);
+	void (*receive_buf)(struct tty_struct *, const unsigned char *, const char *, int);
+	void (*write_wakeup)(struct tty_struct *);
+	void (*dcd_change)(struct tty_struct *, unsigned int);
+	int (*receive_buf2)(struct tty_struct *, const unsigned char *, const char *, int);
+	void (*lookahead_buf)(struct tty_struct *, const unsigned char *, const unsigned char *, unsigned int);
+	struct module *owner;
+};
+
+struct tty_ldisc {
+	struct tty_ldisc_ops *ops;
+	struct tty_struct *tty;
+};
