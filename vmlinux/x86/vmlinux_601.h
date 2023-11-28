@@ -13248,3 +13248,73 @@ enum uart_pm_state {
 	UART_PM_STATE_OFF = 3,
 	UART_PM_STATE_UNDEFINED = 4,
 };
+
+struct uart_state {
+	struct tty_port port;
+	enum uart_pm_state pm_state;
+	struct circ_buf xmit;
+	atomic_t refcount;
+	wait_queue_head_t remove_wait;
+	struct uart_port *uart_port;
+};
+
+struct earlycon_device {
+	struct console *con;
+	struct uart_port port;
+	char options[16];
+	unsigned int baud;
+};
+
+struct earlycon_id {
+	char name[15];
+	char name_term;
+	char compatible[128];
+	int (*setup)(struct earlycon_device *, const char *);
+};
+
+struct __va_list_tag {
+	unsigned int gp_offset;
+	unsigned int fp_offset;
+	void *overflow_arg_area;
+	void *reg_save_area;
+};
+
+typedef __builtin_va_list va_list;
+
+struct klist_node;
+
+struct klist {
+	spinlock_t k_lock;
+	struct list_head k_list;
+	void (*get)(struct klist_node *);
+	void (*put)(struct klist_node *);
+};
+
+struct klist_node {
+	void *n_klist;
+	struct list_head n_node;
+	struct kref n_ref;
+};
+
+struct subsys_private {
+	struct kset subsys;
+	struct kset *devices_kset;
+	struct list_head interfaces;
+	struct mutex mutex;
+	struct kset *drivers_kset;
+	struct klist klist_devices;
+	struct klist klist_drivers;
+	struct blocking_notifier_head bus_notifier;
+	unsigned int drivers_autoprobe: 1;
+	struct bus_type *bus;
+	struct kset glue_dirs;
+	struct class *class;
+};
+
+struct driver_private {
+	struct kobject kobj;
+	struct klist klist_devices;
+	struct klist_node knode_bus;
+	struct module_kobject *mkobj;
+	struct device_driver *driver;
+};
