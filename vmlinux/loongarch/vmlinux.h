@@ -103,3 +103,54 @@ typedef unsigned int fmode_t;
 typedef u64 phys_addr_t;
 
 typedef long unsigned int irq_hw_number_t;
+
+typedef struct {
+	int counter;
+} atomic_t;
+
+typedef struct {
+	s64 counter;
+} atomic64_t;
+
+struct list_head {
+	struct list_head *next;
+	struct list_head *prev;
+};
+
+struct hlist_node;
+
+struct hlist_head {
+	struct hlist_node *first;
+};
+
+struct hlist_node {
+	struct hlist_node *next;
+	struct hlist_node **pprev;
+};
+
+struct callback_head {
+	struct callback_head *next;
+	void (*func)(struct callback_head *);
+};
+
+struct kernel_symbol {
+	long unsigned int value;
+	const char *name;
+	const char *namespace;
+};
+
+typedef atomic64_t atomic_long_t;
+
+typedef int (*initcall_t)();
+
+struct lock_class_key {};
+
+struct fs_context;
+
+struct fs_parameter_spec;
+
+struct dentry;
+
+struct super_block;
+
+struct module;
