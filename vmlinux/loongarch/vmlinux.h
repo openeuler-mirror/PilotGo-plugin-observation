@@ -303,3 +303,38 @@ struct mod_tree_node {
 	struct module *mod;
 	struct latch_tree_node node;
 };
+
+struct module_layout {
+	void *base;
+	unsigned int size;
+	unsigned int text_size;
+	unsigned int ro_size;
+	unsigned int ro_after_init_size;
+	struct mod_tree_node mtn;
+};
+
+struct mod_section {
+	int shndx;
+	int num_entries;
+	int max_entries;
+};
+
+struct plt_entry;
+
+struct mod_arch_specific {
+	struct mod_section got;
+	struct mod_section plt;
+	struct mod_section plt_idx;
+	struct plt_entry *ftrace_trampolines;
+};
+
+struct elf64_sym;
+
+typedef struct elf64_sym Elf64_Sym;
+
+struct mod_kallsyms {
+	Elf64_Sym *symtab;
+	unsigned int num_symtab;
+	char *strtab;
+	char *typetab;
+};
