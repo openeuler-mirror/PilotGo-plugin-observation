@@ -234,3 +234,38 @@ enum module_state {
 	MODULE_STATE_GOING = 2,
 	MODULE_STATE_UNFORMED = 3,
 };
+
+struct refcount_struct {
+	atomic_t refs;
+};
+
+typedef struct refcount_struct refcount_t;
+
+struct kref {
+	refcount_t refcount;
+};
+
+struct kset;
+
+struct kobj_type;
+
+struct kernfs_node;
+
+struct kobject {
+	const char *name;
+	struct list_head entry;
+	struct kobject *parent;
+	struct kset *kset;
+	const struct kobj_type *ktype;
+	struct kernfs_node *sd;
+	struct kref kref;
+	unsigned int state_initialized: 1;
+	unsigned int state_in_sysfs: 1;
+	unsigned int state_add_uevent_sent: 1;
+	unsigned int state_remove_uevent_sent: 1;
+	unsigned int uevent_suppress: 1;
+};
+
+struct module_param_attrs;
+
+struct completion;
