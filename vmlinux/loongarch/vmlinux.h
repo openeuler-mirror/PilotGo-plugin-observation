@@ -338,3 +338,34 @@ struct mod_kallsyms {
 	char *strtab;
 	char *typetab;
 };
+
+struct module_attribute;
+
+struct kernel_param;
+
+struct exception_table_entry;
+
+struct bug_entry;
+
+struct module_sect_attrs;
+
+struct module_notes_attrs;
+
+struct tracepoint;
+
+typedef struct tracepoint * const tracepoint_ptr_t;
+
+struct srcu_struct;
+
+struct bpf_raw_event_map;
+
+struct trace_event_call;
+
+struct trace_eval_map;
+
+struct kernel_param_ops {
+	unsigned int flags;
+	int (*set)(const char *, const struct kernel_param *);
+	int (*get)(char *, const struct kernel_param *);
+	void (*free)(void *);
+};
