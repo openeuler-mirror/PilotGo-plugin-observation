@@ -603,3 +603,67 @@ struct cpumask {
 typedef struct cpumask cpumask_t;
 
 typedef struct cpumask cpumask_var_t[1];
+
+struct seq_operations;
+
+struct seq_file {
+	char *buf;
+	size_t size;
+	size_t from;
+	size_t count;
+	size_t pad_until;
+	loff_t index;
+	loff_t read_pos;
+	struct mutex lock;
+	const struct seq_operations *op;
+	int poll_event;
+	const struct file *file;
+	void *private;
+};
+
+union fpureg {
+	__u32 val32[8];
+	__u64 val64[4];
+};
+
+struct loongarch_fpu {
+	unsigned int fcsr;
+	uint64_t fcc;
+	union fpureg fpr[32];
+};
+
+struct loongarch_vdso_info;
+
+struct thread_struct {
+	long unsigned int reg01;
+	long unsigned int reg03;
+	long unsigned int reg22;
+	long unsigned int reg23;
+	long unsigned int reg24;
+	long unsigned int reg25;
+	long unsigned int reg26;
+	long unsigned int reg27;
+	long unsigned int reg28;
+	long unsigned int reg29;
+	long unsigned int reg30;
+	long unsigned int reg31;
+	long unsigned int sched_ra;
+	long unsigned int sched_cfa;
+	long unsigned int csr_prmd;
+	long unsigned int csr_crmd;
+	long unsigned int csr_euen;
+	long unsigned int csr_ecfg;
+	long unsigned int csr_badvaddr;
+	long unsigned int scr0;
+	long unsigned int scr1;
+	long unsigned int scr2;
+	long unsigned int scr3;
+	long unsigned int eflags;
+	long unsigned int trap_nr;
+	long unsigned int error_code;
+	struct loongarch_vdso_info *vdso;
+	long: 64;
+	struct loongarch_fpu fpu;
+	long: 64;
+	long: 64;
+};
