@@ -13387,3 +13387,101 @@ struct sockaddr {
 		};
 	};
 };
+
+struct ubuf_info;
+
+struct msghdr {
+	void *msg_name;
+	int msg_namelen;
+	int msg_inq;
+	struct iov_iter msg_iter;
+	union {
+		void *msg_control;
+		void *msg_control_user;
+	};
+	bool msg_control_is_user: 1;
+	bool msg_get_inq: 1;
+	unsigned int msg_flags;
+	__kernel_size_t msg_controllen;
+	struct kiocb *msg_iocb;
+	struct ubuf_info *msg_ubuf;
+	int (*sg_from_iter)(struct sock *, struct sk_buff *, struct iov_iter *, size_t);
+};
+
+struct ubuf_info {
+	void (*callback)(struct sk_buff *, struct ubuf_info *, bool);
+	refcount_t refcnt;
+	u8 flags;
+};
+
+typedef __u64 __addrpair;
+
+typedef __u32 __portpair;
+
+struct hlist_nulls_node {
+	struct hlist_nulls_node *next;
+	struct hlist_nulls_node **pprev;
+};
+
+struct proto;
+
+struct sock_common {
+	union {
+		__addrpair skc_addrpair;
+		struct {
+			__be32 skc_daddr;
+			__be32 skc_rcv_saddr;
+		};
+	};
+	union {
+		unsigned int skc_hash;
+		__u16 skc_u16hashes[2];
+	};
+	union {
+		__portpair skc_portpair;
+		struct {
+			__be16 skc_dport;
+			__u16 skc_num;
+		};
+	};
+	short unsigned int skc_family;
+	volatile unsigned char skc_state;
+	unsigned char skc_reuse: 4;
+	unsigned char skc_reuseport: 1;
+	unsigned char skc_ipv6only: 1;
+	unsigned char skc_net_refcnt: 1;
+	int skc_bound_dev_if;
+	union {
+		struct hlist_node skc_bind_node;
+		struct hlist_node skc_portaddr_node;
+	};
+	struct proto *skc_prot;
+	possible_net_t skc_net;
+	struct in6_addr skc_v6_daddr;
+	struct in6_addr skc_v6_rcv_saddr;
+	atomic64_t skc_cookie;
+	union {
+		long unsigned int skc_flags;
+		struct sock *skc_listener;
+		struct inet_timewait_death_row *skc_tw_dr;
+	};
+	int skc_dontcopy_begin[0];
+	union {
+		struct hlist_node skc_node;
+		struct hlist_nulls_node skc_nulls_node;
+	};
+	short unsigned int skc_tx_queue_mapping;
+	short unsigned int skc_rx_queue_mapping;
+	union {
+		int skc_incoming_cpu;
+		u32 skc_rcv_wnd;
+		u32 skc_tw_rcv_nxt;
+	};
+	refcount_t skc_refcnt;
+	int skc_dontcopy_end[0];
+	union {
+		u32 skc_rxhash;
+		u32 skc_window_clamp;
+		u32 skc_tw_snd_nxt;
+	};
+};
