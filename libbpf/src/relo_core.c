@@ -859,3 +859,76 @@ static int bpf_core_calc_enumval_relo(const struct bpf_core_relo *relo,
 
 	return 0;
 }
+
+static int bpf_core_calc_relo(const char *prog_name,
+							  const struct bpf_core_relo *relo,
+							  int relo_idx,
+							  const struct bpf_core_spec *local_spec,
+							  const struct bpf_core_spec *targ_spec,
+							  struct bpf_core_relo_res *res)
+{
+	int err = -EOPNOTSUPP;
+
+	res->orig_val = 0;
+	res->new_val = 0;
+	res->poison = false;
+	res->validate = true;
+	res->fail_memsz_adjust = false;
+	res->orig_sz = res->new_sz = 0;
+	res->orig_type_id = res->new_type_id = 0;
+
+	if (core_relo_is_field_based(relo->kind))
+	{
+		err = bpf_core_calc_field_relo(prog_name, relo, local_spec,
+									   &res->orig_val, &res->orig_sz,
+									   &res->orig_type_id, &res->validate);
+		err = err ?: bpf_core_calc_field_relo(prog_name, relo, targ_spec, &res->new_val, &res->new_sz, &res->new_type_id, NULL);
+		if (err)
+			goto done;
+
+		res->fail_memsz_adjust = false;
+		if (res->orig_sz != res->new_sz)
+		{
+			const struct btf_type *orig_t, *new_t;
+
+			orig_t = btf_type_by_id(local_spec->btf, res->orig_type_id);
+			new_t = btf_type_by_id(targ_spec->btf, res->new_type_id);
+
+			if (btf_is_ptr(orig_t) && btf_is_ptr(new_t))
+				goto done;
+			if (btf_is_int(orig_t) && btf_is_int(new_t) &&
+				btf_int_encoding(orig_t) != BTF_INT_SIGNED &&
+				btf_int_encoding(new_t) != BTF_INT_SIGNED)
+				goto done;
+
+			res->fail_memsz_adjust = true;
+		}
+	}
+	else if (core_relo_is_type_based(relo->kind))
+	{
+		err = bpf_core_calc_type_relo(relo, local_spec, &res->orig_val, &res->validate);
+		err = err ?: bpf_core_calc_type_relo(relo, targ_spec, &res->new_val, NULL);
+	}
+	else if (core_relo_is_enumval_based(relo->kind))
+	{
+		err = bpf_core_calc_enumval_relo(relo, local_spec, &res->orig_val);
+		err = err ?: bpf_core_calc_enumval_relo(relo, targ_spec, &res->new_val);
+	}
+
+done:
+	if (err == -EUCLEAN)
+	{
+		/* EUCLEAN is used to signal instruction poisoning request */
+		res->poison = true;
+		err = 0;
+	}
+	else if (err == -EOPNOTSUPP)
+	{
+		/* EOPNOTSUPP means unknown/unsupported relocation */
+		pr_warn("prog '%s': relo #%d: unrecognized CO-RE relocation %s (%d) at insn #%d\n",
+				prog_name, relo_idx, core_relo_kind_str(relo->kind),
+				relo->kind, relo->insn_off / 8);
+	}
+
+	return err;
+}
