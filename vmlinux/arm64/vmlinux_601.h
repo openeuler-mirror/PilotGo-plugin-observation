@@ -3229,3 +3229,26 @@ enum migrate_mode {
 	MIGRATE_SYNC = 2,
 	MIGRATE_SYNC_NO_COPY = 3,
 };
+
+struct exception_table_entry {
+	int insn;
+	int fixup;
+	short int type;
+	short int data;
+};
+
+struct key_tag {
+	struct callback_head rcu;
+	refcount_t usage;
+	bool removed;
+};
+
+typedef int (*request_key_actor_t)(struct key *, void *);
+
+struct key_preparsed_payload;
+
+struct key_match_data;
+
+struct kernel_pkey_params;
+
+struct kernel_pkey_query;
