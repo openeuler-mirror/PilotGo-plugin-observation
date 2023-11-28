@@ -14519,3 +14519,79 @@ struct fib6_info {
 };
 
 struct uncached_list;
+
+struct rt6_info {
+	struct dst_entry dst;
+	struct fib6_info *from;
+	int sernum;
+	struct rt6key rt6i_dst;
+	struct rt6key rt6i_src;
+	struct in6_addr rt6i_gateway;
+	struct inet6_dev *rt6i_idev;
+	u32 rt6i_flags;
+	struct list_head rt6i_uncached;
+	struct uncached_list *rt6i_uncached_list;
+	short unsigned int rt6i_nfheader_len;
+};
+
+struct rt6_statistics {
+	__u32 fib_nodes;
+	__u32 fib_route_nodes;
+	__u32 fib_rt_entries;
+	__u32 fib_rt_cache;
+	__u32 fib_discarded_routes;
+	atomic_t fib_rt_alloc;
+};
+
+struct fib6_node {
+	struct fib6_node *parent;
+	struct fib6_node *left;
+	struct fib6_node *right;
+	struct fib6_node *subtree;
+	struct fib6_info *leaf;
+	__u16 fn_bit;
+	__u16 fn_flags;
+	int fn_sernum;
+	struct fib6_info *rr_ptr;
+	struct callback_head rcu;
+};
+
+struct fib6_table {
+	struct hlist_node tb6_hlist;
+	u32 tb6_id;
+	spinlock_t tb6_lock;
+	struct fib6_node tb6_root;
+	struct inet_peer_base tb6_peers;
+	unsigned int flags;
+	unsigned int fib_seq;
+};
+
+struct net_generic {
+	union {
+		struct {
+			unsigned int len;
+			struct callback_head rcu;
+		} s;
+		struct {
+			struct {} __empty_ptr;
+			void *ptr[0];
+		};
+	};
+};
+
+struct ieee_ets {
+	__u8 willing;
+	__u8 ets_cap;
+	__u8 cbs;
+	__u8 tc_tx_bw[8];
+	__u8 tc_rx_bw[8];
+	__u8 tc_tsa[8];
+	__u8 prio_tc[8];
+	__u8 tc_reco_bw[8];
+	__u8 tc_reco_tsa[8];
+	__u8 reco_prio_tc[8];
+};
+
+struct ieee_maxrate {
+	__u64 tc_maxrate[8];
+};
