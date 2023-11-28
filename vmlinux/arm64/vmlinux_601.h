@@ -3324,3 +3324,23 @@ struct delayed_call {
 	void (*fn)(void *);
 	void *arg;
 };
+
+typedef struct {
+	uid_t val;
+} vfsuid_t;
+
+typedef struct {
+	gid_t val;
+} vfsgid_t;
+
+struct wait_page_queue;
+
+struct kiocb {
+	struct file *ki_filp;
+	loff_t ki_pos;
+	void (*ki_complete)(struct kiocb *, long int);
+	void *private;
+	int ki_flags;
+	u16 ki_ioprio;
+	struct wait_page_queue *ki_waitq;
+};
