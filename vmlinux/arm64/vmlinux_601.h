@@ -3368,3 +3368,30 @@ typedef __kernel_uid32_t projid_t;
 typedef struct {
 	projid_t val;
 } kprojid_t;
+
+enum quota_type {
+	USRQUOTA = 0,
+	GRPQUOTA = 1,
+	PRJQUOTA = 2,
+};
+
+struct kqid {
+	union {
+		kuid_t uid;
+		kgid_t gid;
+		kprojid_t projid;
+	};
+	enum quota_type type;
+};
+
+struct mem_dqblk {
+	qsize_t dqb_bhardlimit;
+	qsize_t dqb_bsoftlimit;
+	qsize_t dqb_curspace;
+	qsize_t dqb_rsvspace;
+	qsize_t dqb_ihardlimit;
+	qsize_t dqb_isoftlimit;
+	qsize_t dqb_curinodes;
+	time64_t dqb_btime;
+	time64_t dqb_itime;
+};
