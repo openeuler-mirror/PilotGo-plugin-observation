@@ -3276,3 +3276,29 @@ struct key_type {
 	struct list_head link;
 	struct lock_class_key lock_class;
 };
+
+typedef int (*key_restrict_link_func_t)(struct key *, const struct key_type *, const union key_payload *, struct key *);
+
+struct key_restriction {
+	key_restrict_link_func_t check;
+	struct key *key;
+	struct key_type *keytype;
+};
+
+struct percpu_counter {
+	raw_spinlock_t lock;
+	s64 count;
+	struct list_head list;
+	s32 *counters;
+};
+
+struct user_struct {
+	refcount_t __count;
+	struct percpu_counter epoll_watches;
+	long unsigned int unix_inflight;
+	atomic_long_t pipe_bufs;
+	struct hlist_node uidhash_node;
+	kuid_t uid;
+	atomic_long_t locked_vm;
+	struct ratelimit_state ratelimit;
+};
