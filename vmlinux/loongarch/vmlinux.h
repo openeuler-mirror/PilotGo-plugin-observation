@@ -715,3 +715,51 @@ struct __call_single_node {
 	u16 src;
 	u16 dst;
 };
+
+struct load_weight {
+	long unsigned int weight;
+	u32 inv_weight;
+};
+
+struct util_est {
+	unsigned int enqueued;
+	unsigned int ewma;
+};
+
+struct sched_avg {
+	u64 last_update_time;
+	u64 load_sum;
+	u64 runnable_sum;
+	u32 util_sum;
+	u32 period_contrib;
+	long unsigned int load_avg;
+	long unsigned int runnable_avg;
+	long unsigned int util_avg;
+	struct util_est util_est;
+};
+
+struct cfs_rq;
+
+struct sched_entity {
+	struct load_weight load;
+	struct rb_node run_node;
+	struct list_head group_node;
+	unsigned int on_rq;
+	u64 exec_start;
+	u64 sum_exec_runtime;
+	u64 vruntime;
+	u64 prev_sum_exec_runtime;
+	u64 nr_migrations;
+	int depth;
+	struct sched_entity *parent;
+	struct cfs_rq *cfs_rq;
+	struct cfs_rq *my_q;
+	long unsigned int runnable_weight;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct sched_avg avg;
+};
