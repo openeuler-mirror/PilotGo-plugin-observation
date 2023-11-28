@@ -269,3 +269,37 @@ struct kobject {
 struct module_param_attrs;
 
 struct completion;
+
+struct module_kobject {
+	struct kobject kobj;
+	struct module *mod;
+	struct kobject *drivers_dir;
+	struct module_param_attrs *mp;
+	struct completion *kobj_completion;
+};
+
+struct optimistic_spin_queue {
+	atomic_t tail;
+};
+
+struct mutex {
+	atomic_long_t owner;
+	raw_spinlock_t wait_lock;
+	struct optimistic_spin_queue osq;
+	struct list_head wait_list;
+};
+
+struct rb_node {
+	long unsigned int __rb_parent_color;
+	struct rb_node *rb_right;
+	struct rb_node *rb_left;
+};
+
+struct latch_tree_node {
+	struct rb_node node[2];
+};
+
+struct mod_tree_node {
+	struct module *mod;
+	struct latch_tree_node node;
+};
