@@ -3395,3 +3395,31 @@ struct mem_dqblk {
 	time64_t dqb_btime;
 	time64_t dqb_itime;
 };
+
+struct dquot {
+	struct hlist_node dq_hash;
+	struct list_head dq_inuse;
+	struct list_head dq_free;
+	struct list_head dq_dirty;
+	struct mutex dq_lock;
+	spinlock_t dq_dqb_lock;
+	atomic_t dq_count;
+	struct super_block *dq_sb;
+	struct kqid dq_id;
+	loff_t dq_off;
+	long unsigned int dq_flags;
+	struct mem_dqblk dq_dqb;
+};
+
+enum {
+	DQF_ROOT_SQUASH_B = 0,
+	DQF_SYS_FILE_B = 16,
+	DQF_PRIVATE = 17,
+};
+
+struct quota_format_type {
+	int qf_fmt_id;
+	const struct quota_format_ops *qf_ops;
+	struct module *qf_owner;
+	struct quota_format_type *qf_next;
+};
