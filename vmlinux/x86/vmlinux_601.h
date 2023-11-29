@@ -13953,3 +13953,97 @@ struct net_device_stats {
 		atomic_long_t __tx_compressed;
 	};
 };
+
+struct netdev_hw_addr_list {
+	struct list_head list;
+	int count;
+	struct rb_root tree;
+};
+
+enum rx_handler_result {
+	RX_HANDLER_CONSUMED = 0,
+	RX_HANDLER_ANOTHER = 1,
+	RX_HANDLER_EXACT = 2,
+	RX_HANDLER_PASS = 3,
+};
+
+typedef enum rx_handler_result rx_handler_result_t;
+
+typedef rx_handler_result_t rx_handler_func_t(struct sk_buff **);
+
+enum netdev_ml_priv_type {
+	ML_PRIV_NONE = 0,
+	ML_PRIV_CAN = 1,
+};
+
+struct netdev_tc_txq {
+	u16 count;
+	u16 offset;
+};
+
+struct sfp_bus;
+
+struct bpf_xdp_link;
+
+struct bpf_xdp_entity {
+	struct bpf_prog *prog;
+	struct bpf_xdp_link *link;
+};
+
+struct netdev_name_node;
+
+struct dev_ifalias;
+
+struct net_device_ops;
+
+struct net_device_core_stats;
+
+struct ethtool_ops;
+
+struct l3mdev_ops;
+
+struct ndisc_ops;
+
+struct header_ops;
+
+struct in_device;
+
+struct inet6_dev;
+
+struct vlan_info;
+
+struct mpls_dev;
+
+struct netdev_rx_queue;
+
+struct mini_Qdisc;
+
+struct netdev_queue;
+
+struct cpu_rmap;
+
+struct Qdisc;
+
+struct xdp_dev_bulk_queue;
+
+struct xps_dev_maps;
+
+struct pcpu_lstats;
+
+struct pcpu_sw_netstats;
+
+struct pcpu_dstats;
+
+struct rtnl_link_ops;
+
+struct dcbnl_rtnl_ops;
+
+struct phy_device;
+
+struct udp_tunnel_nic_info;
+
+struct udp_tunnel_nic;
+
+struct rtnl_hw_stats64;
+
+struct devlink_port;
