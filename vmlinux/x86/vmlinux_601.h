@@ -13717,3 +13717,98 @@ struct proto_ops {
 	int (*sendmsg_locked)(struct sock *, struct msghdr *, size_t);
 	int (*set_rcvlowat)(struct sock *, int);
 };
+
+enum {
+	NETIF_F_SG_BIT = 0,
+	NETIF_F_IP_CSUM_BIT = 1,
+	__UNUSED_NETIF_F_1 = 2,
+	NETIF_F_HW_CSUM_BIT = 3,
+	NETIF_F_IPV6_CSUM_BIT = 4,
+	NETIF_F_HIGHDMA_BIT = 5,
+	NETIF_F_FRAGLIST_BIT = 6,
+	NETIF_F_HW_VLAN_CTAG_TX_BIT = 7,
+	NETIF_F_HW_VLAN_CTAG_RX_BIT = 8,
+	NETIF_F_HW_VLAN_CTAG_FILTER_BIT = 9,
+	NETIF_F_VLAN_CHALLENGED_BIT = 10,
+	NETIF_F_GSO_BIT = 11,
+	NETIF_F_LLTX_BIT = 12,
+	NETIF_F_NETNS_LOCAL_BIT = 13,
+	NETIF_F_GRO_BIT = 14,
+	NETIF_F_LRO_BIT = 15,
+	NETIF_F_GSO_SHIFT = 16,
+	NETIF_F_TSO_BIT = 16,
+	NETIF_F_GSO_ROBUST_BIT = 17,
+	NETIF_F_TSO_ECN_BIT = 18,
+	NETIF_F_TSO_MANGLEID_BIT = 19,
+	NETIF_F_TSO6_BIT = 20,
+	NETIF_F_FSO_BIT = 21,
+	NETIF_F_GSO_GRE_BIT = 22,
+	NETIF_F_GSO_GRE_CSUM_BIT = 23,
+	NETIF_F_GSO_IPXIP4_BIT = 24,
+	NETIF_F_GSO_IPXIP6_BIT = 25,
+	NETIF_F_GSO_UDP_TUNNEL_BIT = 26,
+	NETIF_F_GSO_UDP_TUNNEL_CSUM_BIT = 27,
+	NETIF_F_GSO_PARTIAL_BIT = 28,
+	NETIF_F_GSO_TUNNEL_REMCSUM_BIT = 29,
+	NETIF_F_GSO_SCTP_BIT = 30,
+	NETIF_F_GSO_ESP_BIT = 31,
+	NETIF_F_GSO_UDP_BIT = 32,
+	NETIF_F_GSO_UDP_L4_BIT = 33,
+	NETIF_F_GSO_FRAGLIST_BIT = 34,
+	NETIF_F_GSO_LAST = 34,
+	NETIF_F_FCOE_CRC_BIT = 35,
+	NETIF_F_SCTP_CRC_BIT = 36,
+	NETIF_F_FCOE_MTU_BIT = 37,
+	NETIF_F_NTUPLE_BIT = 38,
+	NETIF_F_RXHASH_BIT = 39,
+	NETIF_F_RXCSUM_BIT = 40,
+	NETIF_F_NOCACHE_COPY_BIT = 41,
+	NETIF_F_LOOPBACK_BIT = 42,
+	NETIF_F_RXFCS_BIT = 43,
+	NETIF_F_RXALL_BIT = 44,
+	NETIF_F_HW_VLAN_STAG_TX_BIT = 45,
+	NETIF_F_HW_VLAN_STAG_RX_BIT = 46,
+	NETIF_F_HW_VLAN_STAG_FILTER_BIT = 47,
+	NETIF_F_HW_L2FW_DOFFLOAD_BIT = 48,
+	NETIF_F_HW_TC_BIT = 49,
+	NETIF_F_HW_ESP_BIT = 50,
+	NETIF_F_HW_ESP_TX_CSUM_BIT = 51,
+	NETIF_F_RX_UDP_TUNNEL_PORT_BIT = 52,
+	NETIF_F_HW_TLS_TX_BIT = 53,
+	NETIF_F_HW_TLS_RX_BIT = 54,
+	NETIF_F_GRO_HW_BIT = 55,
+	NETIF_F_HW_TLS_RECORD_BIT = 56,
+	NETIF_F_GRO_FRAGLIST_BIT = 57,
+	NETIF_F_HW_MACSEC_BIT = 58,
+	NETIF_F_GRO_UDP_FWD_BIT = 59,
+	NETIF_F_HW_HSR_TAG_INS_BIT = 60,
+	NETIF_F_HW_HSR_TAG_RM_BIT = 61,
+	NETIF_F_HW_HSR_FWD_BIT = 62,
+	NETIF_F_HW_HSR_DUP_BIT = 63,
+	NETDEV_FEATURE_COUNT = 64,
+};
+
+struct ethhdr {
+	unsigned char h_dest[6];
+	unsigned char h_source[6];
+	__be16 h_proto;
+};
+
+struct flowi_tunnel {
+	__be64 tun_id;
+};
+
+struct flowi_common {
+	int flowic_oif;
+	int flowic_iif;
+	int flowic_l3mdev;
+	__u32 flowic_mark;
+	__u8 flowic_tos;
+	__u8 flowic_scope;
+	__u8 flowic_proto;
+	__u8 flowic_flags;
+	__u32 flowic_secid;
+	kuid_t flowic_uid;
+	struct flowi_tunnel flowic_tun_key;
+	__u32 flowic_multipath_hash;
+};
