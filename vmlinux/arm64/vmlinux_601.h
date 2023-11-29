@@ -3594,3 +3594,52 @@ struct file_lock_operations {
 	void (*fl_copy_lock)(struct file_lock *, struct file_lock *);
 	void (*fl_release_private)(struct file_lock *);
 };
+
+struct nlm_lockowner;
+
+struct nfs_lock_info {
+	u32 state;
+	struct nlm_lockowner *owner;
+	struct list_head list;
+};
+
+struct nfs4_lock_state;
+
+struct nfs4_lock_info {
+	struct nfs4_lock_state *owner;
+};
+
+struct fasync_struct;
+
+struct lock_manager_operations;
+
+struct file_lock {
+	struct file_lock *fl_blocker;
+	struct list_head fl_list;
+	struct hlist_node fl_link;
+	struct list_head fl_blocked_requests;
+	struct list_head fl_blocked_member;
+	fl_owner_t fl_owner;
+	unsigned int fl_flags;
+	unsigned char fl_type;
+	unsigned int fl_pid;
+	int fl_link_cpu;
+	wait_queue_head_t fl_wait;
+	struct file *fl_file;
+	loff_t fl_start;
+	loff_t fl_end;
+	struct fasync_struct *fl_fasync;
+	long unsigned int fl_break_time;
+	long unsigned int fl_downgrade_time;
+	const struct file_lock_operations *fl_ops;
+	const struct lock_manager_operations *fl_lmops;
+	union {
+		struct nfs_lock_info nfs_fl;
+		struct nfs4_lock_info nfs4_fl;
+		struct {
+			struct list_head link;
+			int state;
+			unsigned int debug_id;
+		} afs;
+	} fl_u;
+};
