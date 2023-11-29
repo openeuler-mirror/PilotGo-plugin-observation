@@ -3676,3 +3676,46 @@ enum {
 };
 
 struct kstatfs;
+
+struct super_operations {
+	struct inode * (*alloc_inode)(struct super_block *);
+	void (*destroy_inode)(struct inode *);
+	void (*free_inode)(struct inode *);
+	void (*dirty_inode)(struct inode *, int);
+	int (*write_inode)(struct inode *, struct writeback_control *);
+	int (*drop_inode)(struct inode *);
+	void (*evict_inode)(struct inode *);
+	void (*put_super)(struct super_block *);
+	int (*sync_fs)(struct super_block *, int);
+	int (*freeze_super)(struct super_block *);
+	int (*freeze_fs)(struct super_block *);
+	int (*thaw_super)(struct super_block *);
+	int (*unfreeze_fs)(struct super_block *);
+	int (*statfs)(struct dentry *, struct kstatfs *);
+	int (*remount_fs)(struct super_block *, int *, char *);
+	void (*umount_begin)(struct super_block *);
+	int (*show_options)(struct seq_file *, struct dentry *);
+	int (*show_devname)(struct seq_file *, struct dentry *);
+	int (*show_path)(struct seq_file *, struct dentry *);
+	int (*show_stats)(struct seq_file *, struct dentry *);
+	long int (*nr_cached_objects)(struct super_block *, struct shrink_control *);
+	long int (*free_cached_objects)(struct super_block *, struct shrink_control *);
+};
+
+struct iomap;
+
+struct fid;
+
+struct export_operations {
+	int (*encode_fh)(struct inode *, __u32 *, int *, struct inode *);
+	struct dentry * (*fh_to_dentry)(struct super_block *, struct fid *, int, int);
+	struct dentry * (*fh_to_parent)(struct super_block *, struct fid *, int, int);
+	int (*get_name)(struct dentry *, char *, struct dentry *);
+	struct dentry * (*get_parent)(struct dentry *);
+	int (*commit_metadata)(struct inode *);
+	int (*get_uuid)(struct super_block *, u8 *, u32 *, u64 *);
+	int (*map_blocks)(struct inode *, loff_t, u64, struct iomap *, bool, u32 *);
+	int (*commit_blocks)(struct inode *, struct iomap *, int, struct iattr *);
+	u64 (*fetch_iversion)(struct inode *);
+	long unsigned int flags;
+};
