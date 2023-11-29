@@ -1399,3 +1399,43 @@ struct dentry {
 		struct callback_head d_rcu;
 	} d_u;
 };
+
+typedef struct {
+	gid_t val;
+} kgid_t;
+
+struct rw_semaphore {
+	atomic_long_t count;
+	atomic_long_t owner;
+	struct optimistic_spin_queue osq;
+	raw_spinlock_t wait_lock;
+	struct list_head wait_list;
+};
+
+struct xarray {
+	spinlock_t xa_lock;
+	gfp_t xa_flags;
+	void *xa_head;
+};
+
+typedef u32 errseq_t;
+
+struct address_space_operations;
+
+struct address_space {
+	struct inode *host;
+	struct xarray i_pages;
+	struct rw_semaphore invalidate_lock;
+	gfp_t gfp_mask;
+	atomic_t i_mmap_writable;
+	struct rb_root_cached i_mmap;
+	struct rw_semaphore i_mmap_rwsem;
+	long unsigned int nrpages;
+	long unsigned int writeback_index;
+	const struct address_space_operations *a_ops;
+	long unsigned int flags;
+	errseq_t wb_err;
+	spinlock_t private_lock;
+	struct list_head private_list;
+	void *private_data;
+};
