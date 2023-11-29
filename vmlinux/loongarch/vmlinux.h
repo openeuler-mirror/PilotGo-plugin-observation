@@ -763,3 +763,43 @@ struct sched_entity {
 	long: 64;
 	struct sched_avg avg;
 };
+
+struct rt_rq;
+
+struct sched_rt_entity {
+	struct list_head run_list;
+	long unsigned int timeout;
+	long unsigned int watchdog_stamp;
+	unsigned int time_slice;
+	short unsigned int on_rq;
+	short unsigned int on_list;
+	struct sched_rt_entity *back;
+	struct sched_rt_entity *parent;
+	struct rt_rq *rt_rq;
+	struct rt_rq *my_q;
+};
+
+typedef s64 ktime_t;
+
+struct timerqueue_node {
+	struct rb_node node;
+	ktime_t expires;
+};
+
+enum hrtimer_restart {
+	HRTIMER_NORESTART = 0,
+	HRTIMER_RESTART = 1,
+};
+
+struct hrtimer_clock_base;
+
+struct hrtimer {
+	struct timerqueue_node node;
+	ktime_t _softexpires;
+	enum hrtimer_restart (*function)(struct hrtimer *);
+	struct hrtimer_clock_base *base;
+	u8 state;
+	u8 is_rel;
+	u8 is_soft;
+	u8 is_hard;
+};
