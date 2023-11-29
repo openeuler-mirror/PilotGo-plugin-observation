@@ -14595,3 +14595,124 @@ struct ieee_ets {
 struct ieee_maxrate {
 	__u64 tc_maxrate[8];
 };
+
+struct ieee_qcn {
+	__u8 rpg_enable[8];
+	__u32 rppp_max_rps[8];
+	__u32 rpg_time_reset[8];
+	__u32 rpg_byte_reset[8];
+	__u32 rpg_threshold[8];
+	__u32 rpg_max_rate[8];
+	__u32 rpg_ai_rate[8];
+	__u32 rpg_hai_rate[8];
+	__u32 rpg_gd[8];
+	__u32 rpg_min_dec_fac[8];
+	__u32 rpg_min_rate[8];
+	__u32 cndd_state_machine[8];
+};
+
+struct ieee_qcn_stats {
+	__u64 rppp_rp_centiseconds[8];
+	__u32 rppp_created_rps[8];
+};
+
+struct ieee_pfc {
+	__u8 pfc_cap;
+	__u8 pfc_en;
+	__u8 mbc;
+	__u16 delay;
+	__u64 requests[8];
+	__u64 indications[8];
+};
+
+struct dcbnl_buffer {
+	__u8 prio2buffer[8];
+	__u32 buffer_size[8];
+	__u32 total_size;
+};
+
+struct cee_pg {
+	__u8 willing;
+	__u8 error;
+	__u8 pg_en;
+	__u8 tcs_supported;
+	__u8 pg_bw[8];
+	__u8 prio_pg[8];
+};
+
+struct cee_pfc {
+	__u8 willing;
+	__u8 error;
+	__u8 pfc_en;
+	__u8 tcs_supported;
+};
+
+struct dcb_app {
+	__u8 selector;
+	__u8 priority;
+	__u16 protocol;
+};
+
+struct dcb_peer_app_info {
+	__u8 willing;
+	__u8 error;
+};
+
+struct dcbnl_rtnl_ops {
+	int (*ieee_getets)(struct net_device *, struct ieee_ets *);
+	int (*ieee_setets)(struct net_device *, struct ieee_ets *);
+	int (*ieee_getmaxrate)(struct net_device *, struct ieee_maxrate *);
+	int (*ieee_setmaxrate)(struct net_device *, struct ieee_maxrate *);
+	int (*ieee_getqcn)(struct net_device *, struct ieee_qcn *);
+	int (*ieee_setqcn)(struct net_device *, struct ieee_qcn *);
+	int (*ieee_getqcnstats)(struct net_device *, struct ieee_qcn_stats *);
+	int (*ieee_getpfc)(struct net_device *, struct ieee_pfc *);
+	int (*ieee_setpfc)(struct net_device *, struct ieee_pfc *);
+	int (*ieee_getapp)(struct net_device *, struct dcb_app *);
+	int (*ieee_setapp)(struct net_device *, struct dcb_app *);
+	int (*ieee_delapp)(struct net_device *, struct dcb_app *);
+	int (*ieee_peer_getets)(struct net_device *, struct ieee_ets *);
+	int (*ieee_peer_getpfc)(struct net_device *, struct ieee_pfc *);
+	u8 (*getstate)(struct net_device *);
+	u8 (*setstate)(struct net_device *, u8);
+	void (*getpermhwaddr)(struct net_device *, u8 *);
+	void (*setpgtccfgtx)(struct net_device *, int, u8, u8, u8, u8);
+	void (*setpgbwgcfgtx)(struct net_device *, int, u8);
+	void (*setpgtccfgrx)(struct net_device *, int, u8, u8, u8, u8);
+	void (*setpgbwgcfgrx)(struct net_device *, int, u8);
+	void (*getpgtccfgtx)(struct net_device *, int, u8 *, u8 *, u8 *, u8 *);
+	void (*getpgbwgcfgtx)(struct net_device *, int, u8 *);
+	void (*getpgtccfgrx)(struct net_device *, int, u8 *, u8 *, u8 *, u8 *);
+	void (*getpgbwgcfgrx)(struct net_device *, int, u8 *);
+	void (*setpfccfg)(struct net_device *, int, u8);
+	void (*getpfccfg)(struct net_device *, int, u8 *);
+	u8 (*setall)(struct net_device *);
+	u8 (*getcap)(struct net_device *, int, u8 *);
+	int (*getnumtcs)(struct net_device *, int, u8 *);
+	int (*setnumtcs)(struct net_device *, int, u8);
+	u8 (*getpfcstate)(struct net_device *);
+	void (*setpfcstate)(struct net_device *, u8);
+	void (*getbcncfg)(struct net_device *, int, u32 *);
+	void (*setbcncfg)(struct net_device *, int, u32);
+	void (*getbcnrp)(struct net_device *, int, u8 *);
+	void (*setbcnrp)(struct net_device *, int, u8);
+	int (*setapp)(struct net_device *, u8, u16, u8);
+	int (*getapp)(struct net_device *, u8, u16);
+	u8 (*getfeatcfg)(struct net_device *, int, u8 *);
+	u8 (*setfeatcfg)(struct net_device *, int, u8);
+	u8 (*getdcbx)(struct net_device *);
+	u8 (*setdcbx)(struct net_device *, u8);
+	int (*peer_getappinfo)(struct net_device *, struct dcb_peer_app_info *, u16 *);
+	int (*peer_getapptable)(struct net_device *, struct dcb_app *);
+	int (*cee_peer_getpg)(struct net_device *, struct cee_pg *);
+	int (*cee_peer_getpfc)(struct net_device *, struct cee_pfc *);
+	int (*dcbnl_getbuffer)(struct net_device *, struct dcbnl_buffer *);
+	int (*dcbnl_setbuffer)(struct net_device *, struct dcbnl_buffer *);
+	int (*dcbnl_setapptrust)(struct net_device *, u8 *, int);
+	int (*dcbnl_getapptrust)(struct net_device *, u8 *, int *);
+};
+
+struct xdp_mem_info {
+	u32 type;
+	u32 id;
+};
