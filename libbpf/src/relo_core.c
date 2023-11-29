@@ -1195,3 +1195,126 @@ int bpf_core_format_spec(char *buf, size_t buf_sz, const struct bpf_core_spec *s
 	return len;
 #undef append_buf
 }
+int bpf_core_calc_relo_insn(const char *prog_name,
+							const struct bpf_core_relo *relo,
+							int relo_idx,
+							const struct btf *local_btf,
+							struct bpf_core_cand_list *cands,
+							struct bpf_core_spec *specs_scratch,
+							struct bpf_core_relo_res *targ_res)
+{
+	struct bpf_core_spec *local_spec = &specs_scratch[0];
+	struct bpf_core_spec *cand_spec = &specs_scratch[1];
+	struct bpf_core_spec *targ_spec = &specs_scratch[2];
+	struct bpf_core_relo_res cand_res;
+	const struct btf_type *local_type;
+	const char *local_name;
+	__u32 local_id;
+	char spec_buf[256];
+	int i, j, err;
+
+	local_id = relo->type_id;
+	local_type = btf_type_by_id(local_btf, local_id);
+	local_name = btf__name_by_offset(local_btf, local_type->name_off);
+	if (!local_name)
+		return -EINVAL;
+
+	err = bpf_core_parse_spec(prog_name, local_btf, relo, local_spec);
+	if (err)
+	{
+		const char *spec_str;
+
+		spec_str = btf__name_by_offset(local_btf, relo->access_str_off);
+		pr_warn("prog '%s': relo #%d: parsing [%d] %s %s + %s failed: %d\n",
+				prog_name, relo_idx, local_id, btf_kind_str(local_type),
+				str_is_empty(local_name) ? "<anon>" : local_name,
+				spec_str ?: "<?>", err);
+		return -EINVAL;
+	}
+
+	bpf_core_format_spec(spec_buf, sizeof(spec_buf), local_spec);
+	pr_debug("prog '%s': relo #%d: %s\n", prog_name, relo_idx, spec_buf);
+
+	/* TYPE_ID_LOCAL relo is special and doesn't need candidate search */
+	if (relo->kind == BPF_CORE_TYPE_ID_LOCAL)
+	{
+		/* bpf_insn's imm value could get out of sync during linking */
+		memset(targ_res, 0, sizeof(*targ_res));
+		targ_res->validate = false;
+		targ_res->poison = false;
+		targ_res->orig_val = local_spec->root_type_id;
+		targ_res->new_val = local_spec->root_type_id;
+		return 0;
+	}
+
+	if (str_is_empty(local_name))
+	{
+		pr_warn("prog '%s': relo #%d: <%s> (%d) relocation doesn't support anonymous types\n",
+				prog_name, relo_idx, core_relo_kind_str(relo->kind), relo->kind);
+		return -EOPNOTSUPP;
+	}
+
+	for (i = 0, j = 0; i < cands->len; i++)
+	{
+		err = bpf_core_spec_match(local_spec, cands->cands[i].btf,
+								  cands->cands[i].id, cand_spec);
+		if (err < 0)
+		{
+			bpf_core_format_spec(spec_buf, sizeof(spec_buf), cand_spec);
+			pr_warn("prog '%s': relo #%d: error matching candidate #%d %s: %d\n ",
+					prog_name, relo_idx, i, spec_buf, err);
+			return err;
+		}
+
+		bpf_core_format_spec(spec_buf, sizeof(spec_buf), cand_spec);
+		pr_debug("prog '%s': relo #%d: %s candidate #%d %s\n", prog_name,
+				 relo_idx, err == 0 ? "non-matching" : "matching", i, spec_buf);
+
+		if (err == 0)
+			continue;
+
+		err = bpf_core_calc_relo(prog_name, relo, relo_idx, local_spec, cand_spec, &cand_res);
+		if (err)
+			return err;
+
+		if (j == 0)
+		{
+			*targ_res = cand_res;
+			*targ_spec = *cand_spec;
+		}
+		else if (cand_spec->bit_offset != targ_spec->bit_offset)
+		{
+			pr_warn("prog '%s': relo #%d: field offset ambiguity: %u != %u\n",
+					prog_name, relo_idx, cand_spec->bit_offset,
+					targ_spec->bit_offset);
+			return -EINVAL;
+		}
+		else if (cand_res.poison != targ_res->poison ||
+				 cand_res.new_val != targ_res->new_val)
+		{
+			pr_warn("prog '%s': relo #%d: relocation decision ambiguity: %s %llu != %s %llu\n",
+					prog_name, relo_idx,
+					cand_res.poison ? "failure" : "success",
+					(unsigned long long)cand_res.new_val,
+					targ_res->poison ? "failure" : "success",
+					(unsigned long long)targ_res->new_val);
+			return -EINVAL;
+		}
+
+		cands->cands[j++] = cands->cands[i];
+	}
+	if (j > 0)
+		cands->len = j;
+	if (j == 0)
+	{
+		pr_debug("prog '%s': relo #%d: no matching targets found\n",
+				 prog_name, relo_idx);
+
+		/* calculate single target relo result explicitly */
+		err = bpf_core_calc_relo(prog_name, relo, relo_idx, local_spec, NULL, targ_res);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
