@@ -1304,3 +1304,42 @@ struct task_struct {
 	long: 64;
 	struct thread_struct thread;
 };
+
+struct pt_regs {
+	long unsigned int regs[32];
+	long unsigned int orig_a0;
+	long unsigned int csr_era;
+	long unsigned int csr_badvaddr;
+	long unsigned int csr_crmd;
+	long unsigned int csr_prmd;
+	long unsigned int csr_euen;
+	long unsigned int csr_ecfg;
+	long unsigned int csr_estat;
+	long unsigned int __last[0];
+};
+
+typedef struct {
+	arch_rwlock_t raw_lock;
+} rwlock_t;
+
+struct wait_queue_head {
+	spinlock_t lock;
+	struct list_head head;
+};
+
+typedef struct wait_queue_head wait_queue_head_t;
+
+struct hlist_bl_node;
+
+struct hlist_bl_head {
+	struct hlist_bl_node *first;
+};
+
+struct hlist_bl_node {
+	struct hlist_bl_node *next;
+	struct hlist_bl_node **pprev;
+};
+
+struct seqcount_raw_spinlock {
+	seqcount_t seqcount;
+};
