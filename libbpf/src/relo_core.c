@@ -1318,3 +1318,61 @@ int bpf_core_calc_relo_insn(const char *prog_name,
 
 	return 0;
 }
+
+static bool bpf_core_names_match(const struct btf *local_btf, size_t local_name_off,
+								 const struct btf *targ_btf, size_t targ_name_off)
+{
+	const char *local_n, *targ_n;
+	size_t local_len, targ_len;
+
+	local_n = btf__name_by_offset(local_btf, local_name_off);
+	targ_n = btf__name_by_offset(targ_btf, targ_name_off);
+
+	if (str_is_empty(targ_n))
+		return str_is_empty(local_n);
+
+	targ_len = bpf_core_essential_name_len(targ_n);
+	local_len = bpf_core_essential_name_len(local_n);
+
+	return targ_len == local_len && strncmp(local_n, targ_n, local_len) == 0;
+}
+
+static int bpf_core_enums_match(const struct btf *local_btf, const struct btf_type *local_t,
+								const struct btf *targ_btf, const struct btf_type *targ_t)
+{
+	__u16 local_vlen = btf_vlen(local_t);
+	__u16 targ_vlen = btf_vlen(targ_t);
+	int i, j;
+
+	if (local_t->size != targ_t->size)
+		return 0;
+
+	if (local_vlen > targ_vlen)
+		return 0;
+
+	/* iterate over the local enum's variants and make sure each has
+	 * a symbolic name correspondent in the target
+	 */
+	for (i = 0; i < local_vlen; i++)
+	{
+		bool matched = false;
+		__u32 local_n_off, targ_n_off;
+
+		local_n_off = btf_is_enum(local_t) ? btf_enum(local_t)[i].name_off : btf_enum64(local_t)[i].name_off;
+
+		for (j = 0; j < targ_vlen; j++)
+		{
+			targ_n_off = btf_is_enum(targ_t) ? btf_enum(targ_t)[j].name_off : btf_enum64(targ_t)[j].name_off;
+
+			if (bpf_core_names_match(local_btf, local_n_off, targ_btf, targ_n_off))
+			{
+				matched = true;
+				break;
+			}
+		}
+
+		if (!matched)
+			return 0;
+	}
+	return 1;
+}
