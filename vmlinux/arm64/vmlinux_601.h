@@ -3492,3 +3492,33 @@ struct qc_type_state {
 	blkcnt_t blocks;
 	blkcnt_t nextents;
 };
+
+struct qc_state {
+	unsigned int s_incoredqs;
+	struct qc_type_state s_state[3];
+};
+
+struct qc_info {
+	int i_fieldmask;
+	unsigned int i_flags;
+	unsigned int i_spc_timelimit;
+	unsigned int i_ino_timelimit;
+	unsigned int i_rt_spc_timelimit;
+	unsigned int i_spc_warnlimit;
+	unsigned int i_ino_warnlimit;
+	unsigned int i_rt_spc_warnlimit;
+};
+
+struct quotactl_ops {
+	int (*quota_on)(struct super_block *, int, int, const struct path *);
+	int (*quota_off)(struct super_block *, int);
+	int (*quota_enable)(struct super_block *, unsigned int);
+	int (*quota_disable)(struct super_block *, unsigned int);
+	int (*quota_sync)(struct super_block *, int);
+	int (*set_info)(struct super_block *, int, struct qc_info *);
+	int (*get_dqblk)(struct super_block *, struct kqid, struct qc_dqblk *);
+	int (*get_nextdqblk)(struct super_block *, struct kqid *, struct qc_dqblk *);
+	int (*set_dqblk)(struct super_block *, struct kqid, struct qc_dqblk *);
+	int (*get_state)(struct super_block *, struct qc_state *);
+	int (*rm_xquota)(struct super_block *, unsigned int);
+};
