@@ -3522,3 +3522,36 @@ struct quotactl_ops {
 	int (*get_state)(struct super_block *, struct qc_state *);
 	int (*rm_xquota)(struct super_block *, unsigned int);
 };
+
+struct writeback_control;
+
+struct readahead_control;
+
+struct swap_info_struct;
+
+struct address_space_operations {
+	int (*writepage)(struct page *, struct writeback_control *);
+	int (*read_folio)(struct file *, struct folio *);
+	int (*writepages)(struct address_space *, struct writeback_control *);
+	bool (*dirty_folio)(struct address_space *, struct folio *);
+	void (*readahead)(struct readahead_control *);
+	int (*write_begin)(struct file *, struct address_space *, loff_t, unsigned int, struct page **, void **);
+	int (*write_end)(struct file *, struct address_space *, loff_t, unsigned int, unsigned int, struct page *, void *);
+	sector_t (*bmap)(struct address_space *, sector_t);
+	void (*invalidate_folio)(struct folio *, size_t, size_t);
+	bool (*release_folio)(struct folio *, gfp_t);
+	void (*free_folio)(struct folio *);
+	ssize_t (*direct_IO)(struct kiocb *, struct iov_iter *);
+	int (*migrate_folio)(struct address_space *, struct folio *, struct folio *, enum migrate_mode);
+	int (*launder_folio)(struct folio *);
+	bool (*is_partially_uptodate)(struct folio *, size_t, size_t);
+	void (*is_dirty_writeback)(struct folio *, bool *, bool *);
+	int (*error_remove_page)(struct address_space *, struct page *);
+	int (*swap_activate)(struct swap_info_struct *, struct file *, sector_t *);
+	void (*swap_deactivate)(struct file *);
+	int (*swap_rw)(struct kiocb *, struct iov_iter *);
+};
+
+struct fiemap_extent_info;
+
+struct fileattr;
