@@ -13632,3 +13632,88 @@ struct sock {
 	netns_tracker ns_tracker;
 	struct hlist_node sk_bind2_node;
 };
+
+typedef struct {
+	union {
+		void *kernel;
+		void *user;
+	};
+	bool is_kernel: 1;
+} sockptr_t;
+
+typedef enum {
+	SS_FREE = 0,
+	SS_UNCONNECTED = 1,
+	SS_CONNECTING = 2,
+	SS_CONNECTED = 3,
+	SS_DISCONNECTING = 4,
+} socket_state;
+
+struct socket_wq {
+	wait_queue_head_t wait;
+	struct fasync_struct *fasync_list;
+	long unsigned int flags;
+	struct callback_head rcu;
+	long: 64;
+	long: 64;
+};
+
+struct proto_ops;
+
+struct socket {
+	socket_state state;
+	short int type;
+	long unsigned int flags;
+	struct file *file;
+	struct sock *sk;
+	const struct proto_ops *ops;
+	long: 64;
+	long: 64;
+	long: 64;
+	struct socket_wq wq;
+};
+
+typedef struct {
+	size_t written;
+	size_t count;
+	union {
+		char *buf;
+		void *data;
+	} arg;
+	int error;
+} read_descriptor_t;
+
+typedef int (*sk_read_actor_t)(read_descriptor_t *, struct sk_buff *, unsigned int, size_t);
+
+typedef int (*skb_read_actor_t)(struct sock *, struct sk_buff *);
+
+struct proto_ops {
+	int family;
+	struct module *owner;
+	int (*release)(struct socket *);
+	int (*bind)(struct socket *, struct sockaddr *, int);
+	int (*connect)(struct socket *, struct sockaddr *, int, int);
+	int (*socketpair)(struct socket *, struct socket *);
+	int (*accept)(struct socket *, struct socket *, int, bool);
+	int (*getname)(struct socket *, struct sockaddr *, int);
+	__poll_t (*poll)(struct file *, struct socket *, struct poll_table_struct *);
+	int (*ioctl)(struct socket *, unsigned int, long unsigned int);
+	int (*gettstamp)(struct socket *, void *, bool, bool);
+	int (*listen)(struct socket *, int);
+	int (*shutdown)(struct socket *, int);
+	int (*setsockopt)(struct socket *, int, int, sockptr_t, unsigned int);
+	int (*getsockopt)(struct socket *, int, int, char *, int *);
+	void (*show_fdinfo)(struct seq_file *, struct socket *);
+	int (*sendmsg)(struct socket *, struct msghdr *, size_t);
+	int (*recvmsg)(struct socket *, struct msghdr *, size_t, int);
+	int (*mmap)(struct file *, struct socket *, struct vm_area_struct *);
+	ssize_t (*sendpage)(struct socket *, struct page *, int, size_t, int);
+	ssize_t (*splice_read)(struct socket *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
+	int (*set_peek_off)(struct sock *, int);
+	int (*peek_len)(struct socket *);
+	int (*read_sock)(struct sock *, read_descriptor_t *, sk_read_actor_t);
+	int (*read_skb)(struct sock *, skb_read_actor_t);
+	int (*sendpage_locked)(struct sock *, struct page *, int, size_t, int);
+	int (*sendmsg_locked)(struct sock *, struct msghdr *, size_t);
+	int (*set_rcvlowat)(struct sock *, int);
+};
