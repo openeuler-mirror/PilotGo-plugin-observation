@@ -3460,3 +3460,35 @@ struct dquot_operations {
 	int (*get_inode_usage)(struct inode *, qsize_t *);
 	int (*get_next_id)(struct super_block *, struct kqid *);
 };
+
+struct qc_dqblk {
+	int d_fieldmask;
+	u64 d_spc_hardlimit;
+	u64 d_spc_softlimit;
+	u64 d_ino_hardlimit;
+	u64 d_ino_softlimit;
+	u64 d_space;
+	u64 d_ino_count;
+	s64 d_ino_timer;
+	s64 d_spc_timer;
+	int d_ino_warns;
+	int d_spc_warns;
+	u64 d_rt_spc_hardlimit;
+	u64 d_rt_spc_softlimit;
+	u64 d_rt_space;
+	s64 d_rt_spc_timer;
+	int d_rt_spc_warns;
+};
+
+struct qc_type_state {
+	unsigned int flags;
+	unsigned int spc_timelimit;
+	unsigned int ino_timelimit;
+	unsigned int rt_spc_timelimit;
+	unsigned int spc_warnlimit;
+	unsigned int ino_warnlimit;
+	unsigned int rt_spc_warnlimit;
+	long long unsigned int ino;
+	blkcnt_t blocks;
+	blkcnt_t nextents;
+};
