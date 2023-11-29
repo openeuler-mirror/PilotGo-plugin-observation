@@ -13485,3 +13485,150 @@ struct sock_common {
 		u32 skc_tw_snd_nxt;
 	};
 };
+
+typedef struct {
+	spinlock_t slock;
+	int owned;
+	wait_queue_head_t wq;
+	struct lockdep_map dep_map;
+} socket_lock_t;
+
+struct sk_buff_list {
+	struct sk_buff *next;
+	struct sk_buff *prev;
+};
+
+struct sk_buff_head {
+	union {
+		struct {
+			struct sk_buff *next;
+			struct sk_buff *prev;
+		};
+		struct sk_buff_list list;
+	};
+	__u32 qlen;
+	spinlock_t lock;
+};
+
+typedef u64 netdev_features_t;
+
+struct sock_cgroup_data {
+	struct cgroup *cgroup;
+	u32 classid;
+};
+
+typedef struct {} netns_tracker;
+
+struct sk_filter;
+
+struct socket_wq;
+
+struct xfrm_policy;
+
+struct sock_reuseport;
+
+struct sock {
+	struct sock_common __sk_common;
+	struct dst_entry *sk_rx_dst;
+	int sk_rx_dst_ifindex;
+	u32 sk_rx_dst_cookie;
+	socket_lock_t sk_lock;
+	atomic_t sk_drops;
+	int sk_rcvlowat;
+	struct sk_buff_head sk_error_queue;
+	struct sk_buff_head sk_receive_queue;
+	struct {
+		atomic_t rmem_alloc;
+		int len;
+		struct sk_buff *head;
+		struct sk_buff *tail;
+	} sk_backlog;
+	int sk_forward_alloc;
+	u32 sk_reserved_mem;
+	unsigned int sk_ll_usec;
+	unsigned int sk_napi_id;
+	int sk_rcvbuf;
+	struct sk_filter *sk_filter;
+	union {
+		struct socket_wq *sk_wq;
+		struct socket_wq *sk_wq_raw;
+	};
+	struct xfrm_policy *sk_policy[2];
+	struct dst_entry *sk_dst_cache;
+	atomic_t sk_omem_alloc;
+	int sk_sndbuf;
+	int sk_wmem_queued;
+	refcount_t sk_wmem_alloc;
+	long unsigned int sk_tsq_flags;
+	union {
+		struct sk_buff *sk_send_head;
+		struct rb_root tcp_rtx_queue;
+	};
+	struct sk_buff_head sk_write_queue;
+	__s32 sk_peek_off;
+	int sk_write_pending;
+	__u32 sk_dst_pending_confirm;
+	u32 sk_pacing_status;
+	long int sk_sndtimeo;
+	struct timer_list sk_timer;
+	__u32 sk_priority;
+	__u32 sk_mark;
+	long unsigned int sk_pacing_rate;
+	long unsigned int sk_max_pacing_rate;
+	struct page_frag sk_frag;
+	netdev_features_t sk_route_caps;
+	int sk_gso_type;
+	unsigned int sk_gso_max_size;
+	gfp_t sk_allocation;
+	__u32 sk_txhash;
+	u8 sk_gso_disabled: 1;
+	u8 sk_kern_sock: 1;
+	u8 sk_no_check_tx: 1;
+	u8 sk_no_check_rx: 1;
+	u8 sk_userlocks: 4;
+	u8 sk_pacing_shift;
+	u16 sk_type;
+	u16 sk_protocol;
+	u16 sk_gso_max_segs;
+	long unsigned int sk_lingertime;
+	struct proto *sk_prot_creator;
+	rwlock_t sk_callback_lock;
+	int sk_err;
+	int sk_err_soft;
+	u32 sk_ack_backlog;
+	u32 sk_max_ack_backlog;
+	kuid_t sk_uid;
+	u8 sk_txrehash;
+	u8 sk_prefer_busy_poll;
+	u16 sk_busy_poll_budget;
+	spinlock_t sk_peer_lock;
+	int sk_bind_phc;
+	struct pid *sk_peer_pid;
+	const struct cred *sk_peer_cred;
+	long int sk_rcvtimeo;
+	ktime_t sk_stamp;
+	atomic_t sk_tskey;
+	atomic_t sk_zckey;
+	u32 sk_tsflags;
+	u8 sk_shutdown;
+	u8 sk_clockid;
+	u8 sk_txtime_deadline_mode: 1;
+	u8 sk_txtime_report_errors: 1;
+	u8 sk_txtime_unused: 6;
+	struct socket *sk_socket;
+	void *sk_user_data;
+	void *sk_security;
+	struct sock_cgroup_data sk_cgrp_data;
+	struct mem_cgroup *sk_memcg;
+	void (*sk_state_change)(struct sock *);
+	void (*sk_data_ready)(struct sock *);
+	void (*sk_write_space)(struct sock *);
+	void (*sk_error_report)(struct sock *);
+	int (*sk_backlog_rcv)(struct sock *, struct sk_buff *);
+	void (*sk_destruct)(struct sock *);
+	struct sock_reuseport *sk_reuseport_cb;
+	struct bpf_local_storage *sk_bpf_storage;
+	struct callback_head sk_rcu;
+	netns_tracker ns_tracker;
+	struct hlist_node sk_bind2_node;
+};
