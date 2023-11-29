@@ -3762,3 +3762,41 @@ struct kernel_param_ops {
 struct kparam_string;
 
 struct kparam_array;
+
+struct kernel_param {
+	const char *name;
+	struct module *mod;
+	const struct kernel_param_ops *ops;
+	const u16 perm;
+	s8 level;
+	u8 flags;
+	union {
+		void *arg;
+		const struct kparam_string *str;
+		const struct kparam_array *arr;
+	};
+};
+
+struct kparam_string {
+	unsigned int maxlen;
+	char *string;
+};
+
+struct kparam_array {
+	unsigned int max;
+	unsigned int elemsize;
+	unsigned int *num;
+	const struct kernel_param_ops *ops;
+	void *elem;
+};
+
+struct error_injection_entry {
+	long unsigned int addr;
+	int etype;
+};
+
+struct plt_entry {
+	__le32 adrp;
+	__le32 add;
+	__le32 br;
+};
