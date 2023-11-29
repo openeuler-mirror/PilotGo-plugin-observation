@@ -3800,3 +3800,39 @@ struct plt_entry {
 	__le32 add;
 	__le32 br;
 };
+
+struct module_attribute {
+	struct attribute attr;
+	ssize_t (*show)(struct module_attribute *, struct module_kobject *, char *);
+	ssize_t (*store)(struct module_attribute *, struct module_kobject *, const char *, size_t);
+	void (*setup)(struct module *, const char *);
+	int (*test)(struct module *);
+	void (*free)(struct module *);
+};
+
+struct trace_eval_map {
+	const char *system;
+	const char *eval_string;
+	long unsigned int eval_value;
+};
+
+struct mcs_spinlock {
+	struct mcs_spinlock *next;
+	int locked;
+	int count;
+};
+
+struct qnode {
+	struct mcs_spinlock mcs;
+};
+
+typedef u64 uint64_t;
+
+enum lockdep_wait_type {
+	LD_WAIT_INV = 0,
+	LD_WAIT_FREE = 1,
+	LD_WAIT_SPIN = 2,
+	LD_WAIT_CONFIG = 2,
+	LD_WAIT_SLEEP = 3,
+	LD_WAIT_MAX = 4,
+};
