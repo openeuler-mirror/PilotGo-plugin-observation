@@ -14716,3 +14716,63 @@ struct xdp_mem_info {
 	u32 type;
 	u32 id;
 };
+
+struct xdp_rxq_info {
+	struct net_device *dev;
+	u32 queue_index;
+	u32 reg_state;
+	struct xdp_mem_info mem;
+	unsigned int napi_id;
+	u32 frag_size;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+struct xdp_txq_info {
+	struct net_device *dev;
+};
+
+struct xdp_buff {
+	void *data;
+	void *data_end;
+	void *data_meta;
+	void *data_hard_start;
+	struct xdp_rxq_info *rxq;
+	struct xdp_txq_info *txq;
+	u32 frame_sz;
+	u32 flags;
+};
+
+struct xdp_frame {
+	void *data;
+	u16 len;
+	u16 headroom;
+	u32 metasize;
+	struct xdp_mem_info mem;
+	struct net_device *dev_rx;
+	u32 frame_sz;
+	u32 flags;
+};
+
+struct xdp_attachment_info {
+	struct bpf_prog *prog;
+	u32 flags;
+};
+
+struct ndmsg {
+	__u8 ndm_family;
+	__u8 ndm_pad1;
+	__u16 ndm_pad2;
+	__s32 ndm_ifindex;
+	__u16 ndm_state;
+	__u8 ndm_flags;
+	__u8 ndm_type;
+};
+
+typedef struct {
+	unsigned int clock_rate;
+	unsigned int clock_type;
+	short unsigned int loopback;
+} sync_serial_settings;
