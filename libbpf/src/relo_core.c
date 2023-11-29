@@ -977,3 +977,142 @@ static int insn_bytes_to_bpf_size(__u32 sz)
 		return -1;
 	}
 }
+int bpf_core_patch_insn(const char *prog_name, struct bpf_insn *insn,
+						int insn_idx, const struct bpf_core_relo *relo,
+						int relo_idx, const struct bpf_core_relo_res *res)
+{
+	__u64 orig_val, new_val;
+	__u8 class;
+
+	class = BPF_CLASS(insn->code);
+
+	if (res->poison)
+	{
+	poison:
+		/* poison second part of ldimm64 to avoid confusing error from
+		 * verifier about "unknown opcode 00"
+		 */
+		if (is_ldimm64_insn(insn))
+			bpf_core_poison_insn(prog_name, relo_idx, insn_idx + 1, insn + 1);
+		bpf_core_poison_insn(prog_name, relo_idx, insn_idx, insn);
+		return 0;
+	}
+
+	orig_val = res->orig_val;
+	new_val = res->new_val;
+
+	switch (class)
+	{
+	case BPF_ALU:
+	case BPF_ALU64:
+		if (BPF_SRC(insn->code) != BPF_K)
+			return -EINVAL;
+		if (res->validate && insn->imm != orig_val)
+		{
+			pr_warn("prog '%s': relo #%d: unexpected insn #%d (ALU/ALU64) value: got %u, exp %llu -> %llu\n",
+					prog_name, relo_idx,
+					insn_idx, insn->imm, (unsigned long long)orig_val,
+					(unsigned long long)new_val);
+			return -EINVAL;
+		}
+		orig_val = insn->imm;
+		insn->imm = new_val;
+		pr_debug("prog '%s': relo #%d: patched insn #%d (ALU/ALU64) imm %llu -> %llu\n",
+				 prog_name, relo_idx, insn_idx,
+				 (unsigned long long)orig_val, (unsigned long long)new_val);
+		break;
+	case BPF_LDX:
+	case BPF_ST:
+	case BPF_STX:
+		if (res->validate && insn->off != orig_val)
+		{
+			pr_warn("prog '%s': relo #%d: unexpected insn #%d (LDX/ST/STX) value: got %u, exp %llu -> %llu\n",
+					prog_name, relo_idx, insn_idx, insn->off, (unsigned long long)orig_val,
+					(unsigned long long)new_val);
+			return -EINVAL;
+		}
+		if (new_val > SHRT_MAX)
+		{
+			pr_warn("prog '%s': relo #%d: insn #%d (LDX/ST/STX) value too big: %llu\n",
+					prog_name, relo_idx, insn_idx, (unsigned long long)new_val);
+			return -ERANGE;
+		}
+		if (res->fail_memsz_adjust)
+		{
+			pr_warn("prog '%s': relo #%d: insn #%d (LDX/ST/STX) accesses field incorrectly. "
+					"Make sure you are accessing pointers, unsigned integers, or fields of matching type and size.\n",
+					prog_name, relo_idx, insn_idx);
+			goto poison;
+		}
+
+		orig_val = insn->off;
+		insn->off = new_val;
+		pr_debug("prog '%s': relo #%d: patched insn #%d (LDX/ST/STX) off %llu -> %llu\n",
+				 prog_name, relo_idx, insn_idx, (unsigned long long)orig_val,
+				 (unsigned long long)new_val);
+
+		if (res->new_sz != res->orig_sz)
+		{
+			int insn_bytes_sz, insn_bpf_sz;
+
+			insn_bytes_sz = insn_bpf_size_to_bytes(insn);
+			if (insn_bytes_sz != res->orig_sz)
+			{
+				pr_warn("prog '%s': relo #%d: insn #%d (LDX/ST/STX) unexpected mem size: got %d, exp %u\n",
+						prog_name, relo_idx, insn_idx, insn_bytes_sz, res->orig_sz);
+				return -EINVAL;
+			}
+
+			insn_bpf_sz = insn_bytes_to_bpf_size(res->new_sz);
+			if (insn_bpf_sz < 0)
+			{
+				pr_warn("prog '%s': relo #%d: insn #%d (LDX/ST/STX) invalid new mem size: %u\n",
+						prog_name, relo_idx, insn_idx, res->new_sz);
+				return -EINVAL;
+			}
+
+			insn->code = BPF_MODE(insn->code) | insn_bpf_sz | BPF_CLASS(insn->code);
+			pr_debug("prog '%s': relo #%d: patched insn #%d (LDX/ST/STX) mem_sz %u -> %u\n",
+					 prog_name, relo_idx, insn_idx, res->orig_sz, res->new_sz);
+		}
+		break;
+	case BPF_LD:
+	{
+		__u64 imm;
+
+		if (!is_ldimm64_insn(insn) ||
+			insn[0].src_reg != 0 || insn[0].off != 0 ||
+			insn[1].code != 0 || insn[1].dst_reg != 0 ||
+			insn[1].src_reg != 0 || insn[1].off != 0)
+		{
+			pr_warn("prog '%s': relo #%d: insn #%d (LDIMM64) has unexpected form\n",
+					prog_name, relo_idx, insn_idx);
+			return -EINVAL;
+		}
+
+		imm = (__u32)insn[0].imm | ((__u64)insn[1].imm << 32);
+		if (res->validate && imm != orig_val)
+		{
+			pr_warn("prog '%s': relo #%d: unexpected insn #%d (LDIMM64) value: got %llu, exp %llu -> %llu\n",
+					prog_name, relo_idx,
+					insn_idx, (unsigned long long)imm,
+					(unsigned long long)orig_val, (unsigned long long)new_val);
+			return -EINVAL;
+		}
+
+		insn[0].imm = new_val;
+		insn[1].imm = new_val >> 32;
+		pr_debug("prog '%s': relo #%d: patched insn #%d (LDIMM64) imm64 %llu -> %llu\n",
+				 prog_name, relo_idx, insn_idx,
+				 (unsigned long long)imm, (unsigned long long)new_val);
+		break;
+	}
+	default:
+		pr_warn("prog '%s': relo #%d: trying to relocate unrecognized insn #%d, code:0x%x, src:0x%x, dst:0x%x, off:0x%x, imm:0x%x\n",
+				prog_name, relo_idx, insn_idx, insn->code,
+				insn->src_reg, insn->dst_reg, insn->off, insn->imm);
+		return -EINVAL;
+	}
+
+	return 0;
+}
