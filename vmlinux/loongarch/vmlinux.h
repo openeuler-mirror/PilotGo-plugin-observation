@@ -857,3 +857,50 @@ struct sched_statistics {
 	long: 64;
 	long: 64;
 };
+
+union rcu_special {
+	struct {
+		u8 blocked;
+		u8 need_qs;
+		u8 exp_hint;
+		u8 need_mb;
+	} b;
+	u32 s;
+};
+
+struct sched_info {
+	long unsigned int pcount;
+	long long unsigned int run_delay;
+	long long unsigned int last_arrival;
+	long long unsigned int last_queued;
+};
+
+struct plist_node {
+	int prio;
+	struct list_head prio_list;
+	struct list_head node_list;
+};
+
+struct prev_cputime {
+	u64 utime;
+	u64 stime;
+	raw_spinlock_t lock;
+};
+
+struct rb_root {
+	struct rb_node *rb_node;
+};
+
+struct rb_root_cached {
+	struct rb_root rb_root;
+	struct rb_node *rb_leftmost;
+};
+
+struct timerqueue_head {
+	struct rb_root_cached rb_root;
+};
+
+struct posix_cputimer_base {
+	u64 nextevt;
+	struct timerqueue_head tqhead;
+};
