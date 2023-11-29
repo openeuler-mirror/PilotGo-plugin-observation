@@ -3643,3 +3643,36 @@ struct file_lock {
 		} afs;
 	} fl_u;
 };
+
+struct lock_manager_operations {
+	void *lm_mod_owner;
+	fl_owner_t (*lm_get_owner)(fl_owner_t);
+	void (*lm_put_owner)(fl_owner_t);
+	void (*lm_notify)(struct file_lock *);
+	int (*lm_grant)(struct file_lock *, int);
+	bool (*lm_break)(struct file_lock *);
+	int (*lm_change)(struct file_lock *, int, struct list_head *);
+	void (*lm_setup)(struct file_lock *, void **);
+	bool (*lm_breaker_owns_lease)(struct file_lock *);
+	bool (*lm_lock_expirable)(struct file_lock *);
+	void (*lm_expire_lock)();
+};
+
+struct fasync_struct {
+	rwlock_t fa_lock;
+	int magic;
+	int fa_fd;
+	struct fasync_struct *fa_next;
+	struct file *fa_file;
+	struct callback_head fa_rcu;
+};
+
+enum {
+	SB_UNFROZEN = 0,
+	SB_FREEZE_WRITE = 1,
+	SB_FREEZE_PAGEFAULT = 2,
+	SB_FREEZE_FS = 3,
+	SB_FREEZE_COMPLETE = 4,
+};
+
+struct kstatfs;
