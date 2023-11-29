@@ -1343,3 +1343,59 @@ struct hlist_bl_node {
 struct seqcount_raw_spinlock {
 	seqcount_t seqcount;
 };
+
+typedef struct seqcount_raw_spinlock seqcount_raw_spinlock_t;
+
+typedef struct {
+	seqcount_spinlock_t seqcount;
+	spinlock_t lock;
+} seqlock_t;
+
+struct lockref {
+	union {
+		__u64 lock_count;
+		struct {
+			spinlock_t lock;
+			int count;
+		};
+	};
+};
+
+struct qstr {
+	union {
+		struct {
+			u32 hash;
+			u32 len;
+		};
+		u64 hash_len;
+	};
+	const unsigned char *name;
+};
+
+struct dentry_operations;
+
+struct dentry {
+	unsigned int d_flags;
+	seqcount_spinlock_t d_seq;
+	struct hlist_bl_node d_hash;
+	struct dentry *d_parent;
+	struct qstr d_name;
+	struct inode *d_inode;
+	unsigned char d_iname[32];
+	struct lockref d_lockref;
+	const struct dentry_operations *d_op;
+	struct super_block *d_sb;
+	long unsigned int d_time;
+	void *d_fsdata;
+	union {
+		struct list_head d_lru;
+		wait_queue_head_t *d_wait;
+	};
+	struct list_head d_child;
+	struct list_head d_subdirs;
+	union {
+		struct hlist_node d_alias;
+		struct hlist_bl_node d_in_lookup_hash;
+		struct callback_head d_rcu;
+	} d_u;
+};
