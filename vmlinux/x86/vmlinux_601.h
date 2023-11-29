@@ -14776,3 +14776,94 @@ typedef struct {
 	unsigned int clock_type;
 	short unsigned int loopback;
 } sync_serial_settings;
+
+typedef struct {
+	unsigned int clock_rate;
+	unsigned int clock_type;
+	short unsigned int loopback;
+	unsigned int slot_map;
+} te1_settings;
+
+typedef struct {
+	short unsigned int encoding;
+	short unsigned int parity;
+} raw_hdlc_proto;
+
+typedef struct {
+	unsigned int t391;
+	unsigned int t392;
+	unsigned int n391;
+	unsigned int n392;
+	unsigned int n393;
+	short unsigned int lmi;
+	short unsigned int dce;
+} fr_proto;
+
+typedef struct {
+	unsigned int dlci;
+} fr_proto_pvc;
+
+typedef struct {
+	unsigned int dlci;
+	char master[16];
+} fr_proto_pvc_info;
+
+typedef struct {
+	unsigned int interval;
+	unsigned int timeout;
+} cisco_proto;
+
+typedef struct {
+	short unsigned int dce;
+	unsigned int modulo;
+	unsigned int window;
+	unsigned int t1;
+	unsigned int t2;
+	unsigned int n2;
+} x25_hdlc_proto;
+
+enum net_device_flags {
+	IFF_UP = 1,
+	IFF_BROADCAST = 2,
+	IFF_DEBUG = 4,
+	IFF_LOOPBACK = 8,
+	IFF_POINTOPOINT = 16,
+	IFF_NOTRAILERS = 32,
+	IFF_RUNNING = 64,
+	IFF_NOARP = 128,
+	IFF_PROMISC = 256,
+	IFF_ALLMULTI = 512,
+	IFF_MASTER = 1024,
+	IFF_SLAVE = 2048,
+	IFF_MULTICAST = 4096,
+	IFF_PORTSEL = 8192,
+	IFF_AUTOMEDIA = 16384,
+	IFF_DYNAMIC = 32768,
+	IFF_LOWER_UP = 65536,
+	IFF_DORMANT = 131072,
+	IFF_ECHO = 262144,
+};
+
+struct ifmap {
+	long unsigned int mem_start;
+	long unsigned int mem_end;
+	short unsigned int base_addr;
+	unsigned char irq;
+	unsigned char dma;
+	unsigned char port;
+};
+
+struct if_settings {
+	unsigned int type;
+	unsigned int size;
+	union {
+		raw_hdlc_proto *raw_hdlc;
+		cisco_proto *cisco;
+		fr_proto *fr;
+		fr_proto_pvc *fr_pvc;
+		fr_proto_pvc_info *fr_pvc_info;
+		x25_hdlc_proto *x25;
+		sync_serial_settings *sync;
+		te1_settings *te1;
+	} ifs_ifsu;
+};
