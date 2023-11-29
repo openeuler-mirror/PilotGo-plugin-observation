@@ -1376,3 +1376,44 @@ static int bpf_core_enums_match(const struct btf *local_btf, const struct btf_ty
 	}
 	return 1;
 }
+
+static int bpf_core_composites_match(const struct btf *local_btf, const struct btf_type *local_t,
+									 const struct btf *targ_btf, const struct btf_type *targ_t,
+									 bool behind_ptr, int level)
+{
+	const struct btf_member *local_m = btf_members(local_t);
+	__u16 local_vlen = btf_vlen(local_t);
+	__u16 targ_vlen = btf_vlen(targ_t);
+	int i, j, err;
+
+	if (local_vlen > targ_vlen)
+		return 0;
+
+	/* check that all local members have a match in the target */
+	for (i = 0; i < local_vlen; i++, local_m++)
+	{
+		const struct btf_member *targ_m = btf_members(targ_t);
+		bool matched = false;
+
+		for (j = 0; j < targ_vlen; j++, targ_m++)
+		{
+			if (!bpf_core_names_match(local_btf, local_m->name_off,
+									  targ_btf, targ_m->name_off))
+				continue;
+
+			err = __bpf_core_types_match(local_btf, local_m->type, targ_btf,
+										 targ_m->type, behind_ptr, level - 1);
+			if (err < 0)
+				return err;
+			if (err > 0)
+			{
+				matched = true;
+				break;
+			}
+		}
+
+		if (!matched)
+			return 0;
+	}
+	return 1;
+}
