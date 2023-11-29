@@ -1526,3 +1526,54 @@ struct inode {
 	struct fsverity_info *i_verity_info;
 	void *i_private;
 };
+
+struct vfsmount;
+
+struct path;
+
+struct dentry_operations {
+	int (*d_revalidate)(struct dentry *, unsigned int);
+	int (*d_weak_revalidate)(struct dentry *, unsigned int);
+	int (*d_hash)(const struct dentry *, struct qstr *);
+	int (*d_compare)(const struct dentry *, unsigned int, const char *, const struct qstr *);
+	int (*d_delete)(const struct dentry *);
+	int (*d_init)(struct dentry *);
+	void (*d_release)(struct dentry *);
+	void (*d_prune)(struct dentry *);
+	void (*d_iput)(struct dentry *, struct inode *);
+	char * (*d_dname)(struct dentry *, char *, int);
+	struct vfsmount * (*d_automount)(struct path *);
+	int (*d_manage)(const struct path *, bool);
+	struct dentry * (*d_real)(struct dentry *, const struct inode *);
+	long: 64;
+	long: 64;
+	long: 64;
+};
+
+struct mtd_info;
+
+typedef long long int qsize_t;
+
+struct quota_format_type;
+
+struct mem_dqinfo {
+	struct quota_format_type *dqi_format;
+	int dqi_fmt_id;
+	struct list_head dqi_dirty_list;
+	long unsigned int dqi_flags;
+	unsigned int dqi_bgrace;
+	unsigned int dqi_igrace;
+	qsize_t dqi_max_spc_limit;
+	qsize_t dqi_max_ino_limit;
+	void *dqi_priv;
+};
+
+struct quota_format_ops;
+
+struct quota_info {
+	unsigned int flags;
+	struct rw_semaphore dqio_sem;
+	struct inode *files[3];
+	struct mem_dqinfo info[3];
+	const struct quota_format_ops *ops[3];
+};
