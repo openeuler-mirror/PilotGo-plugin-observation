@@ -14347,3 +14347,106 @@ struct neigh_table;
 struct neigh_parms;
 
 struct neigh_ops;
+
+struct neighbour {
+	struct neighbour *next;
+	struct neigh_table *tbl;
+	struct neigh_parms *parms;
+	long unsigned int confirmed;
+	long unsigned int updated;
+	rwlock_t lock;
+	refcount_t refcnt;
+	unsigned int arp_queue_len_bytes;
+	struct sk_buff_head arp_queue;
+	struct timer_list timer;
+	long unsigned int used;
+	atomic_t probes;
+	u8 nud_state;
+	u8 type;
+	u8 dead;
+	u8 protocol;
+	u32 flags;
+	seqlock_t ha_lock;
+	unsigned char ha[32];
+	struct hh_cache hh;
+	int (*output)(struct neighbour *, struct sk_buff *);
+	const struct neigh_ops *ops;
+	struct list_head gc_list;
+	struct list_head managed_list;
+	struct callback_head rcu;
+	struct net_device *dev;
+	netdevice_tracker dev_tracker;
+	u8 primary_key[0];
+};
+
+struct ipv6_stable_secret {
+	bool initialized;
+	struct in6_addr secret;
+};
+
+struct ipv6_devconf {
+	__s32 forwarding;
+	__s32 hop_limit;
+	__s32 mtu6;
+	__s32 accept_ra;
+	__s32 accept_redirects;
+	__s32 autoconf;
+	__s32 dad_transmits;
+	__s32 rtr_solicits;
+	__s32 rtr_solicit_interval;
+	__s32 rtr_solicit_max_interval;
+	__s32 rtr_solicit_delay;
+	__s32 force_mld_version;
+	__s32 mldv1_unsolicited_report_interval;
+	__s32 mldv2_unsolicited_report_interval;
+	__s32 use_tempaddr;
+	__s32 temp_valid_lft;
+	__s32 temp_prefered_lft;
+	__s32 regen_max_retry;
+	__s32 max_desync_factor;
+	__s32 max_addresses;
+	__s32 accept_ra_defrtr;
+	__u32 ra_defrtr_metric;
+	__s32 accept_ra_min_hop_limit;
+	__s32 accept_ra_pinfo;
+	__s32 ignore_routes_with_linkdown;
+	__s32 accept_ra_rtr_pref;
+	__s32 rtr_probe_interval;
+	__s32 accept_ra_rt_info_min_plen;
+	__s32 accept_ra_rt_info_max_plen;
+	__s32 proxy_ndp;
+	__s32 accept_source_route;
+	__s32 accept_ra_from_local;
+	__s32 disable_ipv6;
+	__s32 drop_unicast_in_l2_multicast;
+	__s32 accept_dad;
+	__s32 force_tllao;
+	__s32 ndisc_notify;
+	__s32 suppress_frag_ndisc;
+	__s32 accept_ra_mtu;
+	__s32 drop_unsolicited_na;
+	__s32 accept_untracked_na;
+	struct ipv6_stable_secret stable_secret;
+	__s32 use_oif_addrs_only;
+	__s32 keep_addr_on_down;
+	__s32 seg6_enabled;
+	__u32 enhanced_dad;
+	__u32 addr_gen_mode;
+	__s32 disable_policy;
+	__s32 ndisc_tclass;
+	__s32 rpl_seg_enabled;
+	__u32 ioam6_id;
+	__u32 ioam6_id_wide;
+	__u8 ioam6_enabled;
+	__u8 ndisc_evict_nocarrier;
+	struct ctl_table_header *sysctl_header;
+};
+
+struct rt6key {
+	struct in6_addr addr;
+	int plen;
+};
+
+struct rtable;
+
+struct fnhe_hash_bucket;
