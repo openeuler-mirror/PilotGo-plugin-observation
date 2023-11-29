@@ -904,3 +904,53 @@ struct posix_cputimer_base {
 	u64 nextevt;
 	struct timerqueue_head tqhead;
 };
+
+struct posix_cputimers {
+	struct posix_cputimer_base bases[3];
+	unsigned int timers_active;
+	unsigned int expiry_active;
+};
+
+struct sem_undo_list;
+
+struct sysv_sem {
+	struct sem_undo_list *undo_list;
+};
+
+struct sysv_shm {
+	struct list_head shm_clist;
+};
+
+typedef struct {
+	long unsigned int sig[1];
+} sigset_t;
+
+struct sigpending {
+	struct list_head list;
+	sigset_t signal;
+};
+
+typedef struct {
+	uid_t val;
+} kuid_t;
+
+struct seccomp_filter;
+
+struct seccomp {
+	int mode;
+	atomic_t filter_count;
+	struct seccomp_filter *filter;
+};
+
+struct syscall_user_dispatch {
+	char *selector;
+	long unsigned int offset;
+	long unsigned int len;
+	bool on_dispatch;
+};
+
+struct spinlock {
+	union {
+		struct raw_spinlock rlock;
+	};
+};
