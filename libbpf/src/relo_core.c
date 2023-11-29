@@ -1116,3 +1116,82 @@ int bpf_core_patch_insn(const char *prog_name, struct bpf_insn *insn,
 
 	return 0;
 }
+int bpf_core_format_spec(char *buf, size_t buf_sz, const struct bpf_core_spec *spec)
+{
+	const struct btf_type *t;
+	const char *s;
+	__u32 type_id;
+	int i, len = 0;
+
+#define append_buf(fmt, args...)                \
+	({                                          \
+		int r;                                  \
+		r = snprintf(buf, buf_sz, fmt, ##args); \
+		len += r;                               \
+		if (r >= buf_sz)                        \
+			r = buf_sz;                         \
+		buf += r;                               \
+		buf_sz -= r;                            \
+	})
+
+	type_id = spec->root_type_id;
+	t = btf_type_by_id(spec->btf, type_id);
+	s = btf__name_by_offset(spec->btf, t->name_off);
+
+	append_buf("<%s> [%u] %s %s",
+			   core_relo_kind_str(spec->relo_kind),
+			   type_id, btf_kind_str(t), str_is_empty(s) ? "<anon>" : s);
+
+	if (core_relo_is_type_based(spec->relo_kind))
+		return len;
+
+	if (core_relo_is_enumval_based(spec->relo_kind))
+	{
+		t = skip_mods_and_typedefs(spec->btf, type_id, NULL);
+		if (btf_is_enum(t))
+		{
+			const struct btf_enum *e;
+			const char *fmt_str;
+
+			e = btf_enum(t) + spec->raw_spec[0];
+			s = btf__name_by_offset(spec->btf, e->name_off);
+			fmt_str = BTF_INFO_KFLAG(t->info) ? "::%s = %d" : "::%s = %u";
+			append_buf(fmt_str, s, e->val);
+		}
+		else
+		{
+			const struct btf_enum64 *e;
+			const char *fmt_str;
+
+			e = btf_enum64(t) + spec->raw_spec[0];
+			s = btf__name_by_offset(spec->btf, e->name_off);
+			fmt_str = BTF_INFO_KFLAG(t->info) ? "::%s = %lld" : "::%s = %llu";
+			append_buf(fmt_str, s, (unsigned long long)btf_enum64_value(e));
+		}
+		return len;
+	}
+
+	if (core_relo_is_field_based(spec->relo_kind))
+	{
+		for (i = 0; i < spec->len; i++)
+		{
+			if (spec->spec[i].name)
+				append_buf(".%s", spec->spec[i].name);
+			else if (i > 0 || spec->spec[i].idx > 0)
+				append_buf("[%u]", spec->spec[i].idx);
+		}
+
+		append_buf(" (");
+		for (i = 0; i < spec->raw_len; i++)
+			append_buf("%s%d", i == 0 ? "" : ":", spec->raw_spec[i]);
+
+		if (spec->bit_offset % 8)
+			append_buf(" @ offset %u.%u)", spec->bit_offset / 8, spec->bit_offset % 8);
+		else
+			append_buf(" @ offset %u)", spec->bit_offset / 8);
+		return len;
+	}
+
+	return len;
+#undef append_buf
+}
