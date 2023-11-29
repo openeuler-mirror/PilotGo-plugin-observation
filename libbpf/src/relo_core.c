@@ -932,3 +932,48 @@ done:
 
 	return err;
 }
+static void bpf_core_poison_insn(const char *prog_name, int relo_idx,
+								 int insn_idx, struct bpf_insn *insn)
+{
+	pr_debug("prog '%s': relo #%d: substituting insn #%d w/ invalid insn\n",
+			 prog_name, relo_idx, insn_idx);
+	insn->code = BPF_JMP | BPF_CALL;
+	insn->dst_reg = 0;
+	insn->src_reg = 0;
+	insn->off = 0;
+	insn->imm = 195896080; /* => 0xbad2310 => "bad relo" */
+}
+
+static int insn_bpf_size_to_bytes(struct bpf_insn *insn)
+{
+	switch (BPF_SIZE(insn->code))
+	{
+	case BPF_DW:
+		return 8;
+	case BPF_W:
+		return 4;
+	case BPF_H:
+		return 2;
+	case BPF_B:
+		return 1;
+	default:
+		return -1;
+	}
+}
+
+static int insn_bytes_to_bpf_size(__u32 sz)
+{
+	switch (sz)
+	{
+	case 8:
+		return BPF_DW;
+	case 4:
+		return BPF_W;
+	case 2:
+		return BPF_H;
+	case 1:
+		return BPF_B;
+	default:
+		return -1;
+	}
+}
