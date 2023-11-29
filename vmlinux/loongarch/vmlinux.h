@@ -803,3 +803,57 @@ struct hrtimer {
 	u8 is_soft;
 	u8 is_hard;
 };
+
+struct sched_dl_entity {
+	struct rb_node rb_node;
+	u64 dl_runtime;
+	u64 dl_deadline;
+	u64 dl_period;
+	u64 dl_bw;
+	u64 dl_density;
+	s64 runtime;
+	u64 deadline;
+	unsigned int flags;
+	unsigned int dl_throttled: 1;
+	unsigned int dl_yielded: 1;
+	unsigned int dl_non_contending: 1;
+	unsigned int dl_overrun: 1;
+	struct hrtimer dl_timer;
+	struct hrtimer inactive_timer;
+	struct sched_dl_entity *pi_se;
+};
+
+struct sched_statistics {
+	u64 wait_start;
+	u64 wait_max;
+	u64 wait_count;
+	u64 wait_sum;
+	u64 iowait_count;
+	u64 iowait_sum;
+	u64 sleep_start;
+	u64 sleep_max;
+	s64 sum_sleep_runtime;
+	u64 block_start;
+	u64 block_max;
+	s64 sum_block_runtime;
+	u64 exec_max;
+	u64 slice_max;
+	u64 nr_migrations_cold;
+	u64 nr_failed_migrations_affine;
+	u64 nr_failed_migrations_running;
+	u64 nr_failed_migrations_hot;
+	u64 nr_forced_migrations;
+	u64 nr_wakeups;
+	u64 nr_wakeups_sync;
+	u64 nr_wakeups_migrate;
+	u64 nr_wakeups_local;
+	u64 nr_wakeups_remote;
+	u64 nr_wakeups_affine;
+	u64 nr_wakeups_affine_attempts;
+	u64 nr_wakeups_passive;
+	u64 nr_wakeups_idle;
+	long: 64;
+	long: 64;
+	long: 64;
+	long: 64;
+};
