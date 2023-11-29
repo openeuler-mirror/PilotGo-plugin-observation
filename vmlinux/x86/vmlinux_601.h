@@ -14450,3 +14450,72 @@ struct rt6key {
 struct rtable;
 
 struct fnhe_hash_bucket;
+
+struct fib_nh_common {
+	struct net_device *nhc_dev;
+	netdevice_tracker nhc_dev_tracker;
+	int nhc_oif;
+	unsigned char nhc_scope;
+	u8 nhc_family;
+	u8 nhc_gw_family;
+	unsigned char nhc_flags;
+	struct lwtunnel_state *nhc_lwtstate;
+	union {
+		__be32 ipv4;
+		struct in6_addr ipv6;
+	} nhc_gw;
+	int nhc_weight;
+	atomic_t nhc_upper_bound;
+	struct rtable **nhc_pcpu_rth_output;
+	struct rtable *nhc_rth_input;
+	struct fnhe_hash_bucket *nhc_exceptions;
+};
+
+struct rt6_exception_bucket;
+
+struct fib6_nh {
+	struct fib_nh_common nh_common;
+	long unsigned int last_probe;
+	struct rt6_info **rt6i_pcpu;
+	struct rt6_exception_bucket *rt6i_exception_bucket;
+};
+
+struct fib6_node;
+
+struct dst_metrics;
+
+struct nexthop;
+
+struct fib6_info {
+	struct fib6_table *fib6_table;
+	struct fib6_info *fib6_next;
+	struct fib6_node *fib6_node;
+	union {
+		struct list_head fib6_siblings;
+		struct list_head nh_list;
+	};
+	unsigned int fib6_nsiblings;
+	refcount_t fib6_ref;
+	long unsigned int expires;
+	struct dst_metrics *fib6_metrics;
+	struct rt6key fib6_dst;
+	u32 fib6_flags;
+	struct rt6key fib6_src;
+	struct rt6key fib6_prefsrc;
+	u32 fib6_metric;
+	u8 fib6_protocol;
+	u8 fib6_type;
+	u8 offload;
+	u8 trap;
+	u8 offload_failed;
+	u8 should_flush: 1;
+	u8 dst_nocount: 1;
+	u8 dst_nopolicy: 1;
+	u8 fib6_destroying: 1;
+	u8 unused: 4;
+	struct callback_head rcu;
+	struct nexthop *nh;
+	struct fib6_nh fib6_nh[0];
+};
+
+struct uncached_list;
