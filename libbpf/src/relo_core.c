@@ -1417,3 +1417,159 @@ static int bpf_core_composites_match(const struct btf *local_btf, const struct b
 	}
 	return 1;
 }
+int __bpf_core_types_match(const struct btf *local_btf, __u32 local_id, const struct btf *targ_btf,
+						   __u32 targ_id, bool behind_ptr, int level)
+{
+	const struct btf_type *local_t, *targ_t;
+	int depth = 32; /* max recursion depth */
+	__u16 local_k, targ_k;
+
+	if (level <= 0)
+		return -EINVAL;
+
+recur:
+	depth--;
+	if (depth < 0)
+		return -EINVAL;
+
+	local_t = skip_mods_and_typedefs(local_btf, local_id, &local_id);
+	targ_t = skip_mods_and_typedefs(targ_btf, targ_id, &targ_id);
+	if (!local_t || !targ_t)
+		return -EINVAL;
+
+	/* While the name check happens after typedefs are skipped, root-level
+	 * typedefs would still be name-matched as that's the contract with
+	 * callers.
+	 */
+	if (!bpf_core_names_match(local_btf, local_t->name_off, targ_btf, targ_t->name_off))
+		return 0;
+
+	local_k = btf_kind(local_t);
+	targ_k = btf_kind(targ_t);
+
+	switch (local_k)
+	{
+	case BTF_KIND_UNKN:
+		return local_k == targ_k;
+	case BTF_KIND_FWD:
+	{
+		bool local_f = BTF_INFO_KFLAG(local_t->info);
+
+		if (behind_ptr)
+		{
+			if (local_k == targ_k)
+				return local_f == BTF_INFO_KFLAG(targ_t->info);
+
+			/* for forward declarations kflag dictates whether the
+			 * target is a struct (0) or union (1)
+			 */
+			return (targ_k == BTF_KIND_STRUCT && !local_f) ||
+				   (targ_k == BTF_KIND_UNION && local_f);
+		}
+		else
+		{
+			if (local_k != targ_k)
+				return 0;
+
+			/* match if the forward declaration is for the same kind */
+			return local_f == BTF_INFO_KFLAG(targ_t->info);
+		}
+	}
+	case BTF_KIND_ENUM:
+	case BTF_KIND_ENUM64:
+		if (!btf_is_any_enum(targ_t))
+			return 0;
+
+		return bpf_core_enums_match(local_btf, local_t, targ_btf, targ_t);
+	case BTF_KIND_STRUCT:
+	case BTF_KIND_UNION:
+		if (behind_ptr)
+		{
+			bool targ_f = BTF_INFO_KFLAG(targ_t->info);
+
+			if (local_k == targ_k)
+				return 1;
+
+			if (targ_k != BTF_KIND_FWD)
+				return 0;
+
+			return (local_k == BTF_KIND_UNION) == targ_f;
+		}
+		else
+		{
+			if (local_k != targ_k)
+				return 0;
+
+			return bpf_core_composites_match(local_btf, local_t, targ_btf, targ_t,
+											 behind_ptr, level);
+		}
+	case BTF_KIND_INT:
+	{
+		__u8 local_sgn;
+		__u8 targ_sgn;
+
+		if (local_k != targ_k)
+			return 0;
+
+		local_sgn = btf_int_encoding(local_t) & BTF_INT_SIGNED;
+		targ_sgn = btf_int_encoding(targ_t) & BTF_INT_SIGNED;
+
+		return local_t->size == targ_t->size && local_sgn == targ_sgn;
+	}
+	case BTF_KIND_PTR:
+		if (local_k != targ_k)
+			return 0;
+
+		behind_ptr = true;
+
+		local_id = local_t->type;
+		targ_id = targ_t->type;
+		goto recur;
+	case BTF_KIND_ARRAY:
+	{
+		const struct btf_array *local_array = btf_array(local_t);
+		const struct btf_array *targ_array = btf_array(targ_t);
+
+		if (local_k != targ_k)
+			return 0;
+
+		if (local_array->nelems != targ_array->nelems)
+			return 0;
+
+		local_id = local_array->type;
+		targ_id = targ_array->type;
+		goto recur;
+	}
+	case BTF_KIND_FUNC_PROTO:
+	{
+		struct btf_param *local_p = btf_params(local_t);
+		struct btf_param *targ_p = btf_params(targ_t);
+		__u16 local_vlen = btf_vlen(local_t);
+		__u16 targ_vlen = btf_vlen(targ_t);
+		int i, err;
+
+		if (local_k != targ_k)
+			return 0;
+
+		if (local_vlen != targ_vlen)
+			return 0;
+
+		for (i = 0; i < local_vlen; i++, local_p++, targ_p++)
+		{
+			err = __bpf_core_types_match(local_btf, local_p->type, targ_btf,
+										 targ_p->type, behind_ptr, level - 1);
+			if (err <= 0)
+				return err;
+		}
+
+		/* tail recurse for return type check */
+		local_id = local_t->type;
+		targ_id = targ_t->type;
+		goto recur;
+	}
+	default:
+		pr_warn("unexpected kind %s relocated, local [%d], target [%d]\n",
+				btf_kind_str(local_t), local_id, targ_id);
+		return 0;
+	}
+}
