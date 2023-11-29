@@ -13812,3 +13812,144 @@ struct flowi_common {
 	struct flowi_tunnel flowic_tun_key;
 	__u32 flowic_multipath_hash;
 };
+
+union flowi_uli {
+	struct {
+		__be16 dport;
+		__be16 sport;
+	} ports;
+	struct {
+		__u8 type;
+		__u8 code;
+	} icmpt;
+	__be32 gre_key;
+	struct {
+		__u8 type;
+	} mht;
+};
+
+struct flowi4 {
+	struct flowi_common __fl_common;
+	__be32 saddr;
+	__be32 daddr;
+	union flowi_uli uli;
+};
+
+struct flowi6 {
+	struct flowi_common __fl_common;
+	struct in6_addr daddr;
+	struct in6_addr saddr;
+	__be32 flowlabel;
+	union flowi_uli uli;
+	__u32 mp_hash;
+};
+
+struct flowi {
+	union {
+		struct flowi_common __fl_common;
+		struct flowi4 ip4;
+		struct flowi6 ip6;
+	} u;
+};
+
+struct skb_shared_hwtstamps {
+	union {
+		ktime_t hwtstamp;
+		void *netdev_data;
+	};
+};
+
+struct net_device_stats {
+	union {
+		long unsigned int rx_packets;
+		atomic_long_t __rx_packets;
+	};
+	union {
+		long unsigned int tx_packets;
+		atomic_long_t __tx_packets;
+	};
+	union {
+		long unsigned int rx_bytes;
+		atomic_long_t __rx_bytes;
+	};
+	union {
+		long unsigned int tx_bytes;
+		atomic_long_t __tx_bytes;
+	};
+	union {
+		long unsigned int rx_errors;
+		atomic_long_t __rx_errors;
+	};
+	union {
+		long unsigned int tx_errors;
+		atomic_long_t __tx_errors;
+	};
+	union {
+		long unsigned int rx_dropped;
+		atomic_long_t __rx_dropped;
+	};
+	union {
+		long unsigned int tx_dropped;
+		atomic_long_t __tx_dropped;
+	};
+	union {
+		long unsigned int multicast;
+		atomic_long_t __multicast;
+	};
+	union {
+		long unsigned int collisions;
+		atomic_long_t __collisions;
+	};
+	union {
+		long unsigned int rx_length_errors;
+		atomic_long_t __rx_length_errors;
+	};
+	union {
+		long unsigned int rx_over_errors;
+		atomic_long_t __rx_over_errors;
+	};
+	union {
+		long unsigned int rx_crc_errors;
+		atomic_long_t __rx_crc_errors;
+	};
+	union {
+		long unsigned int rx_frame_errors;
+		atomic_long_t __rx_frame_errors;
+	};
+	union {
+		long unsigned int rx_fifo_errors;
+		atomic_long_t __rx_fifo_errors;
+	};
+	union {
+		long unsigned int rx_missed_errors;
+		atomic_long_t __rx_missed_errors;
+	};
+	union {
+		long unsigned int tx_aborted_errors;
+		atomic_long_t __tx_aborted_errors;
+	};
+	union {
+		long unsigned int tx_carrier_errors;
+		atomic_long_t __tx_carrier_errors;
+	};
+	union {
+		long unsigned int tx_fifo_errors;
+		atomic_long_t __tx_fifo_errors;
+	};
+	union {
+		long unsigned int tx_heartbeat_errors;
+		atomic_long_t __tx_heartbeat_errors;
+	};
+	union {
+		long unsigned int tx_window_errors;
+		atomic_long_t __tx_window_errors;
+	};
+	union {
+		long unsigned int rx_compressed;
+		atomic_long_t __rx_compressed;
+	};
+	union {
+		long unsigned int tx_compressed;
+		atomic_long_t __tx_compressed;
+	};
+};
