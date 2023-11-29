@@ -3719,3 +3719,46 @@ struct export_operations {
 	u64 (*fetch_iversion)(struct inode *);
 	long unsigned int flags;
 };
+
+struct xattr_handler {
+	const char *name;
+	const char *prefix;
+	int flags;
+	bool (*list)(struct dentry *);
+	int (*get)(const struct xattr_handler *, struct dentry *, struct inode *, const char *, void *, size_t);
+	int (*set)(const struct xattr_handler *, struct user_namespace *, struct dentry *, struct inode *, const char *, const void *, size_t, int);
+};
+
+typedef bool (*filldir_t)(struct dir_context *, const char *, int, loff_t, u64, unsigned int);
+
+struct dir_context {
+	filldir_t actor;
+	loff_t pos;
+};
+
+struct p_log;
+
+struct fs_parameter;
+
+struct fs_parse_result;
+
+typedef int fs_param_type(struct p_log *, const struct fs_parameter_spec *, struct fs_parameter *, struct fs_parse_result *);
+
+struct fs_parameter_spec {
+	const char *name;
+	fs_param_type *type;
+	u8 opt;
+	short unsigned int flags;
+	const void *data;
+};
+
+struct kernel_param_ops {
+	unsigned int flags;
+	int (*set)(const char *, const struct kernel_param *);
+	int (*get)(char *, const struct kernel_param *);
+	void (*free)(void *);
+};
+
+struct kparam_string;
+
+struct kparam_array;
