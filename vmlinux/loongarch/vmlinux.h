@@ -954,3 +954,52 @@ struct spinlock {
 		struct raw_spinlock rlock;
 	};
 };
+
+typedef struct spinlock spinlock_t;
+
+struct wake_q_node {
+	struct wake_q_node *next;
+};
+
+struct task_io_accounting {
+	u64 rchar;
+	u64 wchar;
+	u64 syscr;
+	u64 syscw;
+	u64 read_bytes;
+	u64 write_bytes;
+	u64 cancelled_write_bytes;
+};
+
+typedef struct {
+	long unsigned int bits[1];
+} nodemask_t;
+
+struct seqcount {
+	unsigned int sequence;
+};
+
+typedef struct seqcount seqcount_t;
+
+struct seqcount_spinlock {
+	seqcount_t seqcount;
+};
+
+typedef struct seqcount_spinlock seqcount_spinlock_t;
+
+struct tlbflush_unmap_batch {};
+
+struct page_frag {
+	struct page *page;
+	__u32 offset;
+	__u32 size;
+};
+
+struct kmap_ctrl {};
+
+struct timer_list {
+	struct hlist_node entry;
+	long unsigned int expires;
+	void (*function)(struct timer_list *);
+	u32 flags;
+};
