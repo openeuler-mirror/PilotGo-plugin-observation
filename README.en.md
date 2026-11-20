@@ -1,36 +1,31 @@
 # PilotGo-plugin-observation
 
 #### Description
-PilotGo observation plugin use eBPF to enhance system observation.
+PilotGo observation plugin uses eBPF to enhance system observability. It ships a set of libbpf-based performance analysis and tracing tools (such as execsnoop, biosnoop, tcptop) for observing process scheduling, filesystem, block device and network behavior in the kernel.
 
 #### Software Architecture
-Software architecture description
-
-#### Installation
-
-1.  xxxx
-2.  xxxx
-3.  xxxx
+- `bpftool/`: bpftool sources used to load/debug BPF programs and generate BTF and skeletons.
+- `libbpf/`: the libbpf user-space library that provides BPF loading infrastructure.
+- `src/`: the observation tools, one directory per tool, typically containing:
+  - `<tool>.bpf.c`: kernel-space BPF program (attached to tracepoints/kprobes/uprobes).
+  - `<tool>.c`: user-space program (argument parsing, BPF loading, event reading and output).
+  - `<tool>.h`: data structures shared between kernel and user space.
+- `src/include/`: common headers (maps, commons, trace/btf helpers, etc.).
+- `vmlinux/`: pre-generated `vmlinux.h` for x86/arm64/loongarch used by CO-RE.
 
 #### Instructions
+Each tool is built and run independently, requires root privileges, and relies on kernel BPF/BTF support. For example:
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+- `execsnoop`: trace all exec() syscalls.
+- `execsnoop -x`: include failed exec() calls.
+- `execsnoop -T`: include time (HH:MM:SS) in output.
+- `execsnoop -u 1000`: only trace the given UID.
+
+Run `<tool> -h` to see all options for other tools.
 
 #### Contribution
 
 1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
-
-
-#### Gitee Feature
-
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+2.  Create a feature branch (`git checkout -b feat-xxx`)
+3.  Commit your changes (`git commit -m "..."`)
+4.  Create a Pull Request / Merge Request
