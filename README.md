@@ -1,37 +1,33 @@
 # PilotGo-plugin-observation
 
 #### 介绍
-PilotGo observation plugin use eBPF to enhance system observation.
+PilotGo observation plugin 基于 eBPF 技术增强系统可观测性，汇集了一系列以 libbpf 实现的性能分析与 tracing 工具（如 execsnoop、biosnoop、tcptop 等），用于观测进程调度、文件系统、块设备、网络等内核行为。
 
 #### 软件架构
-软件架构说明
+项目主要由以下几部分组成：
 
-
-#### 安装教程
-
-1.  xxxx
-2.  xxxx
-3.  xxxx
+- `bpftool/`：bpftool 源码，用于加载/调试 BPF 程序、生成 BTF 与骨架代码。
+- `libbpf/`：libbpf 用户态库源码，是各工具的 BPF 加载基础设施。
+- `src/`：各观测工具，每个子目录为一个工具，通常包含三个文件：
+  - `<tool>.bpf.c`：内核态 BPF 程序（挂载 tracepoint/kprobe/uprobe 等）。
+  - `<tool>.c`：用户态程序（解析参数、加载 BPF、读取事件并输出）。
+  - `<tool>.h`：内核态与用户态共享的数据结构定义。
+- `src/include/`：公共头文件（maps、commons、trace/btf helpers 等）。
+- `vmlinux/`：各架构（x86、arm64、loongarch）预生成的 `vmlinux.h`，供 CO-RE 使用。
 
 #### 使用说明
+每个工具独立编译运行，均需 root 权限，并依赖内核开启 BPF/BTF 支持。以 execsnoop 为例：
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+- `execsnoop`：追踪所有 exec() 系统调用。
+- `execsnoop -x`：包含失败的 exec()。
+- `execsnoop -T`：输出中包含时间（HH:MM:SS）。
+- `execsnoop -u 1000`：仅追踪指定 UID。
+
+其余工具的可用参数可通过 `<tool> -h` 查看。
 
 #### 参与贡献
 
 1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+2.  新建特性分支（`git checkout -b feat-xxx`）
+3.  提交改动（`git commit -m "..."`）
+4.  新建 Pull Request / Merge Request
