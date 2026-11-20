@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
+//
+// execsnoop BPF program (kernel space).
+//
+// Attaches to the execve/execveat syscall tracepoints. On syscall entry it
+// records the process and its arguments into the 'execs' hash map; on syscall
+// exit it emits a completed event through the 'events' perf buffer. Optional
+// filtering by UID and cgroup is applied in both paths.
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
@@ -35,6 +42,11 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
+/*
+ * Common handler for sys_enter_execve / sys_enter_execveat.
+ * Builds an event containing the filename and up to 'max_args' arguments and
+ * stashes it in the 'execs' map keyed by pid, to be completed at syscall exit.
+ */
 static __always_inline int syscall_enter_execve(const char *filename,
 						const char *const *argv,
 						const char *const *env)
@@ -102,11 +114,17 @@ static __always_inline int syscall_enter_execve(const char *filename,
 	if (!argp)
 		return 0;
 
-	/* pointer to max_args+1 isn't null, asume we have more arguments */
+	/* pointer to max_args+1 isn't null, assume we have more arguments */
 	event->args_count++;
 	return 0;
 }
 
+/*
+ * Common handler for sys_exit_execve / sys_exit_execveat.
+ * Looks up the event created at entry, drops it if the exec failed and
+ * 'ignore_failed' is set, otherwise fills in the return value/comm and emits
+ * it to user space via the perf buffer.
+ */
 static __always_inline int syscall_exit_execve(void *ctx, int ret)
 {
 	pid_t pid;
