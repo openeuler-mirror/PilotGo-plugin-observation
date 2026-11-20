@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
+//
+// execsnoop - Trace exec(2) family syscalls (execve/execveat).
+//
+// User-space component: parses command-line options, loads the BPF program,
+// attaches to the execve/execveat tracepoints, and consumes events from the
+// perf buffer to print each new process execution. Kernel-side logic lives in
+// execsnoop.bpf.c and shared types are defined in execsnoop.h.
 #include "commons.h"
 #include "execsnoop.skel.h"
 #include "execsnoop.h"
