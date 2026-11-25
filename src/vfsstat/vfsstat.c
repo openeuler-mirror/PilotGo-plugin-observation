@@ -103,6 +103,18 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+
+static void report_loop(struct vfsstat_bpf *skel)
+{
+	while (!exiting) {
+		sleep(env.interval);
+		print_and_reset_stats(skel->bss->stats);
+
+		if (--env.count == 0)
+			break;
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -172,13 +184,7 @@ int main(int argc, char *argv[])
 
 	print_header();
 
-	while (!exiting) {
-		sleep(env.interval);
-		print_and_reset_stats(skel->bss->stats);
-
-		if (--env.count == 0)
-			break;
-	}
+	report_loop(skel);
 
 cleanup:
 	vfsstat_bpf__destroy(skel);
