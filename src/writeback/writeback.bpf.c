@@ -27,15 +27,29 @@ int tracepoint_writeback_start(struct trace_event_raw_writeback_work_class *ctx)
 	return 0;
 }
 
+static int fill_event(struct event *event,
+		      struct trace_event_raw_writeback_work_class *ctx,
+		      __u64 start)
+{
+	__s64 latency = bpf_ktime_get_ns() - start;
+
+	BPF_CORE_READ_STR_INTO(&event->name, ctx, name);
+	event->nr_pages = ctx->nr_pages;
+	event->reason = ctx->reason;
+
+	if (latency < 0)
+		latency = 0;
+
+	event->latency = latency / 1000;
+	return 0;
+}
+
 SEC("tracepoint/writeback/writeback_written")
 int tracepoint_writeback_written(struct trace_event_raw_writeback_work_class *ctx)
 {
 	struct event *event;
 
-	long nr_pages = ctx->nr_pages;
 	dev_t sb_dev = ctx->sb_dev;
-	int reason = ctx->reason;
-	__s64 latency;
 
 	__u64 *start = bpf_map_lookup_and_delete_elem(&birth, &sb_dev);
 	if (!start)
@@ -45,15 +59,7 @@ int tracepoint_writeback_written(struct trace_event_raw_writeback_work_class *ct
 	if (!event)
 		return 0;
 
-	BPF_CORE_READ_STR_INTO(&event->name, ctx, name);
-	event->nr_pages = nr_pages;
-	event->reason = reason;
-
-	latency = bpf_ktime_get_ns() - *start;
-	if (latency < 0)
-		latency = 0;
-
-	event->latency = latency / 1000;
+	fill_event(event, ctx, *start);
 	submit_buf(ctx, event, sizeof(*event));
 
 	return 0;
