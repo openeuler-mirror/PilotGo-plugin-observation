@@ -35,6 +35,22 @@ static bool match_target(pid_t tgid, pid_t pid)
 
     return true;
 }
+
+static void report_event(void *ctx, pid_t tgid, pid_t pid, u32 prev_numa_id,
+                         u32 numa_id)
+{
+    struct event event;
+
+    event.pid = tgid;
+    event.tid = pid;
+    bpf_get_current_comm(&event.comm, sizeof(event.comm));
+    event.prev_numa_node_id = prev_numa_id;
+    event.numa_node_id = numa_id;
+
+    bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event,
+                          sizeof(struct event));
+}
+
 static int handle_sched_switch(void *ctx, struct task_struct *prev,
                                struct task_struct *next)
 {
@@ -52,19 +68,7 @@ static int handle_sched_switch(void *ctx, struct task_struct *prev,
         goto update;
 
     if (*old_numa_id != numa_id)
-    {
-        /* record event */
-        struct event event;
-
-        event.pid = tgid;
-        event.tid = pid;
-        bpf_get_current_comm(&event.comm, sizeof(event.comm));
-        event.prev_numa_node_id = *old_numa_id;
-        event.numa_node_id = numa_id;
-
-        bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event,
-                              sizeof(struct event));
-    }
+        report_event(ctx, tgid, pid, *old_numa_id, numa_id);
 
 update:
     bpf_map_update_elem(&numa_node_map, &pid, &numa_id, BPF_ANY);
