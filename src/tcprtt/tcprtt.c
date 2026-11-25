@@ -62,6 +62,20 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_addr(int key, char *arg, struct argp_state *state)
+{
+	struct in_addr addr;
+
+	if (inet_aton(arg, &addr) < 0) {
+		warning("Invalid address: %s\n", arg);
+		argp_usage(state);
+	}
+	if (key == 'a')
+		env.laddr = addr.s_addr;
+	else
+		env.raddr = addr.s_addr;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -91,19 +105,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		break;
 	case 'a':
 	case 'A':
-	{
-		struct in_addr addr;
-
-		if (inet_aton(arg, &addr) < 0) {
-			warning("Invalid address: %s\n", arg);
-			argp_usage(state);
-		}
-		if (key == 'a')
-			env.laddr = addr.s_addr;
-		else
-			env.raddr = addr.s_addr;
+		parse_addr(key, arg, state);
 		break;
-	}
 	case 'b':
 		env.laddr_hist = true;
 		break;
