@@ -23,25 +23,37 @@ struct {
 	__type(value, u64);
 } start SEC(".maps");
 
-static __always_inline int
-handle_tcp_probe(struct sock *sk, struct sk_buff *skb)
+static __always_inline bool
+match_probe_target(struct sock *sk, struct sk_buff *skb)
 {
 	const struct inet_sock *inet = (struct inet_sock *)sk;
-	u64 sock_cookie, ts, len, doff;
+	u64 len, doff;
 	const struct tcphdr *th;
 
 	if (target_family && target_family != BPF_CORE_READ(sk, __sk_common.skc_family))
-		return 0;
+		return false;
 	if (target_sport && target_sport != BPF_CORE_READ(inet, inet_sport))
-		return 0;
+		return false;
 	if (target_dport && target_dport != BPF_CORE_READ(sk, __sk_common.skc_dport))
-		return 0;
+		return false;
 	th = (const struct tcphdr *)BPF_CORE_READ(skb, data);
 	doff = BPF_CORE_READ_BITFIELD_PROBED(th, doff);
 	len = BPF_CORE_READ(skb, len);
 	/* `doff * 4` means `__tcp_hdrlen` */
 	if (len <= doff * 4)
+		return false;
+
+	return true;
+}
+
+static __always_inline int
+handle_tcp_probe(struct sock *sk, struct sk_buff *skb)
+{
+	u64 sock_cookie, ts;
+
+	if (!match_probe_target(sk, skb))
 		return 0;
+
 	sock_cookie = bpf_get_socket_cookie(sk);
 	ts = bpf_ktime_get_ns();
 	bpf_map_update_elem(&start, &sock_cookie, &ts, BPF_ANY);
