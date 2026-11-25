@@ -28,20 +28,26 @@ static __always_inline bool filter_pid(void)
 	return false;
 }
 
+static __always_inline void bump_count(__u64 *key)
+{
+	static __u64 zero;
+	__u64 *count = bpf_map_lookup_or_try_init(&counts, key, &zero);
+
+	if (!count)
+		return;
+
+	__sync_fetch_and_add(count, 1);
+}
+
 SEC("kprobe.multi")
 int BPF_KPROBE(function_entry)
 {
 	if (filter_pid())
 		return 0;
 
-	static __u64 zero;
 	__u64 ip = PT_REGS_IP(ctx);
-	__u64 *count = bpf_map_lookup_or_try_init(&counts, &ip, &zero);
 
-	if (!count)
-		return 0;
-
-	__sync_fetch_and_add(count, 1);
+	bump_count(&ip);
 	return 0;
 }
 
@@ -52,12 +58,8 @@ int tracepoint_entry(void *ctx)
 		return 0;
 
 	static __u64 zero;
-	__u64 *count = bpf_map_lookup_or_try_init(&counts, &zero, &zero);
 
-	if (!count)
-		return 0;
-
-	__sync_fetch_and_add(count, 1);
+	bump_count(&zero);
 	return 0;
 }
 
