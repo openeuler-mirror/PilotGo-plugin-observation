@@ -97,6 +97,57 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_sort_arg(const char *arg, struct argp_state *state)
+{
+	if (!strcmp(arg, "all"))
+		env.sort_by = ALL;
+	else if (!strcmp(arg, "io"))
+		env.sort_by = IO;
+	else if (!strcmp(arg, "bytes"))
+		env.sort_by = BYTES;
+	else if (!strcmp(arg, "time"))
+		env.sort_by = TIME;
+	else {
+		warning("Invalid sort method: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_rows_arg(const char *arg, struct argp_state *state)
+{
+	errno = 0;
+	env.output_rows = strtol(arg, NULL, 10);
+	if (errno || env.output_rows <= 0) {
+		warning("Invalid rows: %s\n", arg);
+		argp_usage(state);
+	}
+	if (env.output_rows > OUTPUT_ROWS_LIMIT)
+		env.output_rows = OUTPUT_ROWS_LIMIT;
+}
+
+static void parse_positional_arg(const char *arg, int pos,
+				 struct argp_state *state)
+{
+	long value;
+
+	if (pos > 1) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	value = strtol(arg, NULL, 10);
+	if (errno || value <= 0) {
+		warning("Invalid %s\n", pos == 0 ? "interval" : "count");
+		argp_usage(state);
+	}
+
+	if (pos == 0)
+		env.interval = value;
+	else
+		env.count = value;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -106,28 +157,10 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.clear_screen = false;
 		break;
 	case 's':
-		if (!strcmp(arg, "all")) {
-			env.sort_by = ALL;
-		} else if (!strcmp(arg, "io")) {
-			env.sort_by = IO;
-		} else if (!strcmp(arg, "bytes")) {
-			env.sort_by = BYTES;
-		} else if (!strcmp(arg, "time")) {
-			env.sort_by = TIME;
-		} else {
-			warning("Invalid sort method: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_sort_arg(arg, state);
 		break;
 	case 'r':
-		errno = 0;
-		env.output_rows = strtol(arg, NULL, 10);
-		if (errno || env.output_rows <= 0) {
-			warning("Invalid rows: %s\n", arg);
-			argp_usage(state);
-		}
-		if (env.output_rows > OUTPUT_ROWS_LIMIT)
-			env.output_rows = OUTPUT_ROWS_LIMIT;
+		parse_rows_arg(arg, state);
 		break;
 	case 'v':
 		env.verbose = true;
@@ -136,24 +169,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.interval = strtol(arg, NULL, 10);
-			if (errno || env.interval <= 0) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			env.count = strtol(arg, NULL, 10);
-			if (errno || env.count <= 0) {
-				warning("Invalid count\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -252,16 +268,15 @@ static char *search_disk_name(int major, int minor)
 	return "";
 }
 
-static int print_stat(struct biotop_bpf *obj)
+static void print_loadavg(void)
 {
 	FILE *fp;
-	struct info_t *prev_key = NULL;
-	static struct data_t datas[OUTPUT_ROWS_LIMIT];
-	int err = 0, rows = 0;
-	int fd = bpf_map__fd(obj->maps.counts);
 
 	fp = fopen("/proc/loadavg", "r");
-	if (fp) {
+	if (!fp)
+		return;
+
+	{
 		char ts[16], buf[256] = {};
 		int n;
 
@@ -270,79 +285,125 @@ static int print_stat(struct biotop_bpf *obj)
 		n = fread(buf, 1, sizeof(buf), fp);
 		if (n)
 			printf("%8s loadavg: %s\n", ts, buf);
-		fclose(fp);
 	}
+	fclose(fp);
+}
 
-	printf("%-7s %-16s %1s %-3s %-3s %-8s %5s %7s %6s\n",
-	       "PID", "COMM", "D", "MAJ", "MIN", "DISK", "I/O", "Kbytes", "AVGms");
+static void print_stat_row(const struct data_t *data)
+{
+	const struct info_t *key = &data->key;
+	const struct val_t *value = &data->value;
+	float avg_ms = 0;
+
+	/* To avoid floating point exception. */
+	if (value->io)
+		avg_ms = ((float)value->us) / 1000 / value->io;
+
+	printf("%-7d %-16s %1s %-3d %-3d %-8s %5d %7lld %6.2f\n",
+	       key->pid, key->name, key->rwflag ? "W" : "R",
+	       key->major, key->minor,
+	       search_disk_name(key->major, key->minor),
+	       value->io, value->bytes / 1024, avg_ms);
+}
+
+static int fetch_counts(int fd, struct data_t *datas)
+{
+	struct info_t *prev_key = NULL;
+	int rows = 0, err;
 
 	while (1) {
 		err = bpf_map_get_next_key(fd, prev_key, &datas[rows].key);
 		if (err) {
-			if (errno == ENOENT) {
-				err = 0;
-				break;
-			}
-			warning("bpf_map_get_next_key failed: %s\n", strerror(errno));
-			return err;
+			if (errno == ENOENT)
+				return rows;
+			warning("bpf_map_get_next_key failed: %s\n",
+				strerror(errno));
+			return -1;
 		}
 		prev_key = &datas[rows].key;
 
 		err = bpf_map_lookup_elem(fd, &datas[rows].key, &datas[rows].value);
 		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-			return err;
+			warning("bpf_map_lookup_elem failed: %s\n",
+				strerror(errno));
+			return -1;
 		}
 
 		rows++;
 	}
+}
 
-	qsort(datas, rows, sizeof(struct data_t), sort_column);
-	rows = rows < env.output_rows ? rows : env.output_rows;
-
-	for (int i = 0; i < rows; i++) {
-		int major, minor;
-		struct info_t *key = &datas[i].key;
-		struct val_t *value = &datas[i].value;
-		float avg_ms = 0;
-
-		/* To avoid floating point exception. */
-		if (value->io)
-			avg_ms = ((float)value->us) / 1000 / value->io;
-
-		major = key->major;
-		minor = key->minor;
-
-		printf("%-7d %-16s %1s %-3d %-3d %-8s %5d %7lld %6.2f\n",
-		       key->pid, key->name, key->rwflag ? "W" : "R",
-		       major, minor, search_disk_name(major, minor),
-		       value->io, value->bytes / 1024, avg_ms);
-	}
-
-	printf("\n");
-	prev_key = NULL;
+static int clear_counts(int fd)
+{
+	struct info_t *prev_key = NULL;
+	struct info_t key;
+	int err;
 
 	while (1) {
-		struct info_t key;
-
 		err = bpf_map_get_next_key(fd, prev_key, &key);
 		if (err) {
-			if (errno == ENOENT) {
-				err = 0;
-				break;
-			}
-			warning("bpf_map_get_next_key failed: %s\n", strerror(errno));
+			if (errno == ENOENT)
+				return 0;
+			warning("bpf_map_get_next_key failed: %s\n",
+				strerror(errno));
 			return err;
 		}
 		err = bpf_map_delete_elem(fd, &key);
 		if (err) {
-			warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
+			warning("bpf_map_delete_elem failed: %s\n",
+				strerror(errno));
 			return err;
 		}
 		prev_key = &key;
 	}
+}
 
-	return err;
+static int print_stat(struct biotop_bpf *obj)
+{
+	static struct data_t datas[OUTPUT_ROWS_LIMIT];
+	int err, rows;
+	int fd = bpf_map__fd(obj->maps.counts);
+
+	print_loadavg();
+
+	printf("%-7s %-16s %1s %-3s %-3s %-8s %5s %7s %6s\n",
+	       "PID", "COMM", "D", "MAJ", "MIN", "DISK", "I/O", "Kbytes", "AVGms");
+
+	rows = fetch_counts(fd, datas);
+	if (rows < 0)
+		return -1;
+
+	qsort(datas, rows, sizeof(struct data_t), sort_column);
+	rows = rows < env.output_rows ? rows : env.output_rows;
+
+	for (int i = 0; i < rows; i++)
+		print_stat_row(&datas[i]);
+
+	printf("\n");
+
+	err = clear_counts(fd);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static int attach_io_probe(struct biotop_bpf *obj, struct bpf_program *prog,
+			   struct bpf_link **link, const char *func,
+			   const struct ksyms *ksyms)
+{
+	char alt_name[32];
+
+	snprintf(alt_name, sizeof(alt_name), "__%s", func);
+	if (ksyms__get_symbol(ksyms, alt_name))
+		func = alt_name;
+
+	*link = bpf_program__attach_kprobe(prog, false, func);
+	if (!*link) {
+		warning("Failed to load attach %s\n", func);
+		return -1;
+	}
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -386,33 +447,17 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (ksyms__get_symbol(ksyms, "__blk_account_io_start"))
-		obj->links.blk_account_io_start =
-			bpf_program__attach_kprobe(obj->progs.blk_account_io_start,
-						   false, "__blk_account_io_start");
-	else
-		obj->links.blk_account_io_start =
-			bpf_program__attach_kprobe(obj->progs.blk_account_io_start,
-						   false, "blk_account_io_start");
-
-	if (!obj->links.blk_account_io_start) {
-		warning("Failed to load attach blk_account_io_start\n");
+	err = attach_io_probe(obj, obj->progs.blk_account_io_start,
+			      &obj->links.blk_account_io_start,
+			      "blk_account_io_start", ksyms);
+	if (err)
 		goto cleanup;
-	}
 
-	if (ksyms__get_symbol(ksyms, "__blk_account_io_done"))
-		obj->links.blk_account_io_done =
-			bpf_program__attach_kprobe(obj->progs.blk_account_io_done,
-						   false, "__blk_account_io_done");
-	else
-		obj->links.blk_account_io_done =
-			bpf_program__attach_kprobe(obj->progs.blk_account_io_done,
-						   false, "blk_account_io_done");
-
-	if (!obj->links.blk_account_io_done) {
-		warning("Failed to load attach blk_account_io_done");
+	err = attach_io_probe(obj, obj->progs.blk_account_io_done,
+			      &obj->links.blk_account_io_done,
+			      "blk_account_io_done", ksyms);
+	if (err)
 		goto cleanup;
-	}
 
 	err = biotop_bpf__attach(obj);
 	if (err) {
