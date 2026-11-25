@@ -55,10 +55,28 @@ static const struct argp_option opts[] = {
 	{}
 };
 
-static error_t parse_arg(int key, char *arg, struct argp_state *state)
+static void parse_ports_arg(char *arg, struct argp_state *state)
 {
 	char *port;
 
+	if (!arg) {
+		warning("No ports specified\n");
+		argp_usage(state);
+	}
+
+	env.target_ports = strdup(arg);
+	for (port = strtok(arg, ","); port; port = strtok(NULL, ",")) {
+		int port_num = strtol(port, NULL, 10);
+
+		if (errno || port_num <= 0 || port_num > 65536) {
+			warning("Invalid ports: %s\n", arg);
+			argp_usage(state);
+		}
+	}
+}
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
 	switch (key) {
 	case 'p':
 		env.target_pid = argp_parse_pid(key, arg, state);
@@ -68,20 +86,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.cg = true;
 		break;
 	case 'P':
-		if (!arg) {
-			warning("No ports specified\n");
-			argp_usage(state);
-		}
-		env.target_ports = strdup(arg);
-		port = strtok(arg, ",");
-		while (port) {
-			int port_num = strtol(port, NULL, 10);
-			if (errno || port_num <= 0 || port_num > 65536) {
-				warning("Invalid ports: %s\n", arg);
-				argp_usage(state);
-			}
-			port = strtok(NULL, ",");
-		}
+		parse_ports_arg(arg, state);
 		break;
 	case 'x':
 		env.ignore_errors = false;
@@ -105,9 +110,9 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 			   va_list args)
 {
-	if (level == LIBBPF_DEBUG && !env.verbose)
-		return 0;
-	return vfprintf(stderr, format, args);
+	if (level != LIBBPF_DEBUG || env.verbose)
+		return vfprintf(stderr, format, args);
+	return 0;
 }
 
 static void sig_handler(int sig)
@@ -115,13 +120,33 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static const char *proto_name(__u16 proto)
+{
+	switch (proto) {
+	case IPPROTO_TCP:
+		return "TCP";
+	case IPPROTO_UDP:
+		return "UDP";
+	default:
+		return "UNK";
+	}
+}
+
+static void format_socket_opts(__u8 opts_mask, char *buf)
+{
+	static const char opt_chars[] = { 'F', 'T', 'N', 'R', 'r' };
+	int i;
+
+	for (i = 0; i < sizeof(opt_chars); i++)
+		buf[i] = (opts_mask & (1 << i)) ? opt_chars[i] : '.';
+	buf[i] = '\0';
+}
+
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
 	struct bind_event *e = data;
 	char addr[48];
-	char opts[] = { 'F', 'T', 'N', 'R', 'r', '\0' };
-	const char *proto;
-	int i = 0;
+	char opts[6];
 
 	if (env.emit_timestamp) {
 		char ts[32];
@@ -130,19 +155,7 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 		printf("%8s ", ts);
 	}
 
-	if (e->proto == IPPROTO_TCP)
-		proto = "TCP";
-	else if (e->proto == IPPROTO_UDP)
-		proto = "UDP";
-	else
-		proto = "UNK";
-
-	while (opts[i]) {
-		if (!((1 << i) & e->opts)) {
-			opts[i] = '.';
-		}
-		i++;
-	}
+	format_socket_opts(e->opts, opts);
 
 	if (e->ver == 4)
 		inet_ntop(AF_INET, &e->addr, addr, sizeof(addr));
@@ -150,12 +163,52 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 		inet_ntop(AF_INET6, &e->addr, addr, sizeof(addr));
 
 	printf("%-7d %-16s %-3d %-5s %-5s %-4d %-5d %-48s\n",
-	       e->pid, e->task, e->ret, proto, opts, e->bound_dev_if, e->port, addr);
+	       e->pid, e->task, e->ret, proto_name(e->proto), opts,
+	       e->bound_dev_if, e->port, addr);
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static int setup_cgroup_map(struct bindsnoop_bpf *obj)
+{
+	int idx = 0;
+	int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+	int cgfd = open(env.cgroupspath, O_RDONLY);
+
+	if (cgfd < 0) {
+		warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		return -1;
+	}
+	if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		close(cgfd);
+		return -1;
+	}
+	return cgfd;
+}
+
+static void load_ports_map(struct bindsnoop_bpf *obj)
+{
+	int port_map_fd = bpf_map__fd(obj->maps.ports);
+	char *port = strtok(env.target_ports, ",");
+
+	while (port) {
+		int port_num = strtol(port, NULL, 10);
+
+		bpf_map_update_elem(port_map_fd, &port_num, &port_num, BPF_ANY);
+		port = strtok(NULL, ",");
+	}
+}
+
+static void print_header(void)
+{
+	if (env.emit_timestamp)
+		printf("%-8s ", "TIME(s)");
+	printf("%-7s %-16s %-3s %-5s %-5s %-4s %-5s %-48s\n",
+	       "PID", "COMM", "RET", "PROTO", "OPTS", "IF", "PORT", "ADDR");
 }
 
 int main(int argc, char *argv[])
@@ -205,32 +258,13 @@ int main(int argc, char *argv[])
 
 	/* update cgroup path fd to map */
 	if (env.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		cgfd = setup_cgroup_map(obj);
+		if (cgfd < 0)
 			goto cleanup;
-		}
-
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
 	}
 
-	if (env.target_ports) {
-		int port_map_fd = bpf_map__fd(obj->maps.ports);
-		char *port = strtok(env.target_ports, ",");
-
-		while (port) {
-			int port_num = strtol(port, NULL, 10);
-
-			bpf_map_update_elem(port_map_fd, &port_num, &port_num, BPF_ANY);
-			port = strtok(NULL, ",");
-		}
-	}
+	if (env.target_ports)
+		load_ports_map(obj);
 
 	err = bindsnoop_bpf__attach(obj);
 	if (err) {
@@ -252,10 +286,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.emit_timestamp)
-		printf("%-8s ", "TIME(s)");
-	printf("%-7s %-16s %-3s %-5s %-5s %-4s %-5s %-48s\n",
-	       "PID", "COMM", "RET", "PROTO", "OPTS", "IF", "PORT", "ADDR");
+	print_header();
 
 	while (!exiting) {
 		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
