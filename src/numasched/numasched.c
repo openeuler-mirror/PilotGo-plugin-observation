@@ -183,14 +183,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Init global data (filtering options) */
-    bpf_obj->rodata->target_tgid = env.pid;
-    bpf_obj->rodata->target_pid = env.tid;
-
-    if (probe_tp_btf("sched_switch"))
-        bpf_program__set_autoload(bpf_obj->progs.sched_switch_raw, false);
-    else
-        bpf_program__set_autoload(bpf_obj->progs.sched_switch_btf, false);
+    init_filter(bpf_obj);
+    select_probes(bpf_obj);
 
     err = numasched_bpf__load(bpf_obj);
     if (err)
