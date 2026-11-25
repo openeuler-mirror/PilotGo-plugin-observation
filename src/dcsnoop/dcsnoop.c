@@ -86,14 +86,8 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static void print_event_time(void)
 {
-	const struct event *e = data;
-	char mode_s[] = {
-		[LOOKUP_MISS] = 'M',
-		[LOOKUP_REFERENCE] = 'R',
-	};
-
 	if (env.timestamp) {
 		char ts[32];
 
@@ -102,6 +96,17 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 	} else {
 		printf("%-11.6f ", time_since_start());
 	}
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	char mode_s[] = {
+		[LOOKUP_MISS] = 'M',
+		[LOOKUP_REFERENCE] = 'R',
+	};
+
+	print_event_time();
 
 	printf("%-7d %-7d %-16s %c %s\n",
 	       e->pid, e->tid, e->comm, mode_s[e->type], e->filename);
@@ -114,6 +119,16 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void print_header(void)
+{
+	if (env.timestamp)
+		printf("%-8s ", "TIME(s)");
+	else
+		printf("%-11s ", "S-TIME(s)");
+	printf("%-7s %-7s %-16s %1s %s\n",
+	       "PID", "TID", "COMM", "T", "FILE");
+}
+
 static int print_events(struct bpf_buffer *buf)
 {
 	int err;
@@ -124,12 +139,7 @@ static int print_events(struct bpf_buffer *buf)
 		return err;
 	}
 
-	if (env.timestamp)
-		printf("%-8s ", "TIME(s)");
-	else
-		printf("%-11s ", "S-TIME(s)");
-	printf("%-7s %-7s %-16s %1s %s\n",
-	       "PID", "TID", "COMM", "T", "FILE");
+	print_header();
 
 	while (!exiting) {
 		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
@@ -146,6 +156,23 @@ static int print_events(struct bpf_buffer *buf)
 	}
 
 	return err;
+}
+
+static void set_probes_autoload(struct dcsnoop_bpf *obj)
+{
+	if (!env.trace_all) {
+		bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
+		bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
+	}
+
+	if (fentry_can_attach("d_lookup", NULL)) {
+		bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
+		bpf_program__set_autoload(obj->progs.d_lookup_kprobe, false);
+		bpf_program__set_autoload(obj->progs.d_lookup_kretprobe, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
+		bpf_program__set_autoload(obj->progs.d_lookup_fexit, false);
+	}
 }
 
 int main(int argc, char *argv[])
@@ -184,19 +211,7 @@ int main(int argc, char *argv[])
 	obj->rodata->target_pid = env.pid;
 	obj->rodata->target_tid = env.tid;
 
-	if (!env.trace_all) {
-		bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
-		bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
-	}
-
-	if (fentry_can_attach("d_lookup", NULL)) {
-		bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
-		bpf_program__set_autoload(obj->progs.d_lookup_kprobe, false);
-		bpf_program__set_autoload(obj->progs.d_lookup_kretprobe, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
-		bpf_program__set_autoload(obj->progs.d_lookup_fexit, false);
-	}
+	set_probes_autoload(obj);
 
 	err = dcsnoop_bpf__load(obj);
 	if (err) {
