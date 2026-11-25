@@ -148,6 +148,14 @@ static void select_probes(struct numasched_bpf *bpf_obj)
         bpf_program__set_autoload(bpf_obj->progs.sched_switch_raw, false);
     else
         bpf_program__set_autoload(bpf_obj->progs.sched_switch_btf, false);
+
+static void print_header(void)
+{
+    if (env.timestamp)
+        printf("%-9s", "TIME");
+
+    printf("%-16s %-10s %-10s %8s    %-8s\n", "COMM", "PID", "TID", "SRC_NID",
+           "DST_NID");
 }
 int main(int argc, char *argv[])
 {
@@ -200,11 +208,7 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    if (env.timestamp)
-        printf("%-9s", "TIME");
-
-    printf("%-16s %-10s %-10s %8s    %-8s\n", "COMM", "PID", "TID", "SRC_NID",
-           "DST_NID");
+    print_header();
 
     pb = perf_buffer__new(bpf_map__fd(bpf_obj->maps.events), PERF_BUFFER_PAGES,
                           handle_event, handle_lost_events, NULL, NULL);
