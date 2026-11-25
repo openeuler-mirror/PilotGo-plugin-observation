@@ -98,6 +98,35 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void disable_stat_tp_pair(const char *name,
+				 struct bpf_program *entry,
+				 struct bpf_program *ret)
+{
+	if (!tracepoint_exists("syscalls", name)) {
+		bpf_program__set_autoload(entry, false);
+		bpf_program__set_autoload(ret, false);
+	}
+}
+
+static void disable_missing_tracepoints(struct statsnoop_bpf *obj)
+{
+	disable_stat_tp_pair("sys_enter_statfs",
+			     obj->progs.handle_statfs_entry,
+			     obj->progs.handle_statfs_return);
+	disable_stat_tp_pair("sys_enter_statx",
+			     obj->progs.handle_statx_entry,
+			     obj->progs.handle_statx_return);
+	disable_stat_tp_pair("sys_enter_newstat",
+			     obj->progs.handle_newstat_entry,
+			     obj->progs.handle_newstat_return);
+	disable_stat_tp_pair("sys_enter_newfstatat",
+			     obj->progs.handle_newfstatat_entry,
+			     obj->progs.handle_newfstatat_return);
+	disable_stat_tp_pair("sys_enter_newlstat",
+			     obj->progs.handle_newlstat_entry,
+			     obj->progs.handle_newlstat_return);
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -134,26 +163,7 @@ int main(int argc, char *argv[])
 	obj->rodata->target_pid = target_pid;
 	obj->rodata->trace_failed_only = trace_failed_only;
 
-	if (!tracepoint_exists("syscalls", "sys_enter_statfs")) {
-		bpf_program__set_autoload(obj->progs.handle_statfs_entry, false);
-		bpf_program__set_autoload(obj->progs.handle_statfs_return, false);
-	}
-	if (!tracepoint_exists("syscalls", "sys_enter_statx")) {
-		bpf_program__set_autoload(obj->progs.handle_statx_entry, false);
-		bpf_program__set_autoload(obj->progs.handle_statx_return, false);
-	}
-	if (!tracepoint_exists("syscalls", "sys_enter_newstat")) {
-		bpf_program__set_autoload(obj->progs.handle_newstat_entry, false);
-		bpf_program__set_autoload(obj->progs.handle_newstat_return, false);
-	}
-	if (!tracepoint_exists("syscalls", "sys_enter_newfstatat")) {
-		bpf_program__set_autoload(obj->progs.handle_newfstatat_entry, false);
-		bpf_program__set_autoload(obj->progs.handle_newfstatat_return, false);
-	}
-	if (!tracepoint_exists("syscalls", "sys_enter_newlstat")) {
-		bpf_program__set_autoload(obj->progs.handle_newlstat_entry, false);
-		bpf_program__set_autoload(obj->progs.handle_newlstat_return, false);
-	}
+	disable_missing_tracepoints(obj);
 
 	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
 	if (!buf) {
