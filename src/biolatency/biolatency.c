@@ -55,6 +55,29 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_positional_arg(const char *arg, int pos,
+				 struct argp_state *state)
+{
+	long value;
+
+	if (pos > 1) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	value = strtol(arg, NULL, 10);
+	if (errno || value <= 0) {
+		warning("Invalid %s\n", pos == 0 ? "interval" : "times");
+		argp_usage(state);
+	}
+
+	if (pos == 0)
+		env.interval = value;
+	else
+		env.times = value;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -86,31 +109,14 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.cg = true;
 		break;
 	case 'd':
-		env.disk = arg;
 		if (strlen(arg) + 1 > DISK_NAME_LEN) {
 			warning("Invalid disk name: too long\n");
 			argp_usage(state);
 		}
+		env.disk = arg;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.interval = strtol(arg, NULL, 10);
-			if (errno || env.interval <= 0) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			env.times = strtol(arg, NULL, 10);
-			if (errno || env.times <= 0) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -122,10 +128,9 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 			   va_list args)
 {
-	if (level == LIBBPF_DEBUG && !env.verbose)
-		return 0;
-
-	return vfprintf(stderr, format, args);
+	if (level != LIBBPF_DEBUG || env.verbose)
+		return vfprintf(stderr, format, args);
+	return 0;
 }
 
 static void sig_handler(int sig)
@@ -133,62 +138,77 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static const struct {
+	int bit;
+	const char *str;
+} flag_names[] = {
+	{ REQ_NOWAIT, "NoWait-" },
+	{ REQ_BACKGROUND, "Background-" },
+	{ REQ_RAHEAD, "ReadAhead-" },
+	{ REQ_PREFLUSH, "PreFlush-" },
+	{ REQ_FUA, "FUA-" },
+	{ REQ_INTEGRITY, "Integrity-" },
+	{ REQ_IDLE, "Idle-" },
+	{ REQ_NOMERGE, "NoMerge-" },
+	{ REQ_PRIO, "Priority-" },
+	{ REQ_META, "Metadata-" },
+	{ REQ_SYNC, "Sync-" },
+};
+
+static const char *op_names[] = {
+	[REQ_OP_READ] = "Read",
+	[REQ_OP_WRITE] = "Write",
+	[REQ_OP_FLUSH] = "Flush",
+	[REQ_OP_DISCARD] = "Discard",
+	[REQ_OP_SECURE_ERASE] = "SecureErase",
+	[REQ_OP_ZONE_RESET] = "ZoneReset",
+	[REQ_OP_WRITE_SAME] = "WriteSame",
+	[REQ_OP_ZONE_RESET_ALL] = "ZoneResetAll",
+	[REQ_OP_WRITE_ZEROES] = "WriteZeroes",
+	[REQ_OP_ZONE_OPEN] = "ZoneOpen",
+	[REQ_OP_ZONE_CLOSE] = "ZoneClose",
+	[REQ_OP_ZONE_FINISH] = "ZoneFinish",
+	[REQ_OP_SCSI_IN] = "SCSIIn",
+	[REQ_OP_SCSI_OUT] = "SCSIOut",
+	[REQ_OP_DRV_IN] = "DrvIn",
+	[REQ_OP_DRV_OUT] = "DrvOut",
+};
+
 static void print_cmd_flags(int cmd_flags)
 {
-	static struct {
-		int bit;
-		const char *str;
-	} flags[] = {
-		{ REQ_NOWAIT, "NoWait-" },
-		{ REQ_BACKGROUND, "Background-" },
-		{ REQ_RAHEAD, "ReadAhead-" },
-		{ REQ_PREFLUSH, "PreFlush-" },
-		{ REQ_FUA, "FUA-" },
-		{ REQ_INTEGRITY, "Integrity-" },
-		{ REQ_IDLE, "Idle-" },
-		{ REQ_NOMERGE, "NoMerge-" },
-		{ REQ_PRIO, "Priority-" },
-		{ REQ_META, "Metadata-" },
-		{ REQ_SYNC, "Sync-" },
-	};
-
-	static const char *ops[] = {
-		[REQ_OP_READ] = "Read",
-		[REQ_OP_WRITE] = "Write",
-		[REQ_OP_FLUSH] = "Flush",
-		[REQ_OP_DISCARD] = "Discard",
-		[REQ_OP_SECURE_ERASE] = "SecureErase",
-		[REQ_OP_ZONE_RESET] = "ZoneReset",
-		[REQ_OP_WRITE_SAME] = "WriteSame",
-		[REQ_OP_ZONE_RESET_ALL] = "ZoneResetAll",
-		[REQ_OP_WRITE_ZEROES] = "WriteZeroes",
-		[REQ_OP_ZONE_OPEN] = "ZoneOpen",
-		[REQ_OP_ZONE_CLOSE] = "ZoneClose",
-		[REQ_OP_ZONE_FINISH] = "ZoneFinish",
-		[REQ_OP_SCSI_IN] = "SCSIIn",
-		[REQ_OP_SCSI_OUT] = "SCSIOut",
-		[REQ_OP_DRV_IN] = "DrvIn",
-		[REQ_OP_DRV_OUT] = "DrvOut",
-	};
-
 	printf("flags = ");
 
-	for (int i = 0; i < ARRAY_SIZE(flags); i++) {
-		if (cmd_flags & flags[i].bit)
-			printf("%s", flags[i].str);
+	for (int i = 0; i < ARRAY_SIZE(flag_names); i++) {
+		if (cmd_flags & flag_names[i].bit)
+			printf("%s", flag_names[i].str);
 	}
 
-	if ((cmd_flags & REQ_OP_MASK) < ARRAY_SIZE(ops))
-		printf("%s", ops[cmd_flags & REQ_OP_MASK]);
+	if ((cmd_flags & REQ_OP_MASK) < ARRAY_SIZE(op_names))
+		printf("%s", op_names[cmd_flags & REQ_OP_MASK]);
 	else
 		printf("Unknown");
+}
+
+static void print_hist(const struct hist_key *key, const struct hist *hist,
+		       struct partitions *partitions)
+{
+	const char *units = env.milliseconds ? "msecs" : "usecs";
+
+	if (env.per_disk) {
+		const struct partition *partition =
+			partitions__get_by_dev(partitions, key->dev);
+
+		printf("\ndisk = %s\t", partition ? partition->name : "Unknown");
+	}
+	if (env.per_flag)
+		print_cmd_flags(key->cmd_flags);
+	printf("\n");
+	print_log2_hist(hist->slots, MAX_SLOTS, units);
 }
 
 static int print_log2_hists(struct bpf_map *hists, struct partitions *partitions)
 {
 	struct hist_key lookup_key = { .cmd_flags = -1 }, next_key;
-	const char *units = env.milliseconds ? "msecs" : "usecs";
-	const struct partition *partition;
 	int err, fd = bpf_map__fd(hists);
 	struct hist hist;
 
@@ -198,16 +218,7 @@ static int print_log2_hists(struct bpf_map *hists, struct partitions *partitions
 			warning("Failed to lookup hist: %d\n", err);
 			return -1;
 		}
-		if (env.per_disk) {
-			partition = partitions__get_by_dev(partitions,
-							  next_key.dev);
-			printf("\ndisk = %s\t", partition ? partition->name :
-			       "Unknown");
-		}
-		if (env.per_flag)
-			print_cmd_flags(next_key.cmd_flags);
-		printf("\n");
-		print_log2_hist(hist.slots, MAX_SLOTS, units);
+		print_hist(&next_key, &hist, partitions);
 		lookup_key = next_key;
 	}
 
@@ -224,6 +235,59 @@ static int print_log2_hists(struct bpf_map *hists, struct partitions *partitions
 	return 0;
 }
 
+static void set_probe_autoload(struct biolatency_bpf *obj)
+{
+	if (probe_tp_btf("block_rq_insert")) {
+		bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
+		bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
+		bpf_program__set_autoload(obj->progs.block_rq_complete_raw, false);
+		if (!env.queued)
+			bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
+		bpf_program__set_autoload(obj->progs.block_rq_issue_btf, false);
+		bpf_program__set_autoload(obj->progs.block_rq_complete_btf, false);
+		if (!env.queued)
+			bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
+	}
+}
+
+static int setup_cgroup_map(struct biolatency_bpf *obj)
+{
+	int idx = 0;
+	int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+	int cgfd = open(env.cgroupspath, O_RDONLY);
+
+	if (cgfd < 0) {
+		warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		return -1;
+	}
+	if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		close(cgfd);
+		return -1;
+	}
+	return cgfd;
+}
+
+static bool setup_disk_filter(struct biolatency_bpf *obj,
+			      const struct partitions *partitions)
+{
+	const struct partition *partition;
+
+	if (!env.disk)
+		return true;
+
+	partition = partitions__get_by_name(partitions, env.disk);
+	if (!partition) {
+		warning("Invalid partition name: not exist\n");
+		return false;
+	}
+	obj->rodata->filter_dev = true;
+	obj->rodata->target_dev = partition->dev;
+	return true;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -234,7 +298,6 @@ int main(int argc, char *argv[])
 	struct biolatency_bpf *obj;
 	int cgfd = -1;
 	struct partitions *partitions = NULL;
-	const struct partition *partition;
 
 	int err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
@@ -257,15 +320,8 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.disk) {
-		partition = partitions__get_by_name(partitions, env.disk);
-		if (!partition) {
-			warning("Invalid partition name: not exist\n");
-			goto cleanup;
-		}
-		obj->rodata->filter_dev = true;
-		obj->rodata->target_dev = partition->dev;
-	}
+	if (!setup_disk_filter(obj, partitions))
+		goto cleanup;
 
 	obj->rodata->target_per_disk = env.per_disk;
 	obj->rodata->target_per_flag = env.per_flag;
@@ -273,19 +329,7 @@ int main(int argc, char *argv[])
 	obj->rodata->target_queued = env.queued;
 	obj->rodata->filter_memcg = env.cg;
 
-	if (probe_tp_btf("block_rq_insert")) {
-		bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
-		bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
-		bpf_program__set_autoload(obj->progs.block_rq_complete_raw, false);
-		if (!env.queued)
-			bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
-		bpf_program__set_autoload(obj->progs.block_rq_issue_btf, false);
-		bpf_program__set_autoload(obj->progs.block_rq_complete_btf, false);
-		if (!env.queued)
-			bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
-	}
+	set_probe_autoload(obj);
 
 	err = biolatency_bpf__load(obj);
 	if (err) {
@@ -294,17 +338,9 @@ int main(int argc, char *argv[])
 	}
 
 	if (env.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		cgfd = setup_cgroup_map(obj);
+		if (cgfd < 0)
 			goto cleanup;
-		}
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
 	}
 
 	err = biolatency_bpf__attach(obj);
