@@ -13,18 +13,24 @@ struct
     __uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
+static int __always_inline fill_event(struct event *event, void *bio)
+{
+    struct gendisk *gendisk;
+
+    event->pid = bpf_get_current_pid_tgid() >> 32;
+    gendisk = get_gendisk(bio);
+
+    BPF_CORE_READ_STR_INTO(event->disk, gendisk, disk_name);
+    bpf_get_current_comm(event->comm, sizeof(event->comm));
+    return 0;
+}
+
 static int __always_inline probe_md_flush_request(void *ctx, void *mddev,
                                                   void *bio)
 {
-    __u32 pid = bpf_get_current_pid_tgid() >> 32;
     struct event event = {};
-    struct gendisk *gendisk;
 
-    event.pid = pid;
-    gendisk = get_gendisk(bio);
-
-    BPF_CORE_READ_STR_INTO(event.disk, gendisk, disk_name);
-    bpf_get_current_comm(event.comm, sizeof(event.comm));
+    fill_event(&event, bio);
     bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
     return 0;
 }
