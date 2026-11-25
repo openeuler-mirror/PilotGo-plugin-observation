@@ -127,7 +127,7 @@ static void set_autoload_progs(struct tcpsynbl_bpf *obj, int version)
 	}
 }
 
-static int print_log2_hists(int fd)
+static int print_hists(int fd)
 {
 	__u64 lookup_key = -1, next_key;
 	struct hist hist;
@@ -144,7 +144,14 @@ static int print_log2_hists(int fd)
 		lookup_key = next_key;
 	}
 
-	lookup_key = -1;
+	return 0;
+}
+
+static int clear_hists(int fd)
+{
+	__u64 lookup_key = -1, next_key;
+	int err;
+
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
 		err = bpf_map_delete_elem(fd, &next_key);
 		if (err) {
@@ -155,6 +162,17 @@ static int print_log2_hists(int fd)
 	}
 
 	return 0;
+}
+
+static int print_log2_hists(int fd)
+{
+	int err;
+
+	err = print_hists(fd);
+	if (err)
+		return err;
+
+	return clear_hists(fd);
 }
 
 int main(int argc, char *argv[])
