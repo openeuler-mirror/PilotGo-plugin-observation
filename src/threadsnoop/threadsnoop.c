@@ -82,26 +82,39 @@ static const char *demangling_cplusplus_function(const char *name)
 	return ret;
 }
 
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static const struct sym *resolve_sym(struct syms_cache *syms_cache, pid_t pid,
+				     __u64 function_addr)
 {
-	const struct event *e = data;
-	char ts[16];
-	struct syms_cache *syms_cache = *((struct syms_cache **)ctx);
 	const struct syms *syms;
-	const struct sym *sym = NULL;
 
-	syms = syms_cache__get_syms(syms_cache, e->pid);
-	if (syms)
-		sym = syms__map_addr(syms, e->function_addr);
+	syms = syms_cache__get_syms(syms_cache, pid);
+	if (!syms)
+		return NULL;
+
+	return syms__map_addr(syms, function_addr);
+}
+
+static void print_event(const struct event *e, struct syms_cache *syms_cache)
+{
+	const struct sym *sym;
+	char ts[16];
+
+	sym = resolve_sym(syms_cache, e->pid, e->function_addr);
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S");
 	printf("%-10s %-6d %-16s ", ts, e->pid, e->comm);
-        
+
 	if (sym)
 		printf("%s\n", demangling_cplusplus_function(sym->name));
 	else
 		printf("0x%llx [unknown]\n", e->function_addr);
+}
 
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	struct syms_cache *syms_cache = *((struct syms_cache **)ctx);
+
+	print_event(data, syms_cache);
 	return 0;
 }
 
