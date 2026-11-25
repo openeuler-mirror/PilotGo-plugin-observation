@@ -53,6 +53,11 @@ static void parse_positional(int arg_num, char *arg, struct argp_state *state)
 		break;
 	default:
 		warning("Unrecognized positional argument: %s\n", arg);
+
+static void validate_ipv(struct argp_state *state)
+{
+	if (env.ipv4 && env.ipv6) {
+		warning("Only one --ipvX option should be used\n");
 		argp_usage(state);
 	}
 }
@@ -75,10 +80,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.ipv6 = true;
 		break;
 	case ARGP_KEY_END:
-		if (env.ipv4 && env.ipv6) {
-			warning("Only one --ipvX option should be used\n");
-			argp_usage(state);
-		}
+		validate_ipv(state);
 		break;
 	case ARGP_KEY_ARG:
 		parse_positional(state->arg_num, arg, state);
