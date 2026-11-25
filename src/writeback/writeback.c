@@ -62,15 +62,19 @@ const char *reasons[] = {
 	[7] = "forker_thread",
 };
 
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static void print_event(const struct event *e)
 {
-	const struct event *e = data;
 	char ts[16];
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S");
 	printf("%-9s %-8s %-8ld %-16s %lld.%03lld\n", ts, e->name,
 	       e->nr_pages & 0xffff, reasons[e->reason & 0xffffffff],
 	       e->latency / 1000, e->latency % 1000);
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	print_event(data);
 	return 0;
 }
 
