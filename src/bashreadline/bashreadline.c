@@ -55,9 +55,9 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 			   va_list args)
 {
-	if (level == LIBBPF_DEBUG && !env.verbose)
-		return 0;
-	return vfprintf(stderr, format, args);
+	if (level != LIBBPF_DEBUG || env.verbose)
+		return vfprintf(stderr, format, args);
+	return 0;
 }
 
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_size)
@@ -66,7 +66,6 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_size)
 	char ts[16];
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
 	printf("%-9s %-7d %s\n", ts, e->pid, e->str);
 }
 
@@ -78,6 +77,19 @@ static void handle_lost_event(void *ctx, int cpu, __u64 lost_cnt)
 static void sig_handler(int sig)
 {
 	exiting = 1;
+}
+
+static char *resolve_readline_path(void)
+{
+	const char *bash_path = "/bin/bash";
+
+	if (env.libreadline_path)
+		return env.libreadline_path;
+
+	if (get_elf_func_offset(bash_path, "readline") >= 0)
+		return strdup(bash_path);
+
+	return find_library_so(bash_path, "/libreadline.so");
 }
 
 int main(int argc, char *argv[])
@@ -102,20 +114,10 @@ int main(int argc, char *argv[])
 	if (!bpf_is_root())
 		return 1;
 
-	if (env.libreadline_path) {
-		readline_so_path = env.libreadline_path;
-	} else {
-		const char *bash_path = "/bin/bash";
-
-		if (get_elf_func_offset(bash_path, "readline") >= 0)
-			readline_so_path = strdup(bash_path);
-		else {
-			readline_so_path = find_library_so(bash_path, "/libreadline.so");
-			if (!readline_so_path) {
-				warning("Failed to find readline\n");
-				return 1;
-			}
-		}
+	readline_so_path = resolve_readline_path();
+	if (!readline_so_path) {
+		warning("Failed to find readline\n");
+		return 1;
 	}
 
 	libbpf_set_print(libbpf_print_fn);
