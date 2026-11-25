@@ -57,6 +57,29 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void print_header(void)
+{
+	printf("Tracing sync syscalls... Hit Ctrl-C to end.\n");
+	printf("%-9s %-6s %-16s %s\n", "TIME", "PID", "COMM", "EVENT");
+}
+
+static int poll_events(struct bpf_buffer *buf)
+{
+	int err = 0;
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Failed to polling ring/perf buffer: %d\n", err);
+			break;
+		}
+		/* reset err to 0 when exiting */
+		err = 0;
+	}
+
+	return err;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
