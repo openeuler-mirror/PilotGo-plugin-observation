@@ -65,6 +65,60 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void set_units(struct env *env, int units, struct argp_state *state)
+{
+	if (env->units != NSEC) {
+		warning("only set one of -m or -u\n");
+		argp_usage(state);
+	}
+	env->units = units;
+}
+
+static void parse_duration_arg(struct env *env, const char *arg,
+			       struct argp_state *state)
+{
+	errno = 0;
+	env->duration = strtol(arg, NULL, 10);
+	if (errno || env->duration <= 0) {
+		warning("Invalid duration: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_interval_arg(struct env *env, const char *arg,
+			       struct argp_state *state)
+{
+	errno = 0;
+	env->interval = strtol(arg, NULL, 10);
+	if (errno || env->interval <= 0) {
+		warning("Invalid interval: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_funcname_arg(struct env *env, const char *arg,
+			       struct argp_state *state)
+{
+	if (env->funcname) {
+		warning("Too many function names: %s\n", arg);
+		argp_usage(state);
+	}
+	env->funcname = arg;
+}
+
+static void finalize_args(struct env *env, struct argp_state *state)
+{
+	if (!env->funcname) {
+		warning("Need a function to trace\n");
+		argp_usage(state);
+	}
+	if (env->duration) {
+		if (env->interval > env->duration)
+			env->interval = env->duration;
+		env->iterations = env->duration / env->interval;
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	struct env *env = state->input;
@@ -90,52 +144,22 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env->pid = argp_parse_pid(key, arg, state);
 		break;
 	case 'm':
-		if (env->units != NSEC) {
-			warning("only set one of -m or -u\n");
-			argp_usage(state);
-		}
-		env->units = MSEC;
+		set_units(env, MSEC, state);
 		break;
 	case 'u':
-		if (env->units != NSEC) {
-			warning("only set one of -m or -u\n");
-			argp_usage(state);
-		}
-		env->units = USEC;
+		set_units(env, USEC, state);
 		break;
 	case 'd':
-		errno = 0;
-		env->duration = strtol(arg, NULL, 10);
-		if (errno || env->duration <= 0) {
-			warning("Invalid duration: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_duration_arg(env, arg, state);
 		break;
 	case 'i':
-		errno = 0;
-		env->interval = strtol(arg, NULL, 10);
-		if (errno || env->interval <= 0) {
-			warning("Invalid interval: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_interval_arg(env, arg, state);
 		break;
 	case ARGP_KEY_ARG:
-		if (env->funcname) {
-			warning("Too many function names: %s\n", arg);
-			argp_usage(state);
-		}
-		env->funcname = arg;
+		parse_funcname_arg(env, arg, state);
 		break;
 	case ARGP_KEY_END:
-		if (!env->funcname) {
-			warning("Need a function to trace\n");
-			argp_usage(state);
-		}
-		if (env->duration) {
-			if (env->interval > env->duration)
-				env->interval = env->duration;
-			env->iterations = env->duration / env->interval;
-		}
+		finalize_args(env, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -166,27 +190,30 @@ static const char *unit2str(void)
 	return "bad units";
 }
 
+static int set_fentry_attach_target(struct bpf_program *prog, const char *funcname,
+				    const char *label)
+{
+	long err = bpf_program__set_attach_target(prog, 0, funcname);
+
+	if (err)
+		warning("failed to set attach %s: %s\n", label, strerror(-err));
+
+	return err;
+}
+
 static bool try_fentry(struct funclatency_bpf *obj)
 {
-	long err;
-
 	if (env.kprobes || !env.is_kernel_func ||
 	    !fentry_can_attach(env.funcname, NULL))
 		goto out_no_fentry;
 
-	err = bpf_program__set_attach_target(obj->progs.dummy_fentry, 0,
-					     env.funcname);
-	if (err) {
-		warning("failed to set attach fentry: %s\n", strerror(-err));
+	if (set_fentry_attach_target(obj->progs.dummy_fentry, env.funcname,
+				     "fentry"))
 		goto out_no_fentry;
-	}
 
-	err = bpf_program__set_attach_target(obj->progs.dummy_fexit, 0,
-					     env.funcname);
-	if (err) {
-		warning("failed to set attach fexit: %s\n", strerror(-err));
+	if (set_fentry_attach_target(obj->progs.dummy_fexit, env.funcname,
+				     "fexit"))
 		goto out_no_fentry;
-	}
 
 	bpf_program__set_autoload(obj->progs.dummy_kprobe, false);
 	bpf_program__set_autoload(obj->progs.dummy_kretprobe, false);
@@ -287,6 +314,39 @@ static struct sigaction sigact = {
 	.sa_handler = sig_hander
 };
 
+static int setup_cgroup_map(struct funclatency_bpf *obj)
+{
+	int idx = 0;
+	int cgfd;
+
+	cgfd = open(env.cgroupspath, O_RDONLY);
+	if (cgfd < 0) {
+		warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		return -1;
+	}
+	if (bpf_map_update_elem(bpf_map__fd(obj->maps.cgroup_map), &idx, &cgfd,
+				BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		return -1;
+	}
+
+	return cgfd;
+}
+
+static void print_timestamp(void)
+{
+	char ts[32];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	printf("%-8s\n", ts);
+}
+
+static void print_and_reset_hists(__u32 *hists)
+{
+	print_log2_hist(hists, MAX_SLOTS, unit2str());
+	memset(hists, 0, MAX_SLOTS * sizeof(__u32));
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -339,18 +399,9 @@ int main(int argc, char *argv[])
 
 	/* update cgroup path to map */
 	if (env.cg) {
-		int idx = 0;
-
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		cgfd = setup_cgroup_map(obj);
+		if (cgfd < 0)
 			goto cleanup;
-		}
-		if (bpf_map_update_elem(bpf_map__fd(obj->maps.cgroup_map), &idx, &cgfd,
-					BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
 	}
 
 	if (!obj->bss) {
@@ -379,16 +430,10 @@ int main(int argc, char *argv[])
 		sleep(env.interval);
 
 		printf("\n");
-		if (env.timestamp) {
-			char ts[32];
+		if (env.timestamp)
+			print_timestamp();
 
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
-			printf("%-8s\n", ts);
-		}
-
-		print_log2_hist(obj->bss->hists, MAX_SLOTS, unit2str());
-		memset(obj->bss->hists, 0, MAX_SLOTS * sizeof(__u32));
+		print_and_reset_hists(obj->bss->hists);
 	}
 
 	printf("Exiting trace of %s\n", env.funcname);
