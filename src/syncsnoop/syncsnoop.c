@@ -41,14 +41,17 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static void print_event(const struct event *e)
 {
-	const struct event *e = data;
 	char ts[16];
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S ");
 	printf("%s %-6d %-16s %s\n", ts, e->pid, e->comm, e->funcname);
+}
 
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	print_event(data);
 	return 0;
 }
 
