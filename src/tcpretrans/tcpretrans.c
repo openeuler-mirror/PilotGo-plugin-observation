@@ -192,15 +192,28 @@ static void print_event_header(void)
 }
 
 
+union ip_addr {
+	struct in_addr  x4;
+	struct in6_addr x6;
+};
+
+static void fill_addrs(const struct event *event, union ip_addr *s, union ip_addr *d)
+{
+	if (event->af == AF_INET) {
+		s->x4.s_addr = event->saddr_v4;
+		d->x4.s_addr = event->daddr_v4;
+	} else if (event->af == AF_INET6) {
+		memcpy(&s->x6.s6_addr, event->saddr_v6, sizeof(s->x6.s6_addr));
+		memcpy(&d->x6.s6_addr, event->daddr_v6, sizeof(d->x6.s6_addr));
+	}
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	char time_now[16];
 	const struct event *event = data;
 	char src[INET6_ADDRPORTSTRLEN], dst[INET6_ADDRPORTSTRLEN];
-	union {
-		struct in_addr  x4;
-		struct in6_addr x6;
-	} s, d;
+	union ip_addr s, d;
 
 	if (env.ipv4_only && event->af == AF_INET6)
 		return 0;
@@ -208,13 +221,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 	if (env.ipv6_only && event->af == AF_INET)
 		return 0;
 
-	if (event->af == AF_INET) {
-		s.x4.s_addr = event->saddr_v4;
-		d.x4.s_addr = event->daddr_v4;
-	} else if (event->af == AF_INET6) {
-		memcpy(&s.x6.s6_addr, event->saddr_v6, sizeof(s.x6.s6_addr));
-		memcpy(&d.x6.s6_addr, event->daddr_v6, sizeof(d.x6.s6_addr));
-	}
+	fill_addrs(event, &s, &d);
 
 	strftime_now(time_now, sizeof(time_now), "%H:%M:%S");
 	sprintf(src, "%s:%d", inet_ntop(event->af, &s, src, sizeof(src)),
