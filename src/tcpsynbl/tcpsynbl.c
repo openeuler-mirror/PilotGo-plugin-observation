@@ -175,6 +175,30 @@ static int print_log2_hists(int fd)
 		return err;
 
 	return clear_hists(fd);
+static int report_loop(struct tcpsynbl_bpf *obj)
+{
+	int err = 0;
+
+	while (1) {
+		sleep(env.interval);
+		printf("\n");
+
+		if (env.timestamp) {
+			char ts[32];
+
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s\n", ts);
+		}
+
+		err = print_log2_hists(bpf_map__fd(obj->maps.hists));
+		if (err)
+			break;
+
+		if (exiting || --env.times == 0)
+			break;
+	}
+
+	return err;
 }
 
 int main(int argc, char *argv[])
@@ -230,24 +254,7 @@ int main(int argc, char *argv[])
 
 	printf("Tracing SYN backlog size. Ctrl-C to end.\n");
 
-	while (1) {
-		sleep(env.interval);
-		printf("\n");
-
-		if (env.timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
-
-		err = print_log2_hists(bpf_map__fd(obj->maps.hists));
-		if (err)
-			break;
-
-		if (exiting || --env.times == 0)
-			break;
-	}
+	err = report_loop(obj);
 
 cleanup:
 	tcpsynbl_bpf__destroy(obj);
