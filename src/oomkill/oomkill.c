@@ -40,21 +40,27 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
     return 0;
 }
 
-static int handle_event(void *ctx, void *data, size_t len)
+static int read_loadavg(char *buf, size_t size)
 {
-    FILE *f;
-    char buf[256];
+    FILE *f = fopen("/proc/loadavg", "r");
     int n = 0;
-    char ts[32];
-    struct data_t *e = data;
 
-    f = fopen("/proc/loadavg", "r");
     if (f)
     {
-        memset(buf, 0, sizeof(buf));
-        n = fread(buf, 1, sizeof(buf), f);
+        memset(buf, 0, size);
+        n = fread(buf, 1, size, f);
         fclose(f);
     }
+    return n;
+}
+
+static int handle_event(void *ctx, void *data, size_t len)
+{
+    char buf[256];
+    char ts[32];
+    struct data_t *e = data;
+    int n = read_loadavg(buf, sizeof(buf));
+
     strftime_now(ts, sizeof(ts), "%H:%M:%S");
 
     printf("%s Trigger by PID %d (\"%s\"), OOM kill of PID %d (\"%s\"), %lld pages",
