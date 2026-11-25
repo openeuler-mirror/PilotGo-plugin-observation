@@ -176,10 +176,18 @@ static int handle_event(void *ctx, void *data, size_t len)
 
     if (emit_timestamp)
         printf("\n");
+    print_event_detail(e, indent, op_name[e->op]);
+
+    return 0;
+}
+
+static void print_event_detail(const struct event *e, const char *indent,
+                               const char *op_name)
+{
     printf("%sPID:\t\t%d\n", indent, e->pid);
     printf("%sTID:\t\t%d\n", indent, e->tid);
     printf("%sCOMM:\t%s\n", indent, e->comm);
-    printf("%sOP:\t\t%s\n", indent, op_name[e->op]);
+    printf("%sOP:\t\t%s\n", indent, op_name);
     printf("%sRET:\t\t%s\n", indent, strerrno(e->ret));
     printf("%sLAT:\t\t%lldus\n", indent, e->delta / 1000);
     printf("%sMNT_NS:\t%u\n", indent, e->mnt_ns);
@@ -189,8 +197,6 @@ static int handle_event(void *ctx, void *data, size_t len)
     printf("%sDATA:\t%s\n", indent, e->data);
     printf("%sFLAGS:\t%s\n", indent, strflags(e->flags));
     printf("\n");
-
-    return 0;
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)

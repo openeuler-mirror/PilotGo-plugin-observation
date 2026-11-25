@@ -42,6 +42,15 @@ static __always_inline int probe_entry(const char *src, const char *dest,
     return 0;
 }
 
+static __always_inline void copy_user_str(char *dst, __u32 dst_sz,
+					  const char *src)
+{
+	if (src)
+		bpf_probe_read_user_str(dst, dst_sz, src);
+	else
+		dst[0] = '\0';
+}
+
 static __always_inline int probe_exit(void *ctx, int ret)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
@@ -68,22 +77,10 @@ static __always_inline int probe_exit(void *ctx, int ret)
     eventp->ret = ret;
     eventp->op = argp->op;
     bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
-    if (argp->src)
-        bpf_probe_read_user_str(eventp->src, sizeof(eventp->src), argp->src);
-    else
-        eventp->src[0] = '\0';
-    if (argp->dest)
-        bpf_probe_read_user_str(eventp->dest, sizeof(eventp->dest), argp->dest);
-    else
-        eventp->dest[0] = '\0';
-    if (argp->fs)
-        bpf_probe_read_user_str(eventp->fs, sizeof(eventp->fs), argp->fs);
-    else
-        eventp->fs[0] = '\0';
-    if (argp->data)
-        bpf_probe_read_user_str(eventp->data, sizeof(eventp->data), argp->data);
-    else
-        eventp->data[0] = '\0';
+    copy_user_str(eventp->src, sizeof(eventp->src), argp->src);
+    copy_user_str(eventp->dest, sizeof(eventp->dest), argp->dest);
+    copy_user_str(eventp->fs, sizeof(eventp->fs), argp->fs);
+    copy_user_str(eventp->data, sizeof(eventp->data), argp->data);
 
     submit_buf(ctx, eventp, sizeof(*eventp));
 
