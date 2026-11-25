@@ -126,6 +126,11 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void disable_prog(struct bpf_program *prog)
+{
+	bpf_program__set_autoload(prog, false);
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	struct event *e = data;
@@ -182,14 +187,14 @@ int main(int argc, char *argv[])
 	obj->rodata->failed_only = failed_only;
 
 	if (kill_only) {
-		bpf_program__set_autoload(obj->progs.sig_trace, false);
+		disable_prog(obj->progs.sig_trace);
 	} else {
-		bpf_program__set_autoload(obj->progs.kill_entry, false);
-		bpf_program__set_autoload(obj->progs.kill_exit, false);
-		bpf_program__set_autoload(obj->progs.tkill_entry, false);
-		bpf_program__set_autoload(obj->progs.tkill_exit, false);
-		bpf_program__set_autoload(obj->progs.tgkill_entry, false);
-		bpf_program__set_autoload(obj->progs.tgkill_exit, false);
+		disable_prog(obj->progs.kill_entry);
+		disable_prog(obj->progs.kill_exit);
+		disable_prog(obj->progs.tkill_entry);
+		disable_prog(obj->progs.tkill_exit);
+		disable_prog(obj->progs.tgkill_entry);
+		disable_prog(obj->progs.tgkill_exit);
 	}
 
 	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
