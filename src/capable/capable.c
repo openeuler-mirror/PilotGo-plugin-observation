@@ -178,19 +178,57 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_kernel_stack(struct ksyms *ksyms, int sfd, int stack_id,
+			       unsigned long *ip, int max_depth)
+{
+	const struct ksym *ksym;
+
+	if (bpf_map_lookup_elem(sfd, &stack_id, ip))
+		warning("    [Missed Kernel Stack]\n");
+	for (int i = 0; i < max_depth && ip[i]; i++) {
+		ksym = ksyms__map_addr(ksyms, ip[i]);
+		printf("    %s\n", ksym ? ksym->name : "Unknown");
+	}
+}
+
+static void print_user_stack(struct syms_cache *syms_cache, int sfd,
+			     int stack_id, int tgid, unsigned long *ip,
+			     int max_depth)
+{
+	const struct syms *syms;
+	const struct sym *sym;
+
+	if (stack_id == -1)
+		return;
+
+	if (bpf_map_lookup_elem(sfd, &stack_id, ip)) {
+		warning("    [Missed User Stack]\n");
+		return;
+	}
+
+	syms = syms_cache__get_syms(syms_cache, tgid);
+	if (!syms) {
+		warning("Failed to get syms\n");
+		return;
+	}
+
+	for (int i = 0; i < max_depth && ip[i]; i++) {
+		sym = syms__map_addr(syms, ip[i]);
+		printf("    %s\n", sym ? sym->name : "Unknown");
+	}
+}
+
 static void print_map(struct ksyms *ksyms, struct syms_cache *syms_cache,
 		      void *ctx)
 {
 	struct key_t lookup_key = {}, next_key;
-	const struct ksym *ksym;
-	const struct syms *syms;
-	const struct sym *sym;
+	struct cap_event val;
 	int err;
 	unsigned long *ip;
-	struct cap_event val;
-	int ifd = ((struct context *)ctx)->ifd;
-	int sfd = ((struct context *)ctx)->sfd;
-	struct argument *argument = ((struct context *)ctx)->argument;
+	struct context *context = ctx;
+	int ifd = context->ifd;
+	int sfd = context->sfd;
+	struct argument *argument = context->argument;
 
 	ip = calloc(argument->perf_max_stack_depth, sizeof(*ip));
 	if (!ip) {
@@ -206,37 +244,15 @@ static void print_map(struct ksyms *ksyms, struct syms_cache *syms_cache,
 		}
 		lookup_key = next_key;
 
-		if (argument->kernel_stack) {
-			if (bpf_map_lookup_elem(sfd, &next_key.kernel_stack_id, ip))
-				warning("    [Missed Kernel Stack]\n");
-			for (int i = 0; i < argument->perf_max_stack_depth && ip[i]; i++) {
-				ksym = ksyms__map_addr(ksyms, ip[i]);
-				printf("    %s\n", ksym ? ksym->name : "Unknown");
-			}
-		}
+		if (argument->kernel_stack)
+			print_kernel_stack(ksyms, sfd, next_key.kernel_stack_id,
+					   ip, argument->perf_max_stack_depth);
 
-		if (argument->user_stack) {
-			if (next_key.user_stack_id == -1)
-				goto skip_ustack;
+		if (argument->user_stack)
+			print_user_stack(syms_cache, sfd, next_key.user_stack_id,
+					 next_key.tgid, ip,
+					 argument->perf_max_stack_depth);
 
-			if (bpf_map_lookup_elem(sfd, &next_key.user_stack_id, ip)) {
-				warning("    [Missed User Stack]\n");
-				continue;
-			}
-
-			syms = syms_cache__get_syms(syms_cache, next_key.tgid);
-			if (!syms) {
-				warning("Failed to get syms\n");
-				goto skip_ustack;
-			}
-
-			for (int i = 0; i < argument->perf_max_stack_depth && ip[i]; i++) {
-				sym = syms__map_addr(syms, ip[i]);
-				printf("    %s\n", sym ? sym->name : "Unknown");
-			}
-		}
-
-skip_ustack:
 		printf("    %-16s %s (%d)\n", "-", val.task, next_key.pid);
 	}
 
@@ -272,6 +288,84 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static int setup_unique_type(struct argument *argument, enum uniqueness *type)
+{
+	if (!argument->unique) {
+		*type = UNQ_OFF;
+		return 0;
+	}
+
+	if (strcmp(argument->unique_type, "pid") == 0) {
+		*type = UNQ_PID;
+	} else if (strcmp(argument->unique_type, "cgroup") == 0) {
+		*type = UNQ_CGROUP;
+	} else {
+		warning("Unknown unique type %s\n", argument->unique_type);
+		return -1;
+	}
+
+	return 0;
+}
+
+static void setup_stackmap(struct capable_bpf *obj, struct argument *argument)
+{
+	bpf_map__set_value_size(obj->maps.stackmap,
+				argument->perf_max_stack_depth * sizeof(unsigned long));
+	bpf_map__set_max_entries(obj->maps.stackmap, argument->stack_storage_size);
+}
+
+static int fill_myinfo(struct capable_bpf *obj)
+{
+	struct stat st;
+
+	if (stat("/proc/self/ns/pid", &st)) {
+		warning("Failed to stat pid file\n");
+		return -1;
+	}
+
+	obj->bss->myinfo.pid_tgid = getpid() | (__u64)syscall(SYS_gettid) << 32;
+	obj->bss->myinfo.dev = st.st_dev;
+	obj->bss->myinfo.ino = st.st_ino;
+
+	return 0;
+}
+
+static int setup_cgroup_map(struct capable_bpf *obj, struct argument *argument,
+			    int *cgfd)
+{
+	int idx = 0;
+	int cg_map_fd;
+
+	if (!argument->cg)
+		return 0;
+
+	cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+
+	*cgfd = open(argument->cgroupspath, O_RDONLY);
+	if (*cgfd < 0) {
+		warning("Failed opening cgroup path: %s\n", argument->cgroupspath);
+		return -1;
+	}
+
+	if (bpf_map_update_elem(cg_map_fd, &idx, cgfd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void print_header(struct argument *argument)
+{
+	if (argument->extra_fields)
+		printf("%-8s %-5s %-7s %-7s %-16s %-7s %-20s %-7s %-7s %-7s\n",
+		       "TIME", "UID", "PID", "TID", "COMM", "CAP", "NAME", "AUDIT",
+		       "VERDICT", "INSETID");
+	else
+		printf("%-8s %-5s %-7s %-16s %-7s %-20s %-7s %-7s\n", "TIME", "UID",
+		       "PID", "COMM", "CAP", "NAME", "AUDIT", "VERDICT");
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -285,7 +379,6 @@ int main(int argc, char *argv[])
 	int err;
 	int cgfd = -1;
 	enum uniqueness uniqueness_type = UNQ_OFF;
-	struct stat st;
 	struct argument argument = {
 		.pid = -1,
 		.stack_storage_size = 1024,
@@ -303,16 +396,8 @@ int main(int argc, char *argv[])
 	if (!bpf_is_root())
 		return 1;
 
-	if (argument.unique) {
-		if (strcmp(argument.unique_type, "pid") == 0) {
-			uniqueness_type = UNQ_PID;
-		} else if (strcmp(argument.unique_type, "cgroup") == 0) {
-			uniqueness_type = UNQ_CGROUP;
-		} else {
-			warning("Unknown unique type %s\n", argument.unique_type);
-			return -1;
-		}
-	}
+	if (setup_unique_type(&argument, &uniqueness_type))
+		return -1;
 
 	libbpf_set_print(libbpf_print_fn);
 
@@ -328,9 +413,7 @@ int main(int argc, char *argv[])
 	obj->rodata->kernel_stack = argument.kernel_stack;
 	obj->rodata->unique_type = uniqueness_type;
 
-	bpf_map__set_value_size(obj->maps.stackmap,
-				argument.perf_max_stack_depth * sizeof(unsigned long));
-	bpf_map__set_max_entries(obj->maps.stackmap, argument.stack_storage_size);
+	setup_stackmap(obj, &argument);
 
 	err = capable_bpf__load(obj);
 	if (err) {
@@ -339,35 +422,15 @@ int main(int argc, char *argv[])
 	}
 
 	if (!obj->bss) {
-                warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-                goto cleanup;
-        }
-
-	if (stat("/proc/self/ns/pid", &st)) {
-		warning("Failed to stat pid file\n");
+		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
 		goto cleanup;
 	}
 
-	obj->bss->myinfo.pid_tgid = getpid() | syscall(SYS_gettid) << 32;
-	obj->bss->myinfo.dev = st.st_dev;
-	obj->bss->myinfo.ino = st.st_ino;
+	if (fill_myinfo(obj))
+		goto cleanup;
 
-	/* update cgroup path fd to map */
-	if (argument.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-		cgfd = open(argument.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening cgroup path: %s\n", argument.cgroupspath);
-			goto cleanup;
-		}
-
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
-	}
+	if (setup_cgroup_map(obj, &argument, &cgfd))
+		goto cleanup;
 
 	ksyms = ksyms__load();
 	if (!ksyms) {
@@ -381,10 +444,8 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	int ifd = bpf_map__fd(obj->maps.info);
-	int sfd = bpf_map__fd(obj->maps.stackmap);
-	ctx.ifd = ifd;
-	ctx.sfd = sfd;
+	ctx.ifd = bpf_map__fd(obj->maps.info);
+	ctx.sfd = bpf_map__fd(obj->maps.stackmap);
 
 	err = capable_bpf__attach(obj);
 	if (err) {
@@ -406,13 +467,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (argument.extra_fields)
-		printf("%-8s %-5s %-7s %-7s %-16s %-7s %-20s %-7s %-7s %-7s\n",
-		       "TIME", "UID", "PID", "TID", "COMM", "CAP", "NAME", "AUDIT",
-		       "VERDICT", "INSETID");
-	else
-		printf("%-8s %-5s %-7s %-16s %-7s %-20s %-7s %-7s\n", "TIME", "UID",
-		       "PID", "COMM", "CAP", "NAME", "AUDIT", "VERDICT");
+	print_header(&argument);
 
 	/* main: poll */
 	while (!exiting) {

@@ -67,29 +67,109 @@ struct {
 	__type(value, u64);
 } seen SEC(".maps");
 
+static __always_inline bool cgroup_filtered(void)
+{
+	return filter_cg && !bpf_current_task_under_cgroup(&cgroup_map, 0);
+}
+
+static __always_inline int current_ns_pid_tgid(__u64 *pid_tgid)
+{
+	struct bpf_pidns_info nsdata;
+
+	if (bpf_get_ns_current_pid_tgid(myinfo.dev, myinfo.ino, &nsdata,
+					sizeof(struct bpf_pidns_info)))
+		return -1;
+
+	*pid_tgid = (__u64)nsdata.tgid << 32 | nsdata.pid;
+	return 0;
+}
+
+static __always_inline bool is_traced_task(__u64 pid_tgid)
+{
+	if (myinfo.pid_tgid == pid_tgid)
+		return false;
+
+	if (target_pid != -1 && target_pid != (pid_t)(pid_tgid >> 32))
+		return false;
+
+	return true;
+}
+
+static __always_inline bool already_seen(struct args_t *argsp, __u64 pid_tgid)
+{
+	struct unique_key key = { .cap = argsp->cap };
+	u64 zero = 0;
+
+	if (!unique_type)
+		return false;
+
+	if (unique_type == UNQ_CGROUP)
+		key.cgroupid = bpf_get_current_cgroup_id();
+	else
+		key.tgid = pid_tgid;
+
+	if (bpf_map_lookup_elem(&seen, &key))
+		return true;
+
+	bpf_map_update_elem(&seen, &key, &zero, BPF_ANY);
+	return false;
+}
+
+static __always_inline void fill_event(struct cap_event *event,
+				       struct args_t *argsp, __u64 pid_tgid)
+{
+	event->pid = pid_tgid >> 32;
+	event->tgid = pid_tgid;
+	event->cap = argsp->cap;
+	event->uid = bpf_get_current_uid_gid();
+	bpf_get_current_comm(&event->task, sizeof(event->task));
+
+	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 1, 0)) {
+		/* @opts: bitmask of options defined in include/linux/security.h */
+		event->audit = (argsp->cap_out & 0b10) == 0;
+		event->insetid = (argsp->cap_out & 0b100) != 0;
+	} else {
+		event->audit = argsp->cap_out;
+		event->insetid = -1;
+	}
+}
+
+static __always_inline void record_stack_info(void *ctx, struct cap_event *event,
+					      __u64 pid_tgid)
+{
+	struct key_t i_key;
+
+	if (!kernel_stack && !user_stack)
+		return;
+
+	i_key.pid = pid_tgid >> 32;
+	i_key.tgid = pid_tgid;
+
+	i_key.kernel_stack_id = i_key.user_stack_id = -1;
+	if (user_stack)
+		i_key.user_stack_id = bpf_get_stackid(ctx, &stackmap, BPF_F_USER_STACK);
+	if (kernel_stack)
+		i_key.kernel_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
+
+	bpf_map_update_elem(&info, &i_key, event, BPF_NOEXIST);
+}
+
 SEC("kprobe/cap_capable")
 int BPF_KPROBE(kprobe__cap_capable_entry, const struct cred *cred,
 	       struct user_namespace *target_ns, int cap, int cap_out)
 {
 	__u64 pid_tgid;
-	struct bpf_pidns_info nsdata;
-
-	if (filter_cg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-
-	if (bpf_get_ns_current_pid_tgid(myinfo.dev, myinfo.ino, &nsdata,
-					sizeof(struct bpf_pidns_info)))
-		return 0;
-
-	pid_tgid = (__u64)nsdata.tgid << 32 | nsdata.pid;
-	if (myinfo.pid_tgid == pid_tgid)
-		return 0;
-
-	if (target_pid != -1 && target_pid != nsdata.tgid)
-		return 0;
-
 	struct args_t args = {};
+
+	if (cgroup_filtered())
+		return 0;
+
+	if (current_ns_pid_tgid(&pid_tgid))
+		return 0;
+
+	if (!is_traced_task(pid_tgid))
+		return 0;
+
 	args.cap = cap;
 	args.cap_out = cap_out;
 
@@ -103,64 +183,25 @@ int BPF_KRETPROBE(kretprobe__cap_capable_exit)
 {
 	__u64 pid_tgid;
 	struct args_t *argsp;
-	struct key_t i_key;
-	struct bpf_pidns_info nsdata;
+	struct cap_event event = {};
 
-	if (bpf_get_ns_current_pid_tgid(myinfo.dev, myinfo.ino, &nsdata,
-					sizeof(struct bpf_pidns_info)))
+	if (current_ns_pid_tgid(&pid_tgid))
 		return 0;
 
-	pid_tgid = (__u64)nsdata.tgid << 32 | nsdata.pid;
 	argsp = bpf_map_lookup_elem(&start, &pid_tgid);
 	if (!argsp)
 		return 0;
 
 	bpf_map_delete_elem(&start, &pid_tgid);
 
-	struct cap_event event = {};
-	event.pid = pid_tgid >> 32;
-	event.tgid = pid_tgid;
-	event.cap = argsp->cap;
-	event.uid = bpf_get_current_uid_gid();
-	bpf_get_current_comm(&event.task, sizeof(event.task));
+	fill_event(&event, argsp, pid_tgid);
 	event.ret = PT_REGS_RC(ctx);
 
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 1, 0)) {
-		/* @opts: bitmask of options defined in include/linux/security.h */
-		event.audit = (argsp->cap_out & 0b10) == 0;
-		event.insetid = (argsp->cap_out & 0b100) != 0;
-	} else {
-		event.audit = argsp->cap_out;
-		event.insetid = -1;
-	}
+	if (already_seen(argsp, pid_tgid))
+		return 0;
 
-	if (unique_type) {
-		struct unique_key key = { .cap = argsp->cap };
+	record_stack_info(ctx, &event, pid_tgid);
 
-		if (unique_type == UNQ_CGROUP)
-			key.cgroupid = bpf_get_current_cgroup_id();
-		else
-			key.tgid = pid_tgid;
-
-		if (bpf_map_lookup_elem(&seen, &key))
-			return 0;
-
-		u64 zero = 0;
-		bpf_map_update_elem(&seen, &key, &zero, BPF_ANY);
-	}
-
-	if (kernel_stack || user_stack) {
-		i_key.pid = pid_tgid >> 32;
-		i_key.tgid = pid_tgid;
-
-		i_key.kernel_stack_id = i_key.user_stack_id = -1;
-		if (user_stack)
-			i_key.user_stack_id = bpf_get_stackid(ctx, &stackmap, BPF_F_USER_STACK);
-		if (kernel_stack)
-			i_key.kernel_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
-
-		bpf_map_update_elem(&info, &i_key, &event, BPF_NOEXIST);
-	}
 	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
 
 	return 0;
