@@ -149,6 +149,28 @@ static void select_probes(struct numasched_bpf *bpf_obj)
     else
         bpf_program__set_autoload(bpf_obj->progs.sched_switch_btf, false);
 }
+
+static int poll_events(struct perf_buffer *pb)
+{
+    int err = 0;
+
+    /* Loop */
+    while (!exiting)
+    {
+        err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+        if (err < 0 && err != -EINTR)
+        {
+            warning("Error polling perf buffer: %s\n", strerror(-err));
+            break;
+        }
+
+        /* reset err to retrun 0 if exiting */
+        err = 0;
+    }
+
+    return err;
+}
+
 int main(int argc, char *argv[])
 {
     static struct argp argp = {
@@ -222,19 +244,7 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    /* Loop */
-    while (!exiting)
-    {
-        err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
-        if (err < 0 && err != -EINTR)
-        {
-            warning("Error polling perf buffer: %s\n", strerror(-err));
-            goto cleanup;
-        }
-
-        /* reset err to retrun 0 if exiting */
-        err = 0;
-    }
+    err = poll_events(pb);
 
 cleanup:
     perf_buffer__free(pb);
