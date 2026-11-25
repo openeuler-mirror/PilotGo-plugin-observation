@@ -402,12 +402,26 @@ int BPF_PROG(up_write, struct rw_semaphore *lock)
 	return 0;
 }
 
-SEC("kprobe/mutex_lock")
-int BPF_KPROBE(kprobe_mutex_lock, struct mutex *lock)
+static void save_lock(void *lock)
 {
 	u32 tid = bpf_get_current_pid_tgid();
 
 	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+}
+
+static void *consume_lock(void)
+{
+	u32 tid = bpf_get_current_pid_tgid();
+	void **lock;
+
+	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
+	return lock ? *lock : NULL;
+}
+
+SEC("kprobe/mutex_lock")
+int BPF_KPROBE(kprobe_mutex_lock, struct mutex *lock)
+{
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -415,39 +429,33 @@ int BPF_KPROBE(kprobe_mutex_lock, struct mutex *lock)
 SEC("kretprobe/mutex_lock")
 int BPF_KRETPROBE(kprobe_mutex_lock_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
-	lock_acquired(*lock);
+	lock_acquired(lock);
 	return 0;
 }
 
 SEC("kprobe/mutex_trylock")
 int BPF_KPROBE(kprobe_mutex_trylock, struct mutex *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	return 0;
 }
 
 SEC("kretprobe/mutex_trylock")
 int BPF_KRETPROBE(kprobe_mutex_trylock_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret) {
-		lock_contended(ctx, *lock);
-		lock_acquired(*lock);
+		lock_contended(ctx, lock);
+		lock_acquired(lock);
 	}
 	return 0;
 }
@@ -455,9 +463,7 @@ int BPF_KRETPROBE(kprobe_mutex_trylock_exit, long ret)
 SEC("kprobe/mutex_lock_interruptible")
 int BPF_KPROBE(kprobe_mutex_lock_interruptible, struct mutex *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -465,26 +471,22 @@ int BPF_KPROBE(kprobe_mutex_lock_interruptible, struct mutex *lock)
 SEC("kretprobe/mutex_lock_interruptible")
 int BPF_KRETPROBE(kprobe_mutex_lock_interruptible_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret)
-		lock_aborted(*lock);
+		lock_aborted(lock);
 	else
-		lock_acquired(*lock);
+		lock_acquired(lock);
 	return 0;
 }
 
 SEC("kprobe/mutex_lock_killable")
 int BPF_KPROBE(kprobe_mutex_lock_killable, struct mutex *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -492,17 +494,15 @@ int BPF_KPROBE(kprobe_mutex_lock_killable, struct mutex *lock)
 SEC("kretprobe/mutex_lock_killable")
 int BPF_KRETPROBE(kprobe_mutex_lock_killable_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret)
-		lock_aborted(*lock);
+		lock_aborted(lock);
 	else
-		lock_acquired(*lock);
+		lock_acquired(lock);
 	return 0;
 }
 
@@ -516,9 +516,7 @@ int BPF_KPROBE(kprobe_mutex_unlock, struct mutex *lock)
 SEC("kprobe/down_read")
 int BPF_KPROBE(kprobe_down_read, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -526,39 +524,33 @@ int BPF_KPROBE(kprobe_down_read, struct rw_semaphore *lock)
 SEC("kretprobe/down_read")
 int BPF_KRETPROBE(kprobe_down_read_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
-	lock_acquired(*lock);
+	lock_acquired(lock);
 	return 0;
 }
 
 SEC("kprobe/down_read_trylock")
 int BPF_KPROBE(kprobe_down_read_trylock, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	return 0;
 }
 
 SEC("kretprobe/down_read_trylock")
 int BPF_KRETPROBE(kprobe_down_read_trylock_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret == 1) {
-		lock_contended(ctx, *lock);
-		lock_acquired(*lock);
+		lock_contended(ctx, lock);
+		lock_acquired(lock);
 	}
 	return 0;
 }
@@ -566,9 +558,7 @@ int BPF_KRETPROBE(kprobe_down_read_trylock_exit, long ret)
 SEC("kprobe/down_read_interruptible")
 int BPF_KPROBE(kprobe_down_read_interruptible, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -576,26 +566,22 @@ int BPF_KPROBE(kprobe_down_read_interruptible, struct rw_semaphore *lock)
 SEC("kretprobe/down_read_interruptible")
 int BPF_KRETPROBE(kprobe_down_read_interruptible_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret)
-		lock_aborted(*lock);
+		lock_aborted(lock);
 	else
-		lock_acquired(*lock);
+		lock_acquired(lock);
 	return 0;
 }
 
 SEC("kprobe/down_read_killable")
 int BPF_KPROBE(kprobe_down_read_killable, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -603,17 +589,15 @@ int BPF_KPROBE(kprobe_down_read_killable, struct rw_semaphore *lock)
 SEC("kretprobe/down_read_killable")
 int BPF_KRETPROBE(kprobe_down_read_killable_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret)
-		lock_aborted(*lock);
+		lock_aborted(lock);
 	else
-		lock_acquired(*lock);
+		lock_acquired(lock);
 	return 0;
 }
 
@@ -627,9 +611,7 @@ int BPF_KPROBE(kprobe_up_read, struct rw_semaphore *lock)
 SEC("kprobe/down_write")
 int BPF_KPROBE(kprobe_down_write, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -637,39 +619,33 @@ int BPF_KPROBE(kprobe_down_write, struct rw_semaphore *lock)
 SEC("kretprobe/down_write")
 int BPF_KRETPROBE(kprobe_down_write_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
-	lock_acquired(*lock);
+	lock_acquired(lock);
 	return 0;
 }
 
 SEC("kprobe/down_write_trylock")
 int BPF_KPROBE(kprobe_down_write_trylock, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	return 0;
 }
 
 SEC("kretprobe/down_write_trylock")
 int BPF_KRETPROBE(kprobe_down_write_trylock_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret == 1) {
-		lock_contended(ctx, *lock);
-		lock_acquired(*lock);
+		lock_contended(ctx, lock);
+		lock_acquired(lock);
 	}
 	return 0;
 }
@@ -677,9 +653,7 @@ int BPF_KRETPROBE(kprobe_down_write_trylock_exit, long ret)
 SEC("kprobe/down_write_killable")
 int BPF_KPROBE(kprobe_down_write_killable, struct rw_semaphore *lock)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-
-	bpf_map_update_elem(&locks, &tid, &lock, BPF_ANY);
+	save_lock(lock);
 	lock_contended(ctx, lock);
 	return 0;
 }
@@ -687,17 +661,15 @@ int BPF_KPROBE(kprobe_down_write_killable, struct rw_semaphore *lock)
 SEC("kretprobe/down_write_killable")
 int BPF_KRETPROBE(kprobe_down_write_killable_exit, long ret)
 {
-	u32 tid = bpf_get_current_pid_tgid();
-	void **lock;
+	void *lock = consume_lock();
 
-	lock = bpf_map_lookup_and_delete_elem(&locks, &tid);
 	if (!lock)
 		return 0;
 
 	if (ret)
-		lock_aborted(*lock);
+		lock_aborted(lock);
 	else
-		lock_acquired(*lock);
+		lock_acquired(lock);
 	return 0;
 }
 

@@ -151,6 +151,40 @@ static bool parse_sorts(struct prog_env *env, char *arg)
 	return parse_one_sort(env, arg);
 }
 
+static void parse_long_opt(int *field, const char *name, char *arg,
+			   struct argp_state *state)
+{
+	errno = 0;
+	*field = strtol(arg, NULL, 10);
+	if (errno || *field <= 0) {
+		warning("Invalid %s: %s\n", name, arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_uint_opt(unsigned int *field, const char *name, char *arg,
+			   struct argp_state *state)
+{
+	errno = 0;
+	*field = strtol(arg, NULL, 10);
+	if (errno || *field <= 0) {
+		warning("Invalid %s: %s\n", name, arg);
+		argp_usage(state);
+	}
+}
+
+static void finalize_args(struct prog_env *env, struct argp_state *state)
+{
+	if (env->duration) {
+		env->interval = min(env->interval, env->duration);
+		env->iterations = env->duration / env->interval;
+	}
+	if (env->per_thread && env->nr_stack_entries != 1) {
+		warning("--per-thread and --stacks cannot be used together\n");
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	struct prog_env *env = state->input;
@@ -160,12 +194,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env->pid = argp_parse_pid(key, arg, state);
 		break;
 	case 't':
-		errno = 0;
-		env->tid = strtol(arg, NULL, 10);
-		if (errno || env->tid <= 0) {
-			warning("Invalid TID: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_long_opt(&env->tid, "TID", arg, state);
 		break;
 	case 'c':
 		env->caller = arg;
@@ -174,20 +203,10 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env->lock_name = arg;
 		break;
 	case 'n':
-		errno = 0;
-		env->nr_locks = strtol(arg, NULL, 10);
-		if (errno || env->nr_locks <= 0) {
-			warning("Invalid NR_LOCKS: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_uint_opt(&env->nr_locks, "NR_LOCKS", arg, state);
 		break;
 	case 's':
-		errno = 0;
-		env->nr_stack_entries = strtol(arg, NULL, 10);
-		if (errno || env->nr_stack_entries <= 0) {
-			warning("Invalid NR_STACKS: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_uint_opt(&env->nr_stack_entries, "NR_STACKS", arg, state);
 		break;
 	case 'S':
 		if (!parse_sorts(env, arg)) {
@@ -196,20 +215,10 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		}
 		break;
 	case 'd':
-		errno = 0;
-		env->duration = strtol(arg, NULL, 10);
-		if (errno || env->duration <= 0) {
-			warning("Invalid duration: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_uint_opt(&env->duration, "duration", arg, state);
 		break;
 	case 'i':
-		errno = 0;
-		env->interval = strtol(arg, NULL, 10);
-		if (errno || env->interval <= 0) {
-			warning("Invalid duration: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_uint_opt(&env->interval, "duration", arg, state);
 		break;
 	case 'R':
 		env->reset = true;
@@ -227,14 +236,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env->verbose = true;
 		break;
 	case ARGP_KEY_END:
-		if (env->duration) {
-			env->interval = min(env->interval, env->duration);
-			env->iterations = env->duration / env->interval;
-		}
-		if (env->per_thread && env->nr_stack_entries != 1) {
-			warning("--per-thread and --stacks cannot be used together\n");
-			argp_usage(state);
-		}
+		finalize_args(env, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -461,7 +463,8 @@ static void print_hld_task(struct stack_stat *ss)
 		print_time(tot, sizeof(tot), ss->ls.hld_total_time));
 }
 
-static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
+static int collect_stats(struct ksyms *ksyms, int stack_map, int stat_map,
+			 struct stack_stat ***out_stats, size_t *out_count)
 {
 	struct stack_stat **stats, *ss;
 	size_t stat_idx = 0;
@@ -469,7 +472,6 @@ static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 	uint32_t lookup_key = 0;
 	uint32_t stack_id;
 	int ret;
-	int nr_stack_entries;
 
 	stats = calloc(stats_sz, sizeof(void *));
 	if (!stats) {
@@ -510,7 +512,14 @@ static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 		stats[stat_idx++] = ss;
 	}
 
-	nr_stack_entries = MIN(env.nr_stack_entries, PERF_MAX_STACK_DEPTH);
+	*out_stats = stats;
+	*out_count = stat_idx;
+	return 0;
+}
+
+static void print_acq_stats(struct ksyms *ksyms, struct stack_stat **stats,
+			    size_t stat_idx, int nr_stack_entries)
+{
 	qsort(stats, stat_idx, sizeof(void *), sort_by_acq);
 	for (int i = 0; i < MIN(env.nr_locks, stat_idx); i++) {
 		if (i == 0 || env.nr_stack_entries > 1)
@@ -521,7 +530,11 @@ static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 		else
 			print_acq_stat(ksyms, stats[i], nr_stack_entries);
 	}
+}
 
+static void print_hld_stats(struct ksyms *ksyms, struct stack_stat **stats,
+			    size_t stat_idx, int nr_stack_entries)
+{
 	qsort(stats, stat_idx, sizeof(void *), sort_by_hld);
 	for (int i = 0; i < MIN(env.nr_locks, stat_idx); i++) {
 		if (i == 0 || env.nr_stack_entries > 1)
@@ -532,6 +545,11 @@ static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 		else
 			print_hld_stat(ksyms, stats[i], nr_stack_entries);
 	}
+}
+
+static void free_stats(int stat_map, struct stack_stat **stats, size_t stat_idx)
+{
+	struct stack_stat *ss = NULL;
 
 	for (int i = 0; i < stat_idx; i++) {
 		if (env.reset)
@@ -539,6 +557,23 @@ static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 		free(stats[i]);
 	}
 	free(stats);
+}
+
+static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
+{
+	struct stack_stat **stats;
+	size_t stat_idx;
+	int nr_stack_entries;
+	int ret;
+
+	ret = collect_stats(ksyms, stack_map, stat_map, &stats, &stat_idx);
+	if (ret)
+		return ret;
+
+	nr_stack_entries = MIN(env.nr_stack_entries, PERF_MAX_STACK_DEPTH);
+	print_acq_stats(ksyms, stats, stat_idx, nr_stack_entries);
+	print_hld_stats(ksyms, stats, stat_idx, nr_stack_entries);
+	free_stats(stat_map, stats, stat_idx);
 
 	return 0;
 }
@@ -558,43 +593,53 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void disable_prog(struct bpf_program *prog)
+{
+	bpf_program__set_autoload(prog, false);
+}
+
+static void set_attach_target(struct bpf_program *prog, const char *target)
+{
+	bpf_program__set_attach_target(prog, 0, target);
+}
+
 static void enable_fentry(struct klockstat_bpf *obj)
 {
 	bool debug_lock;
 
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_lock, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_lock_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_trylock, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_trylock_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_lock_interruptible, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_lock_interruptible_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_lock_killable, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_lock_killable_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_mutex_unlock, false);
+	disable_prog(obj->progs.kprobe_mutex_lock);
+	disable_prog(obj->progs.kprobe_mutex_lock_exit);
+	disable_prog(obj->progs.kprobe_mutex_trylock);
+	disable_prog(obj->progs.kprobe_mutex_trylock_exit);
+	disable_prog(obj->progs.kprobe_mutex_lock_interruptible);
+	disable_prog(obj->progs.kprobe_mutex_lock_interruptible_exit);
+	disable_prog(obj->progs.kprobe_mutex_lock_killable);
+	disable_prog(obj->progs.kprobe_mutex_lock_killable_exit);
+	disable_prog(obj->progs.kprobe_mutex_unlock);
 
-	bpf_program__set_autoload(obj->progs.kprobe_down_read, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_trylock, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_trylock_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_interruptible, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_interruptible_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_killable, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_read_killable_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_up_read, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_write, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_write_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_write_trylock, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_write_trylock_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_write_killable, false);
-	bpf_program__set_autoload(obj->progs.kprobe_down_write_killable_exit, false);
-	bpf_program__set_autoload(obj->progs.kprobe_up_write, false);
+	disable_prog(obj->progs.kprobe_down_read);
+	disable_prog(obj->progs.kprobe_down_read_exit);
+	disable_prog(obj->progs.kprobe_down_read_trylock);
+	disable_prog(obj->progs.kprobe_down_read_trylock_exit);
+	disable_prog(obj->progs.kprobe_down_read_interruptible);
+	disable_prog(obj->progs.kprobe_down_read_interruptible_exit);
+	disable_prog(obj->progs.kprobe_down_read_killable);
+	disable_prog(obj->progs.kprobe_down_read_killable_exit);
+	disable_prog(obj->progs.kprobe_up_read);
+	disable_prog(obj->progs.kprobe_down_write);
+	disable_prog(obj->progs.kprobe_down_write_exit);
+	disable_prog(obj->progs.kprobe_down_write_trylock);
+	disable_prog(obj->progs.kprobe_down_write_trylock_exit);
+	disable_prog(obj->progs.kprobe_down_write_killable);
+	disable_prog(obj->progs.kprobe_down_write_killable_exit);
+	disable_prog(obj->progs.kprobe_up_write);
 
 	/**
 	 * commit 31784cff7ee0 ("rwsem: Implement down_read_interruptible")
 	 */
 	if (!fentry_can_attach("down_read_interruptible", NULL)) {
-		bpf_program__set_autoload(obj->progs.down_read_interruptible, false);
-		bpf_program__set_autoload(obj->progs.down_read_interruptible_exit, false);
+		disable_prog(obj->progs.down_read_interruptible);
+		disable_prog(obj->progs.down_read_interruptible_exit);
 	}
 
 	/* CONFIG_DEBUG_LOCK_ALLOC is on */
@@ -602,69 +647,59 @@ static void enable_fentry(struct klockstat_bpf *obj)
 	if (!debug_lock)
 		return;
 
-	bpf_program__set_attach_target(obj->progs.mutex_lock, 0,
-				       "mutex_lock_nested");
-	bpf_program__set_attach_target(obj->progs.mutex_lock_exit, 0,
-				       "mutex_lock_nested");
-	bpf_program__set_attach_target(obj->progs.mutex_lock_interruptible, 0,
-				       "mutex_lock_interruptible_nested");
-	bpf_program__set_attach_target(obj->progs.mutex_lock_interruptible_exit, 0,
-				       "mutex_lock_interruptible_nested");
-	bpf_program__set_attach_target(obj->progs.mutex_lock_killable, 0,
-				       "mutex_lock_killable_nested");
-	bpf_program__set_attach_target(obj->progs.mutex_lock_killable_exit, 0,
-				       "mutex_lock_killable_nested");
+	set_attach_target(obj->progs.mutex_lock, "mutex_lock_nested");
+	set_attach_target(obj->progs.mutex_lock_exit, "mutex_lock_nested");
+	set_attach_target(obj->progs.mutex_lock_interruptible,
+			  "mutex_lock_interruptible_nested");
+	set_attach_target(obj->progs.mutex_lock_interruptible_exit,
+			  "mutex_lock_interruptible_nested");
+	set_attach_target(obj->progs.mutex_lock_killable,
+			  "mutex_lock_killable_nested");
+	set_attach_target(obj->progs.mutex_lock_killable_exit,
+			  "mutex_lock_killable_nested");
 
-	bpf_program__set_attach_target(obj->progs.down_read, 0,
-				       "down_read_nested");
-	bpf_program__set_attach_target(obj->progs.down_read_exit, 0,
-				       "down_read_nested");
-	bpf_program__set_attach_target(obj->progs.down_read_killable, 0,
-				       "down_read_killable_nested");
-	bpf_program__set_attach_target(obj->progs.down_read_killable_exit, 0,
-				       "down_read_killable_nested");
-	bpf_program__set_attach_target(obj->progs.down_write, 0,
-				       "down_write_nested");
-	bpf_program__set_attach_target(obj->progs.down_write_exit, 0,
-				       "down_write_nested");
-	bpf_program__set_attach_target(obj->progs.down_write_killable, 0,
-				       "down_write_killable_nested");
-	bpf_program__set_attach_target(obj->progs.down_write_killable_exit, 0,
-				       "down_write_killable_nested");
+	set_attach_target(obj->progs.down_read, "down_read_nested");
+	set_attach_target(obj->progs.down_read_exit, "down_read_nested");
+	set_attach_target(obj->progs.down_read_killable, "down_read_killable_nested");
+	set_attach_target(obj->progs.down_read_killable_exit, "down_read_killable_nested");
+	set_attach_target(obj->progs.down_write, "down_write_nested");
+	set_attach_target(obj->progs.down_write_exit, "down_write_nested");
+	set_attach_target(obj->progs.down_write_killable, "down_write_killable_nested");
+	set_attach_target(obj->progs.down_write_killable_exit, "down_write_killable_nested");
 }
 
 static void enable_kprobes(struct klockstat_bpf *obj)
 {
-	bpf_program__set_autoload(obj->progs.mutex_lock, false);
-	bpf_program__set_autoload(obj->progs.mutex_lock_exit, false);
-	bpf_program__set_autoload(obj->progs.mutex_trylock_exit, false);
-	bpf_program__set_autoload(obj->progs.mutex_lock_interruptible, false);
-	bpf_program__set_autoload(obj->progs.mutex_lock_interruptible_exit, false);
-	bpf_program__set_autoload(obj->progs.mutex_lock_killable, false);
-	bpf_program__set_autoload(obj->progs.mutex_lock_killable_exit, false);
-	bpf_program__set_autoload(obj->progs.mutex_unlock, false);
+	disable_prog(obj->progs.mutex_lock);
+	disable_prog(obj->progs.mutex_lock_exit);
+	disable_prog(obj->progs.mutex_trylock_exit);
+	disable_prog(obj->progs.mutex_lock_interruptible);
+	disable_prog(obj->progs.mutex_lock_interruptible_exit);
+	disable_prog(obj->progs.mutex_lock_killable);
+	disable_prog(obj->progs.mutex_lock_killable_exit);
+	disable_prog(obj->progs.mutex_unlock);
 
-	bpf_program__set_autoload(obj->progs.down_read, false);
-	bpf_program__set_autoload(obj->progs.down_read_exit, false);
-	bpf_program__set_autoload(obj->progs.down_read_trylock_exit, false);
-	bpf_program__set_autoload(obj->progs.down_read_interruptible, false);
-	bpf_program__set_autoload(obj->progs.down_read_interruptible_exit, false);
-	bpf_program__set_autoload(obj->progs.down_read_killable, false);
-	bpf_program__set_autoload(obj->progs.down_read_killable_exit, false);
-	bpf_program__set_autoload(obj->progs.up_read, false);
-	bpf_program__set_autoload(obj->progs.down_write, false);
-	bpf_program__set_autoload(obj->progs.down_write_exit, false);
-	bpf_program__set_autoload(obj->progs.down_write_trylock_exit, false);
-	bpf_program__set_autoload(obj->progs.down_write_killable, false);
-	bpf_program__set_autoload(obj->progs.down_write_killable_exit, false);
-	bpf_program__set_autoload(obj->progs.up_write, false);
+	disable_prog(obj->progs.down_read);
+	disable_prog(obj->progs.down_read_exit);
+	disable_prog(obj->progs.down_read_trylock_exit);
+	disable_prog(obj->progs.down_read_interruptible);
+	disable_prog(obj->progs.down_read_interruptible_exit);
+	disable_prog(obj->progs.down_read_killable);
+	disable_prog(obj->progs.down_read_killable_exit);
+	disable_prog(obj->progs.up_read);
+	disable_prog(obj->progs.down_write);
+	disable_prog(obj->progs.down_write_exit);
+	disable_prog(obj->progs.down_write_trylock_exit);
+	disable_prog(obj->progs.down_write_killable);
+	disable_prog(obj->progs.down_write_killable_exit);
+	disable_prog(obj->progs.up_write);
 
 	/**
 	 * commit 31784cff7ee0 ("rwsem: Implement down_read_interruptible")
 	 */
 	if (!kprobe_exists("down_read_interruptible")) {
-		bpf_program__set_autoload(obj->progs.kprobe_down_read_interruptible, false);
-		bpf_program__set_autoload(obj->progs.kprobe_down_read_interruptible_exit, false);
+		disable_prog(obj->progs.kprobe_down_read_interruptible);
+		disable_prog(obj->progs.kprobe_down_read_interruptible_exit);
 	}
 }
 
