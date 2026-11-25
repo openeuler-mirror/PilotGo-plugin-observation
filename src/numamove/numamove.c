@@ -59,6 +59,34 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void disable_prog(struct bpf_program *prog)
+{
+	bpf_program__set_autoload(prog, false);
+}
+
+static void print_stats(struct numamove_bpf *bpf_obj, bool has_bss,
+			const char *ts)
+{
+	if (has_bss) {
+		printf("%-10s %18lld %18lld\n", ts,
+		       __atomic_exchange_n(&bpf_obj->bss->num, 0, __ATOMIC_RELAXED),
+		       __atomic_exchange_n(&bpf_obj->bss->latency, 0, __ATOMIC_RELAXED));
+		return;
+	}
+
+	int num_fd = bpf_map__fd(bpf_obj->maps.num_map);
+	int latency_fd = bpf_map__fd(bpf_obj->maps.latency_map);
+	int key = 0, value = 0;
+	__u64 num = 0, latency = 0;
+
+	bpf_map_lookup_elem(num_fd, &key, &num);
+	bpf_map_lookup_elem(latency_fd, &key, &latency);
+
+	printf("%-10s %19lld %18lld\n", ts, num, latency);
+	bpf_map_update_elem(num_fd, &key, &value, BPF_ANY);
+	bpf_map_update_elem(latency_fd, &key, &value, BPF_ANY);
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -96,13 +124,13 @@ int main(int argc, char *argv[])
 	/* It's fallback to kprobe when kernel does not support fentry. */
 	if (fentry_can_attach("migrate_misplaced_page", NULL))
 	{
-		bpf_program__set_autoload(bpf_obj->progs.kprobe_migrate_misplaced_page, false);
-		bpf_program__set_autoload(bpf_obj->progs.kretprobe_migrate_misplaced_page, false);
+		disable_prog(bpf_obj->progs.kprobe_migrate_misplaced_page);
+		disable_prog(bpf_obj->progs.kretprobe_migrate_misplaced_page);
 	}
 	else
 	{
-		bpf_program__set_autoload(bpf_obj->progs.fentry_migrate_misplaced_page, false);
-		bpf_program__set_autoload(bpf_obj->progs.fexit_migrate_misplaced_page, false);
+		disable_prog(bpf_obj->progs.fentry_migrate_misplaced_page);
+		disable_prog(bpf_obj->progs.fexit_migrate_misplaced_page);
 	}
 
 	err = numamove_bpf__load(bpf_obj);
@@ -138,26 +166,7 @@ int main(int argc, char *argv[])
 		sleep(1);
 
 		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		if (has_bss)
-		{
-			printf("%-10s %18lld %18lld\n", ts,
-				   __atomic_exchange_n(&bpf_obj->bss->num, 0, __ATOMIC_RELAXED),
-				   __atomic_exchange_n(&bpf_obj->bss->latency, 0, __ATOMIC_RELAXED));
-		}
-		else
-		{
-			int num_fd = bpf_map__fd(bpf_obj->maps.num_map);
-			int latency_fd = bpf_map__fd(bpf_obj->maps.latency_map);
-			int key = 0, value = 0;
-			__u64 num = 0, latency = 0;
-
-			bpf_map_lookup_elem(num_fd, &key, &num);
-			bpf_map_lookup_elem(latency_fd, &key, &latency);
-
-			printf("%-10s %19lld %18lld\n", ts, num, latency);
-			bpf_map_update_elem(num_fd, &key, &value, BPF_ANY);
-			bpf_map_update_elem(latency_fd, &key, &value, BPF_ANY);
-		}
+		print_stats(bpf_obj, has_bss, ts);
 	}
 
 cleanup:
