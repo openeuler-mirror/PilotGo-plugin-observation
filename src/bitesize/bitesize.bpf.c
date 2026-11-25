@@ -33,21 +33,29 @@ static __always_inline bool comm_allowed(const char *comm)
 	return true;
 }
 
+static __always_inline u32 rq_disk_dev(struct request *rq)
+{
+	struct gendisk *disk = get_disk(rq);
+
+	if (!disk)
+		return 0;
+	return MKDEV(BPF_CORE_READ(disk, major),
+		     BPF_CORE_READ(disk, first_minor));
+}
+
+static __always_inline bool dev_allowed(struct request *rq)
+{
+	return !filter_dev || target_dev == rq_disk_dev(rq);
+}
+
 static __always_inline int trace_rq_issue(struct request *rq)
 {
 	struct hist_key hkey;
 	struct hist *histp;
 	u64 slot;
 
-	if (filter_dev) {
-		struct gendisk *disk = get_disk(rq);
-		u32 dev;
-
-		dev = disk ? MKDEV(BPF_CORE_READ(disk, major),
-				   BPF_CORE_READ(disk, first_minor)) : 0;
-		if (target_dev != dev)
-			return 0;
-	}
+	if (!dev_allowed(rq))
+		return 0;
 
 	bpf_get_current_comm(&hkey.comm, sizeof(hkey.comm));
 	if (!comm_allowed(hkey.comm))
@@ -65,22 +73,23 @@ static __always_inline int trace_rq_issue(struct request *rq)
 	return 0;
 }
 
+static __always_inline struct request *raw_tp_rq_arg(__u64 *ctx)
+{
+	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
+		return (void *)ctx[0];
+	return (void *)ctx[1];
+}
+
 SEC("tp_btf/block_rq_issue")
 int BPF_PROG(block_rq_issue)
 {
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
-		return trace_rq_issue((void *)ctx[0]);
-	else
-		return trace_rq_issue((void *)ctx[1]);
+	return trace_rq_issue(raw_tp_rq_arg(ctx));
 }
 
 SEC("raw_tp/block_rq_issue")
 int BPF_PROG(block_rq_issue_raw)
 {
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
-		return trace_rq_issue((void *)ctx[0]);
-	else
-		return trace_rq_issue((void *)ctx[1]);
+	return trace_rq_issue(raw_tp_rq_arg(ctx));
 }
 
 char LICENSE[] SEC("license") = "GPL";
