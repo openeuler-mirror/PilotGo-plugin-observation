@@ -19,6 +19,37 @@ struct {
 	__type(value, struct counter);
 } counters SEC(".maps");
 
+static __always_inline void read_completion_args(void *args, sector_t *sector,
+						 u32 *nr_sector, u32 *dev)
+{
+	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 18, 0)) {
+		struct trace_event_raw_block_rq_completion___x *ctx = args;
+
+		*sector = BPF_CORE_READ(ctx, sector);
+		*nr_sector = BPF_CORE_READ(ctx, nr_sector);
+		*dev = BPF_CORE_READ(ctx, dev);
+	} else {
+		struct trace_event_raw_block_rq_complete___x *ctx = args;
+
+		*sector = BPF_CORE_READ(ctx, sector);
+		*nr_sector = BPF_CORE_READ(ctx, nr_sector);
+		*dev = BPF_CORE_READ(ctx, dev);
+	}
+}
+
+static __always_inline void account_sector(struct counter *counter,
+					   sector_t sector, u32 nr_sector)
+{
+	if (counter->last_sector) {
+		if (counter->last_sector == sector)
+			__sync_fetch_and_add(&counter->sequential, 1);
+		else
+			__sync_fetch_and_add(&counter->random, 1);
+		__sync_fetch_and_add(&counter->bytes, nr_sector << 9);
+	}
+	counter->last_sector = sector + nr_sector;
+}
+
 SEC("tracepoint/block/block_rq_complete")
 int handle__block_rq_complete(void *args)
 {
@@ -27,19 +58,7 @@ int handle__block_rq_complete(void *args)
 	u32 nr_sector;
 	u32 dev;
 
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 18, 0)) {
-		struct trace_event_raw_block_rq_completion___x *ctx = args;
-
-		sector = BPF_CORE_READ(ctx, sector);
-		nr_sector = BPF_CORE_READ(ctx, nr_sector);
-		dev = BPF_CORE_READ(ctx, dev);
-	} else {
-		struct trace_event_raw_block_rq_complete___x *ctx = args;
-
-		sector = BPF_CORE_READ(ctx, sector);
-		nr_sector = BPF_CORE_READ(ctx, nr_sector);
-		dev = BPF_CORE_READ(ctx, dev);
-	}
+	read_completion_args(args, &sector, &nr_sector, &dev);
 
 	if (filter_dev && target_dev != dev)
 		return 0;
@@ -47,14 +66,8 @@ int handle__block_rq_complete(void *args)
 	counterp = bpf_map_lookup_or_try_init(&counters, &dev, &zero);
 	if (!counterp)
 		return 0;
-	if (counterp->last_sector) {
-		if (counterp->last_sector == sector)
-			__sync_fetch_and_add(&counterp->sequential, 1);
-		else
-			__sync_fetch_and_add(&counterp->random, 1);
-		__sync_fetch_and_add(&counterp->bytes, nr_sector << 9);
-	}
-	counterp->last_sector = sector + nr_sector;
+
+	account_sector(counterp, sector, nr_sector);
 	return 0;
 }
 

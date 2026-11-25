@@ -39,6 +39,29 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional_arg(const char *arg, int pos,
+				 struct argp_state *state)
+{
+	long value;
+
+	if (pos > 1) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	value = strtol(arg, NULL, 10);
+	if (errno || value <= 0) {
+		warning("Invalid %s\n", pos == 0 ? "interval" : "times");
+		argp_usage(state);
+	}
+
+	if (pos == 0)
+		env.interval = value;
+	else
+		env.times = value;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -51,34 +74,17 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.verbose = true;
 		break;
 	case 'd':
-		env.disk = arg;
 		if (strlen(arg) + 1 > DISK_NAME_LEN) {
 			warning("Invalid disk name: too long\n");
 			argp_usage(state);
 		}
+		env.disk = arg;
 		break;
 	case 'T':
 		env.timestamp = true;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.interval = strtol(arg, NULL, 10);
-			if (errno || env.interval <= 0) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			env.times = strtol(arg, NULL, 10);
-			if (errno || env.times <= 0) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -89,9 +95,9 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 			   va_list args)
 {
-	if (level == LIBBPF_DEBUG && !env.verbose)
-		return 0;
-	return vfprintf(stderr, format, args);
+	if (level != LIBBPF_DEBUG || env.verbose)
+		return vfprintf(stderr, format, args);
+	return 0;
 }
 
 static void sig_handler(int sig)
@@ -99,11 +105,34 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_counter(__u32 dev, const struct counter *counter,
+			  struct partitions *partitions)
+{
+	const struct partition *partition;
+	__u32 total = counter->sequential + counter->random;
+
+	if (!total)
+		return;
+
+	if (env.timestamp) {
+		char ts[32];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%-9s ", ts);
+	}
+
+	partition = partitions__get_by_dev(partitions, dev);
+	printf("%-7s %5ld %5ld %8d %10lld\n",
+	       partition ? partition->name : "Unknown",
+	       counter->random * 100L / total,
+	       counter->sequential * 100L / total, total,
+	       counter->bytes / 1024);
+}
+
 static int print_map(struct bpf_map *counters, struct partitions *partitions)
 {
-	__u32 total, lookup_key = -1, next_key;
+	__u32 lookup_key = -1, next_key;
 	int err, fd = bpf_map__fd(counters);
-	const struct partition *partition;
 	struct counter counter;
 
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
@@ -112,23 +141,8 @@ static int print_map(struct bpf_map *counters, struct partitions *partitions)
 			warning("Failed to lookup counters: %d\n", err);
 			return -1;
 		}
-
+		print_counter(next_key, &counter, partitions);
 		lookup_key = next_key;
-		total = counter.sequential + counter.random;
-		if (!total)
-			continue;
-		if (env.timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-9s ", ts);
-		}
-		partition = partitions__get_by_dev(partitions, next_key);
-		printf("%-7s %5ld %5ld %8d %10lld\n",
-		       partition ? partition->name : "Unknown",
-		       counter.random * 100L / total,
-		       counter.sequential * 100L / total, total,
-		       counter.bytes / 1024);
 	}
 
 	lookup_key = -1;
@@ -144,11 +158,35 @@ static int print_map(struct bpf_map *counters, struct partitions *partitions)
 	return 0;
 }
 
+static bool setup_disk_filter(struct biopattern_bpf *obj,
+			      const struct partitions *partitions)
+{
+	const struct partition *partition;
+
+	if (!env.disk)
+		return true;
+
+	partition = partitions__get_by_name(partitions, env.disk);
+	if (!partition) {
+		warning("Invalid partition name: %s not exist\n", env.disk);
+		return false;
+	}
+	obj->rodata->filter_dev = true;
+	obj->rodata->target_dev = partition->dev;
+	return true;
+}
+
+static void print_header(void)
+{
+	if (env.timestamp)
+		printf("%-9s ", "TIME");
+	printf("%-7s %5s %5s %8s %10s\n", "DISK", "%RND", "%SEQ", "COUNT", "KBYTES");
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
 	struct partitions *partitions = NULL;
-	const struct partition *partition;
 	static struct argp argp = {
 		.options = opts,
 		.parser = parse_arg,
@@ -185,15 +223,8 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.disk) {
-		partition = partitions__get_by_name(partitions, env.disk);
-		if (!partition) {
-			warning("Invalid partition name: %s not exist\n", env.disk);
-			goto cleanup;
-		}
-		obj->rodata->filter_dev = true;
-		obj->rodata->target_dev = partition->dev;
-	}
+	if (!setup_disk_filter(obj, partitions))
+		goto cleanup;
 
 	err = biopattern_bpf__load(obj);
 	if (err) {
@@ -210,10 +241,7 @@ int main(int argc, char *argv[])
 	signal(SIGINT, sig_handler);
 
 	printf("Tracing block device I/O requested seeks... Hit Ctrl-C to end.\n");
-
-	if (env.timestamp)
-		printf("%-9s ", "TIME");
-	printf("%-7s %5s %5s %8s %10s\n", "DISK", "%RND", "%SEQ", "COUNT", "KBYTES");
+	print_header();
 
 	while (1) {
 		sleep(env.interval);
