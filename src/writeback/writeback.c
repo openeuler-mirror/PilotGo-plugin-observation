@@ -83,6 +83,30 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void print_header(void)
+{
+	printf("Tracing writeback... Hit Ctrl-C to end.\n");
+	printf("%-9s %-8s %-8s %-16s %s\n", "TIME", "DEVICE", "PAGES",
+	       "REASON", "LAT(ms)");
+}
+
+static int poll_events(struct bpf_buffer *buf)
+{
+	int err = 0;
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %d\n", err);
+			break;
+		}
+		/* reset err to 0 when exiting */
+		err = 0;
+	}
+
+	return err;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
