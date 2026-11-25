@@ -51,33 +51,43 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 
 static int nr_cpus;
 
+static int attach_cpu_perf_event(struct bpf_program *prog, int cpu,
+				 struct bpf_link **link)
+{
+	struct perf_event_attr attr = {
+		.type = PERF_TYPE_SOFTWARE,
+		.freq = 1,
+		.sample_freq = frequency,
+		.config = PERF_COUNT_SW_CPU_CLOCK,
+	};
+	int fd;
+
+	fd = syscall(__NR_perf_event_open, &attr, -1, cpu, -1, 0);
+	if (fd < 0) {
+		/* Ignore CPU that is offline */
+		if (errno == ENODEV)
+			return 0;
+
+		warning("Failed to init perf sampling: %s\n", strerror(errno));
+		return -1;
+	}
+
+	*link = bpf_program__attach_perf_event(prog, fd);
+	if (!*link) {
+		warning("Failed to attach perf event on CPU #%d!\n", cpu);
+		close(fd);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int open_and_attach_perf_event(struct bpf_program *prog,
 				      struct bpf_link *links[])
 {
 	for (int i = 0; i < nr_cpus; i++) {
-		struct perf_event_attr attr = {
-			.type = PERF_TYPE_SOFTWARE,
-			.freq = 1,
-			.sample_freq = frequency,
-			.config = PERF_COUNT_SW_CPU_CLOCK,
-		};
-
-		int fd = syscall(__NR_perf_event_open, &attr, -1, i, -1, 0);
-		if (fd < 0) {
-			/* Ignore CPU that is offline */
-			if (errno == ENODEV)
-				continue;
-
-			warning("Failed to init perf sampling: %s\n", strerror(errno));
+		if (attach_cpu_perf_event(prog, i, &links[i]))
 			return -1;
-		}
-
-		links[i] = bpf_program__attach_perf_event(prog, fd);
-		if (!links[i]) {
-			warning("Failed to attach perf event on CPU #%d!\n", i);
-			close(fd);
-			return -1;
-		}
 	}
 
 	return 0;
@@ -108,6 +118,44 @@ static void print_hist(struct cpuwalk_bpf__bss *bss)
 	print_linear_hist(hist.slots, MAX_CPU_NR, 0, 1, "cpuwalk");
 }
 
+static int get_nr_cpus(void)
+{
+	int nr = libbpf_num_possible_cpus();
+
+	if (nr < 0) {
+		warning("Failed to get # of possible cpus: '%s'!\n",
+			strerror(-nr));
+		return -1;
+	}
+
+	if (nr > MAX_CPU_NR) {
+		warning("The number of cpu cores is too big, pleace increase "
+			"MAX_CPU_NR's value and recompile\n");
+		return -1;
+	}
+
+	return nr;
+}
+
+static struct cpuwalk_bpf *open_bpf_object(struct bpf_object_open_opts *open_opts)
+{
+	struct cpuwalk_bpf *obj;
+	int err;
+
+	err = ensure_core_btf(open_opts);
+	if (err) {
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n",
+			strerror(-err));
+		return NULL;
+	}
+
+	obj = cpuwalk_bpf__open_opts(open_opts);
+	if (!obj)
+		warning("Failed to open BPF objects\n");
+
+	return obj;
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -129,31 +177,13 @@ int main(int argc, char *argv[])
 
 	libbpf_set_print(libbpf_print_fn);
 
-	nr_cpus = libbpf_num_possible_cpus();
-	if (nr_cpus < 0) {
-		warning("Failed to get # of possible cpus: '%s'!\n",
-			strerror(-nr_cpus));
+	nr_cpus = get_nr_cpus();
+	if (nr_cpus < 0)
 		return 1;
-	}
 
-	if (nr_cpus > MAX_CPU_NR) {
-		warning("The number of cpu cores is too big, pleace increase "
-			"MAX_CPU_NR's value and recompile\n");
+	obj = open_bpf_object(&open_opts);
+	if (!obj)
 		return 1;
-	}
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n",
-			strerror(-err));
-		return 1;
-	}
-
-	obj = cpuwalk_bpf__open_opts(&open_opts);
-	if (!obj) {
-		warning("Failed to open BPF objects\n");
-		return 1;
-	}
 
 	err = cpuwalk_bpf__load(obj);
 	if (err) {
