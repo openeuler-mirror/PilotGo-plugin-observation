@@ -64,10 +64,35 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static uid_t parse_uid_arg(const char *arg, struct argp_state *state)
+{
+	long uid;
+
+	errno = 0;
+	uid = strtol(arg, NULL, 10);
+	if (errno) {
+		warning("Invalid UID %s\n", arg);
+		argp_usage(state);
+	}
+	return (uid_t)uid;
+}
+
+static int parse_max_args_arg(const char *arg, struct argp_state *state)
+{
+	long max_args;
+
+	errno = 0;
+	max_args = strtol(arg, NULL, 10);
+	if (errno || max_args < 1 || max_args > TOTAL_MAX_ARGS) {
+		warning("Invalid MAX_ARGS %s, should be in [1, %d] range\n",
+			arg, TOTAL_MAX_ARGS);
+		argp_usage(state);
+	}
+	return (int)max_args;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	long int uid, max_args;
-
 	switch (key) {
 	case 'h':
 		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
@@ -86,13 +111,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.cg = true;
 		break;
 	case 'u':
-		errno = 0;
-		uid = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid UID %s\n", arg);
-			argp_usage(state);
-		}
-		env.uid = uid;
+		env.uid = parse_uid_arg(arg, state);
 		break;
 	case 'q':
 		env.quote = true;
@@ -110,14 +129,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.verbose = true;
 		break;
 	case MAX_ARGS_KEY:
-		errno = 0;
-		max_args = strtol(arg, NULL, 10);
-		if (errno || max_args < 1 || max_args > TOTAL_MAX_ARGS) {
-			warning("Invalid MAX_ARGS %s, should be in [1, %d] range\n",
-				arg, TOTAL_MAX_ARGS);
-			argp_usage(state);
-		}
-		env.max_args = max_args;
+		env.max_args = parse_max_args_arg(arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -129,9 +141,9 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 			   va_list args)
 {
-	if (level == LIBBPF_DEBUG && !env.verbose)
-		return 0;
-	return vfprintf(stderr, format, args);
+	if (level != LIBBPF_DEBUG || env.verbose)
+		return vfprintf(stderr, format, args);
+	return 0;
 }
 
 static void sig_handler(int sig)
@@ -160,35 +172,48 @@ static void inline quoted_symbol(char c)
 	}
 }
 
-static void print_args(const struct event *e, bool quote)
+static void print_quoted_args(const struct event *e)
 {
-	int args_counter = 0;
+	int args_done = 0;
 
-	if (env.quote)
-		putchar('"');
-
-	for (int i = 0; i < e->args_size && args_counter < e->args_count; i++) {
+	putchar('"');
+	for (int i = 0; i < e->args_size && args_done < e->args_count; i++) {
 		char c = e->args[i];
 
-		if (env.quote) {
-			if (c == '\0') {
-				args_counter++;
-				putchar('"');
-				putchar(' ');
-				if (args_counter < e->args_count)
-					putchar('"');
-			} else {
-				quoted_symbol(c);
-			}
+		if (c != '\0') {
+			quoted_symbol(c);
+			continue;
+		}
+		args_done++;
+		putchar('"');
+		putchar(' ');
+		if (args_done < e->args_count)
+			putchar('"');
+	}
+}
+
+static void print_plain_args(const struct event *e)
+{
+	int args_done = 0;
+
+	for (int i = 0; i < e->args_size && args_done < e->args_count; i++) {
+		char c = e->args[i];
+
+		if (c == '\0') {
+			args_done++;
+			putchar(' ');
 		} else {
-			if (c == '\0') {
-				args_counter++;
-				putchar(' ');
-			} else {
-				putchar(c);
-			}
+			putchar(c);
 		}
 	}
+}
+
+static void print_args(const struct event *e, bool quote)
+{
+	if (quote)
+		print_quoted_args(e);
+	else
+		print_plain_args(e);
 
 	if (e->args_count == env.max_args + 1)
 		fputs(" ...", stdout);
@@ -199,19 +224,17 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 	const struct event *e = data;
 	char ts[32];
 
-	if (env.name && strstr(e->comm, env.name) == NULL)
+	if (env.name && !strstr(e->comm, env.name))
 		return;
-	if (env.line && strstr(e->comm, env.line) == NULL)
+	if (env.line && !strstr(e->comm, env.line))
 		return;
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S");
 
 	if (env.time)
 		printf("%-8s ", ts);
-
 	if (env.timestamp)
 		printf("%-8.3f", time_since_start());
-
 	if (env.print_uid)
 		printf("%-6d ", e->uid);
 
@@ -225,6 +248,49 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void disable_missing_tracepoints(struct execsnoop_bpf *bpf_obj)
+{
+	if (!tracepoint_exists("syscalls", "sys_enter_execve")) {
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_enter_execve, false);
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_exit_execve, false);
+	}
+
+	if (!tracepoint_exists("syscalls", "sys_enter_execveat")) {
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_enter_execveat, false);
+		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_exit_execveat, false);
+	}
+}
+
+static int setup_cgroup_map(struct execsnoop_bpf *bpf_obj)
+{
+	int idx = 0;
+	int cg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
+	int cgfd = open(env.cgroupspath, O_RDONLY);
+
+	if (cgfd < 0) {
+		warning("Failed opening Cgroup path: %s\n", env.cgroupspath);
+		return -1;
+	}
+	if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map\n");
+		close(cgfd);
+		return -1;
+	}
+	return cgfd;
+}
+
+static void print_header(void)
+{
+	if (env.time)
+		printf("%-9s", "TIME");
+	if (env.timestamp)
+		printf("%-8s ", "TIME(s)");
+	if (env.print_uid)
+		printf("%-6s ", "UID");
+
+	printf("%-16s %-8s %-8s %3s %s\n", "PCOMM", "PID", "PPID", "RET", "ARGS");
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -236,7 +302,7 @@ int main(int argc, char *argv[])
 
 	struct perf_buffer *pb = NULL;
 	struct execsnoop_bpf *bpf_obj;
-	int err, cgfd;
+	int err, cgfd = -1;
 
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
 	if (err)
@@ -259,22 +325,13 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	
 	/* Init global data (filtering options) */
 	bpf_obj->rodata->ignore_failed = !env.fails;
 	bpf_obj->rodata->target_uid = env.uid;
 	bpf_obj->rodata->max_args = env.max_args;
 	bpf_obj->rodata->filter_memcg = env.cg;
 
-	if (!tracepoint_exists("syscalls", "sys_enter_execve")) {
-		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_enter_execve, false);
-		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_exit_execve, false);
-	}
-
-	if (!tracepoint_exists("syscalls", "sys_enter_execveat")) {
-		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_enter_execveat, false);
-		bpf_program__set_autoload(bpf_obj->progs.tracepoint_syscall_exit_execveat, false);
-	}
+	disable_missing_tracepoints(bpf_obj);
 
 	err = execsnoop_bpf__load(bpf_obj);
 	if (err) {
@@ -283,17 +340,9 @@ int main(int argc, char *argv[])
 	}
 
 	if (env.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening Cgroup path: %s\n", env.cgroupspath);
+		cgfd = setup_cgroup_map(bpf_obj);
+		if (cgfd < 0)
 			goto cleanup;
-		}
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map\n");
-			goto cleanup;
-		}
 	}
 
 	err = execsnoop_bpf__attach(bpf_obj);
@@ -302,14 +351,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.time)
-		printf("%-9s", "TIME");
-	if (env.timestamp)
-		printf("%-8s ", "TIME(s)");
-	if (env.print_uid)
-		printf("%-6s ", "UID");
-
-	printf("%-16s %-8s %-8s %3s %s\n", "PCOMM", "PID", "PPID", "RET", "ARGS");
+	print_header();
 
 	pb = perf_buffer__new(bpf_map__fd(bpf_obj->maps.events), PERF_BUFFER_PAGES,
 			      handle_event, handle_lost_events, NULL, NULL);
