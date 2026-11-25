@@ -239,17 +239,9 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 	
-	printf("%-10s %-6s %-16s %s\n", "TIME(ms)", "PID", "COMM", "FUNC");
-        
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling ring/perf buffer: %d\n", err);
-			goto cleanup;
-		}
-		/* reset err to 0 when exiting */
-		err = 0;
-	}
+	print_header();
+
+	err = poll_events(buf);
 
 cleanup:
 	bpf_buffer__free(buf);
