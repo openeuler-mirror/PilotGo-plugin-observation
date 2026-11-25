@@ -44,34 +44,41 @@ struct {
 	__type(value, struct hist);
 } hists SEC(".maps");
 
+static __always_inline bool current_task_in_cgroup(void)
+{
+	return !filter_memcg || bpf_current_task_under_cgroup(&cgroup_map, 0);
+}
+
+static __always_inline u32 rq_disk_dev(struct request *rq)
+{
+	struct gendisk *disk = get_disk(rq);
+
+	if (!disk)
+		return 0;
+	return MKDEV(BPF_CORE_READ(disk, major),
+		     BPF_CORE_READ(disk, first_minor));
+}
+
 static int __always_inline trace_rq_start(struct request *rq, int issue)
 {
 	u64 ts;
 
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+	if (!current_task_in_cgroup())
 		return 0;
 
 	if (issue && target_queued && BPF_CORE_READ(rq, q, elevator))
 		return 0;
 
+	if (filter_dev && target_dev != rq_disk_dev(rq))
+		return 0;
+
 	ts = bpf_ktime_get_ns();
-
-	if (filter_dev) {
-		struct gendisk *disk = get_disk(rq);
-		u32 dev;
-
-		dev = disk ? MKDEV(BPF_CORE_READ(disk, major),
-				BPF_CORE_READ(disk, first_minor)) : 0;
-		if (target_dev != dev)
-			return 0;
-	}
-
 	bpf_map_update_elem(&start, &rq, &ts, BPF_ANY);
 
 	return 0;
 }
 
-static int handle_block_rq_insert(__u64 *ctx)
+static __always_inline struct request *raw_tp_rq_arg(__u64 *ctx)
 {
 	/*
 	 * commit a54895fs (v5.11-rc1) changed tracepoint argument list from
@@ -79,49 +86,41 @@ static int handle_block_rq_insert(__u64 *ctx)
 	 * TP_PROTO(struct request *rq)
 	 */
 	if (LINUX_KERNEL_VERSION < KERNEL_VERSION(5, 11, 0))
-		return trace_rq_start((void *)ctx[1], false);
-	else
-		return trace_rq_start((void *)ctx[0], false);
+		return (void *)ctx[1];
+	return (void *)ctx[0];
+}
+
+static int handle_block_rq_insert(__u64 *ctx)
+{
+	return trace_rq_start(raw_tp_rq_arg(ctx), false);
 }
 
 static int handle_block_rq_issue(__u64 *ctx)
 {
-	/*
-	 * commit a54895fs (v5.11-rc1) changed tracepoint argument list from
-	 * TP_PROTO(struct request_queue *q, struct request *rq) to
-	 * TP_PROTO(struct request *rq)
-	 */
-	if (LINUX_KERNEL_VERSION < KERNEL_VERSION(5, 11, 0))
-		return trace_rq_start((void *)ctx[1], true);
-	else
-		return trace_rq_start((void *)ctx[0], true);
+	return trace_rq_start(raw_tp_rq_arg(ctx), true);
 }
 
 static int handle_block_rq_complete(struct request *rq, int error,
 				    unsigned int nr_bytes)
 {
-	u64 slot, *tsp, ts = bpf_ktime_get_ns();
 	struct hist_key hkey = {};
 	struct hist *histp;
+	u64 slot, *tsp;
 	s64 delta;
 
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+	if (!current_task_in_cgroup())
 		return 0;
 
 	tsp = bpf_map_lookup_elem(&start, &rq);
 	if (!tsp)
 		return 0;
 
-	delta = (s64)(ts - *tsp);
+	delta = (s64)(bpf_ktime_get_ns() - *tsp);
 	if (delta < 0)
 		goto cleanup;
 
-	if (target_per_disk) {
-		struct gendisk *disk = get_disk(rq);
-
-		hkey.dev = disk ? MKDEV(BPF_CORE_READ(disk, major),
-					BPF_CORE_READ(disk, first_minor)) : 0;
-	}
+	if (target_per_disk)
+		hkey.dev = rq_disk_dev(rq);
 
 	if (target_per_flag)
 		hkey.cmd_flags = BPF_CORE_READ(rq, cmd_flags);
@@ -130,10 +129,7 @@ static int handle_block_rq_complete(struct request *rq, int error,
 	if (!histp)
 		goto cleanup;
 
-	if (target_ms)
-		delta /= 1000000U;
-	else
-		delta /= 1000U;
+	delta /= target_ms ? 1000000U : 1000U;
 
 	slot = log2l(delta);
 	if (slot >= MAX_SLOTS)
