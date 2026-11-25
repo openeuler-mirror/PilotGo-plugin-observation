@@ -44,6 +44,20 @@ static const struct argp_option opts[] = {
     {},
 };
 
+static pid_t parse_tid(char *arg, struct argp_state *state)
+{
+    pid_t tid;
+
+    errno = 0;
+    tid = strtol(arg, NULL, 10);
+    if (errno)
+    {
+        warning("Invalid tid: %s\n", arg);
+        argp_usage(state);
+    }
+    return tid;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
     switch (key)
@@ -61,13 +75,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
         env.pid = argp_parse_pid(key, arg, state);
         break;
     case 't':
-        errno = 0;
-        env.tid = strtol(arg, NULL, 10);
-        if (errno)
-        {
-            warning("Invalid tid: %s\n", arg);
-            argp_usage(state);
-        }
+        env.tid = parse_tid(arg, state);
         break;
     case 'c':
         env.comm = arg;
