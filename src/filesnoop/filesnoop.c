@@ -57,6 +57,19 @@ const char *op2string[] = {
 	[F_UTIMENSAT] = "UTIMENSAT",
 };
 
+static void parse_operation_arg(const char *arg, struct argp_state *state)
+{
+	for (int i = 0; i < ARRAY_SIZE(op2string); i++) {
+		if (strcmp(op2string[i], arg) == 0) {
+			env.target_op = i;
+		}
+	}
+	if (env.target_op == F_ALL) {
+		warning("%s is not valid operation\n", arg);
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -74,15 +87,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.filter_filename = true;
 		break;
 	case 'o':
-		for (int i = 0; i < ARRAY_SIZE(op2string); i++) {
-			if (strcmp(op2string[i], arg) == 0) {
-				env.target_op = i;
-			}
-		}
-		if (env.target_op == F_ALL) {
-			warning("%s is not valid operation\n", arg);
-			argp_usage(state);
-		}
+		parse_operation_arg(arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -141,6 +146,37 @@ static void alias_parse(char *prog)
 		env.target_op = F_STATX;
 }
 
+static void disable_missing_tracepoints(struct filesnoop_bpf *obj)
+{
+	if (!tracepoint_exists("syscalls", "sys_enter_open")) {
+		bpf_program__set_autoload(obj->progs.tracepoint_sys_enter_open, false);
+		bpf_program__set_autoload(obj->progs.tracepoint_sys_exit_open, false);
+	}
+
+	if (!tracepoint_exists("syscalls", "sys_enter_openat2")) {
+		bpf_program__set_autoload(obj->progs.tracepoint_sys_enter_openat2, false);
+		bpf_program__set_autoload(obj->progs.tracepoint_sys_exit_openat2, false);
+	}
+}
+
+static void set_filename_filter(struct filesnoop_bpf *obj)
+{
+	if (!env.filter_filename)
+		return;
+
+	obj->rodata->target_filename_sz = strlen(env.filename);
+	obj->rodata->filter_filename = env.filter_filename;
+	strcpy(obj->bss->target_filename, env.filename);
+}
+
+static void print_header(void)
+{
+	if (env.timestamp)
+		printf("%-9s ", "TIME");
+	printf("%-8s %-16s %-10s %5s %5s %s\n", "PID", "COMM", "OPERATION", "FD",
+	       "RET", "FILENAME");
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -175,22 +211,10 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.filter_filename) {
-		obj->rodata->target_filename_sz = strlen(env.filename);
-		obj->rodata->filter_filename = env.filter_filename;
-		strcpy(obj->bss->target_filename, env.filename);
-	}
+	set_filename_filter(obj);
 	obj->rodata->target_op = env.target_op;
 
-	if (!tracepoint_exists("syscalls", "sys_enter_open")) {
-		bpf_program__set_autoload(obj->progs.tracepoint_sys_enter_open, false);
-		bpf_program__set_autoload(obj->progs.tracepoint_sys_exit_open, false);
-	}
-
-	if (!tracepoint_exists("syscalls", "sys_enter_openat2")) {
-		bpf_program__set_autoload(obj->progs.tracepoint_sys_enter_openat2, false);
-		bpf_program__set_autoload(obj->progs.tracepoint_sys_exit_openat2, false);
-	}
+	disable_missing_tracepoints(obj);
 
 	err = filesnoop_bpf__load(obj);
 	if (err) {
@@ -216,10 +240,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.timestamp)
-		printf("%-9s ", "TIME");
-	printf("%-8s %-16s %-10s %5s %5s %s\n", "PID", "COMM", "OPERATION", "FD",
-	       "RET", "FILENAME");
+	print_header();
 
 	while (!exiting) {
 		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
