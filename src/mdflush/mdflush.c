@@ -48,13 +48,17 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
     return vfprintf(stderr, format, args);
 }
 
-static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+static void print_event(const struct event *e)
 {
-    struct event *e = data;
     char ts[32];
 
     strftime_now(ts, sizeof(ts), "%H%M:%S");
     printf("%-8s %-7d %-16s %-s\n", ts, e->pid, e->comm, e->disk);
+}
+
+static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+    print_event(data);
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
