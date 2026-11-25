@@ -53,6 +53,28 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_positional(int *pos_args, char *arg, struct argp_state *state)
+{
+	errno = 0;
+	if (*pos_args == 0) {
+		env.interval = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid interval\n");
+			argp_usage(state);
+		}
+	} else if (*pos_args == 1) {
+		env.times = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid times\n");
+			argp_usage(state);
+		}
+	} else {
+		warning("Unrecongnized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+	(*pos_args)++;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -87,24 +109,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.cg = true;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.interval = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			env.times = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecongnized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional(&pos_args, arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -148,7 +153,14 @@ static int print_log2_hists(struct bpf_map *hists)
 		lookup_key = next_key;
 	}
 
-	lookup_key = -2;
+	return cleanup_hists(fd);
+}
+
+static int cleanup_hists(int fd)
+{
+	__u32 lookup_key = -2, next_key;
+	int err;
+
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
 		err = bpf_map_delete_elem(fd, &next_key);
 		if (err < 0) {
