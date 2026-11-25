@@ -59,6 +59,18 @@ static struct env {
         .uid = (uid_t)-1
 };
 
+static void parse_ports(char *arg, struct argp_state *state)
+{
+        char *port = strtok(arg, ",");
+
+        for (int i = 0; port; i++) {
+                env.ports[i] = safe_strtol(port, 1, 65535, state);
+                env.nports++;
+
+                port = strtok(NULL, ",");
+        }
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
         switch (key) {
@@ -87,17 +99,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
                 env.uid = safe_strtoul(arg, 0, (uid_t)-2, state);
                 break;
         case 'P':
-        {
-                char *port = strtok(arg, ",");
-
-                for (int i = 0; port; i++) {
-                        env.ports[i] = safe_strtol(port, 1, 65535, state);
-                        env.nports++;
-
-                        port = strtok(NULL, ",");
-                }
+                parse_ports(arg, state);
                 break;
-        }
         case 'C':
                 warning("Not implemented: --cgroupmap");
                 break;
@@ -109,6 +112,26 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
         }
 
         return 0;
+}
+
+static void disable_prog(struct bpf_program *prog)
+{
+        bpf_program__set_autoload(prog, false);
+}
+
+static void configure_probes(struct tcpconnect_bpf *obj)
+{
+        if (fentry_can_attach("tcp_v4_connect", NULL)) {
+                disable_prog(obj->progs.tcp_v4_connect_kprobe);
+                disable_prog(obj->progs.tcp_v6_connect_kprobe);
+                disable_prog(obj->progs.tcp_v4_connect_ret_kprobe);
+                disable_prog(obj->progs.tcp_v6_connect_ret_kprobe);
+        } else {
+                disable_prog(obj->progs.tcp_v4_connect);
+                disable_prog(obj->progs.tcp_v6_connect);
+                disable_prog(obj->progs.tcp_v4_connect_ret);
+                disable_prog(obj->progs.tcp_v6_connect_ret);
+        }
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
@@ -347,17 +370,7 @@ int main(int argc, char *argv[])
         if (env.source_port)
                 obj->rodata->source_port = true;
 
-        if (fentry_can_attach("tcp_v4_connect", NULL)) {
-                bpf_program__set_autoload(obj->progs.tcp_v4_connect_kprobe, false);
-                bpf_program__set_autoload(obj->progs.tcp_v6_connect_kprobe, false);
-                bpf_program__set_autoload(obj->progs.tcp_v4_connect_ret_kprobe, false);
-                bpf_program__set_autoload(obj->progs.tcp_v6_connect_ret_kprobe, false);
-        } else {
-                bpf_program__set_autoload(obj->progs.tcp_v4_connect, false);
-                bpf_program__set_autoload(obj->progs.tcp_v6_connect, false);
-                bpf_program__set_autoload(obj->progs.tcp_v4_connect_ret, false);
-                bpf_program__set_autoload(obj->progs.tcp_v6_connect_ret, false);
-        }
+        configure_probes(obj);
 
         clock_gettime(CLOCK_MONOTONIC, &start_time);
         err = tcpconnect_bpf__load(obj);
