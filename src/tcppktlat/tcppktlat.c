@@ -144,6 +144,17 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+
+static void select_probes(struct tcppktlat_bpf *obj)
+{
+	if (probe_tp_btf("tcp_probe")) {
+		bpf_program__set_autoload(obj->progs.tcp_probe_raw, false);
+		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_raw, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.tcp_probe_btf, false);
+		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_btf, false);
+	}
+}
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -181,13 +192,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (probe_tp_btf("tcp_probe")) {
-		bpf_program__set_autoload(obj->progs.tcp_probe_raw, false);
-		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_raw, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.tcp_probe_btf, false);
-		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_btf, false);
-	}
+	select_probes(obj);
 
 	err = tcppktlat_bpf__load(obj);
 	if (err) {
