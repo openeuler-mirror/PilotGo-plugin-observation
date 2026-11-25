@@ -17,6 +17,24 @@ struct {
 	__type(value, struct entry_t);
 } entrys SEC(".maps");
 
+static __always_inline bool task_filtered(u32 pid, u32 tid)
+{
+	if (target_pid && target_pid != pid)
+		return true;
+	if (target_tid && target_tid != tid)
+		return true;
+	return false;
+}
+
+static __always_inline void fill_event(struct event *event, u32 pid, u32 tid,
+				       enum lookup_type type)
+{
+	event->pid = pid;
+	event->tid = tid;
+	event->type = type;
+	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+}
+
 static __always_inline int
 trace_fast(void *ctx, struct nameidata *nd, struct path *path)
 {
@@ -24,19 +42,14 @@ trace_fast(void *ctx, struct nameidata *nd, struct path *path)
 	u32 pid = pid_tgid >> 32, tid = pid_tgid;
 	struct event *event;
 
-	if (target_pid && target_pid != pid)
-		return 0;
-	if (target_tid && target_tid != tid)
+	if (task_filtered(pid, tid))
 		return 0;
 
 	event = reserve_buf(sizeof(*event));
 	if (!event)
 		return 0;
 
-	event->pid = pid;
-	event->tid = tid;
-	event->type = LOOKUP_REFERENCE;
-	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+	fill_event(event, pid, tid, LOOKUP_REFERENCE);
 	const unsigned char *name = BPF_CORE_READ(nd, last.name);
 	bpf_probe_read_kernel_str(&event->filename, sizeof(event->filename), name);
 
@@ -53,9 +66,7 @@ kprobe__d_lookup(void *ctx, const struct dentry *parent,
 	u32 tid = pid_tgid;
 	struct entry_t entry = {};
 
-	if (target_pid && target_pid != pid)
-		return 0;
-	if (target_tid && target_tid != tid)
+	if (task_filtered(pid, tid))
 		return 0;
 
 	const unsigned char *t_name = BPF_CORE_READ(name, name);
@@ -83,10 +94,7 @@ static __always_inline int kretprobe__d_lookup(void *ctx, struct dentry *ret)
 	if (!event)
 		return 0;
 
-	event->pid = pid;
-	event->tid = tid;
-	event->type = LOOKUP_MISS;
-	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+	fill_event(event, pid, tid, LOOKUP_MISS);
 	BPF_PROBE_READ_STR_INTO(&event->filename, ep, name);
 
 	submit_buf(ctx, event, sizeof(*event));
@@ -105,19 +113,14 @@ fexit__d_lookup(void *ctx, const struct dentry *parent,
 	if (ret != NULL)	/* lookup didn't fail */
 		return 0;
 
-	if (target_pid && target_pid != pid)
-		return 0;
-	if (target_tid && target_tid != tid)
+	if (task_filtered(pid, tid))
 		return 0;
 
 	event = reserve_buf(sizeof(*event));
 	if (!event)
 		return 0;
 
-	event->pid = pid;
-	event->tid = tid;
-	event->type = LOOKUP_MISS;
-	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+	fill_event(event, pid, tid, LOOKUP_MISS);
 	bpf_core_read_str(&event->filename, sizeof(event->filename), name->name);
 
 	submit_buf(ctx, event, sizeof(*event));
