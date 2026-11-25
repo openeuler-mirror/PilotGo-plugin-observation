@@ -51,6 +51,21 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
     return vfprintf(stderr, format, args);
 }
 
+
+static void report_loop(struct pidpersec_bpf *obj)
+{
+    while (!exiting)
+    {
+        sleep(1);
+
+        __u64 counts = __atomic_exchange_n(&obj->bss->counts, 0, __ATOMIC_RELAXED);
+        char ts[32];
+
+        strftime_now(ts, sizeof(ts), "%H:%M:%S");
+        printf("%s: PIDs/sec: %llu\n", ts, counts);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     struct pidpersec_bpf *obj;
@@ -107,16 +122,7 @@ int main(int argc, char *argv[])
 
     printf("Tracing... Ctrl-C to end.\n");
 
-    while (!exiting)
-    {
-        sleep(1);
-
-        __u64 counts = __atomic_exchange_n(&obj->bss->counts, 0, __ATOMIC_RELAXED);
-        char ts[32];
-
-        strftime_now(ts, sizeof(ts), "%H:%M:%S");
-        printf("%s: PIDs/sec: %llu\n", ts, counts);
-    }
+    report_loop(obj);
 
 cleanup:
     pidpersec_bpf__destroy(obj);
