@@ -75,6 +75,26 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
+static void print_exit_reason(const struct event *e)
+{
+	if (!e->sig) {
+		if (!e->exit_code)
+			printf("0\n");
+		else
+			printf("code %d\n", e->exit_code);
+		return;
+	}
+
+	int sig = e->sig & 0x7f;
+	int coredump = e->sig & 0x80;
+
+	if (sig)
+		printf("signal %d (%s)", sig, strsignal(sig));
+	if (coredump)
+		printf(", core dumped");
+	printf("\n");
+}
+
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
 	struct event *e = data;
@@ -92,21 +112,7 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 	printf("%-16s %-7d %-7d %-7d %-7.2f ",
 	       e->comm, e->pid, e->ppid, e->tid, age);
 
-	if (!e->sig) {
-		if (!e->exit_code)
-			printf("0\n");
-		else
-			printf("code %d\n", e->exit_code);
-	} else {
-		int sig = e->sig & 0x7f;
-		int coredump = e->sig & 0x80;
-
-		if (sig)
-			printf("signal %d (%s)", sig, strsignal(sig));
-		if (coredump)
-			printf(", core dumped");
-		printf("\n");
-	}
+	print_exit_reason(e);
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
@@ -124,6 +130,39 @@ static void sig_handler(int sig)
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static int setup_cgroup_map(struct exitsnoop_bpf *obj, struct argument *argument,
+			    int *cgfd)
+{
+	int idx = 0;
+	int cg_map_fd;
+
+	if (!argument->cg)
+		return 0;
+
+	cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+
+	*cgfd = open(argument->cgroupspath, O_RDONLY);
+	if (*cgfd < 0) {
+		warning("Failed opening cgroup path: %s", argument->cgroupspath);
+		return -1;
+	}
+
+	if (bpf_map_update_elem(cg_map_fd, &idx, cgfd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void print_header(struct argument *argument)
+{
+	if (argument->emit_timestamp)
+		printf("%-8s ", "TIME(s)");
+	printf("%-16s %-7s %-7s %-7s %-7s %-s\n",
+	       "PCOMM", "PID", "PPID", "TID", "AGE(s)", "EXIT_CODE");
 }
 
 int main(int argc, char *argv[])
@@ -174,21 +213,8 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	/* update cgroup path fd to map */
-	if (argument.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-		cgfd = open(argument.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening cgroup path: %s", argument.cgroupspath);
-			goto cleanup;
-		}
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
-	}
+	if (setup_cgroup_map(obj, &argument, &cgfd))
+		goto cleanup;
 
 	err = exitsnoop_bpf__attach(obj);
 	if (err) {
@@ -210,10 +236,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (argument.emit_timestamp)
-		printf("%-8s ", "TIME(s)");
-	printf("%-16s %-7s %-7s %-7s %-7s %-s\n",
-	       "PCOMM", "PID", "PPID", "TID", "AGE(s)", "EXIT_CODE");
+	print_header(&argument);
 
 	while (!exiting) {
 		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
