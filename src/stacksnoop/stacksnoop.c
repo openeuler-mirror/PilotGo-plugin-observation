@@ -102,25 +102,9 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static void print_stack(int fd, int stack_id)
 {
-	const struct event *e = data;
-	int fd = *(int *)ctx;
-
-	if (env.verbose)
-		printf("%-18s %-12s %-6s %-3s %s\n", "TIME(s)", "COMM", "PID",
-		       "CPU", "FUNCTION");
-	else
-		printf("%-18s %s\n", "TIME(s)", "FUNCTION");
-
-	printf("%-18.9f ", time_since_start());
-	if (env.verbose)
-		printf("%-12.12s %-6d %-3d %s\n",
-		       e->comm, e->pid, e->cpu, env.function);
-	else
-		printf("%s\n", env.function);
-
-	bpf_map_lookup_elem(fd, &e->stack_id, stacks);
+	bpf_map_lookup_elem(fd, &stack_id, stacks);
 	for (size_t i = 0; i < env.perf_max_stack_depth; i++) {
 		if (!stacks[i])
 			break;
@@ -139,6 +123,27 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 			printf("\t%zu [<%016llx>] <%s>\n", i, stacks[i], "null sym");
 		}
 	}
+}
+
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+	int fd = *(int *)ctx;
+
+	if (env.verbose)
+		printf("%-18s %-12s %-6s %-3s %s\n", "TIME(s)", "COMM", "PID",
+		       "CPU", "FUNCTION");
+	else
+		printf("%-18s %s\n", "TIME(s)", "FUNCTION");
+
+	printf("%-18.9f ", time_since_start());
+	if (env.verbose)
+		printf("%-12.12s %-6d %-3d %s\n",
+		       e->comm, e->pid, e->cpu, env.function);
+	else
+		printf("%s\n", env.function);
+
+	print_stack(fd, e->stack_id);
 
 	printf("\n");
 
