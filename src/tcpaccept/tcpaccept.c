@@ -51,10 +51,29 @@ static struct env {
 	bool ipv6_only;
 } env;
 
-static error_t parse_arg(int key, char *arg, struct argp_state *state)
+static void parse_ports(char *arg, struct argp_state *state)
 {
 	char *port;
 
+	env.port = true;
+	if (!arg) {
+		warning("No ports specified\n");
+		argp_usage(state);
+	}
+	env.target_ports = strdup(arg);
+	port = strtok(arg, ",");
+	while (port) {
+		int port_num = strtol(port, NULL, 10);
+		if (errno || port_num <= 0 || port_num > 65536) {
+			warning("Invalid ports: %s\n", arg);
+			argp_usage(state);
+		}
+		port = strtok(NULL, ",");
+	}
+}
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
 	switch (key) {
 	case 'h':
 		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
@@ -70,21 +89,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.pid = true;
 		break;
 	case 'P':
-		env.port = true;
-		if (!arg) {
-			warning("No ports specified\n");
-			argp_usage(state);
-		}
-		env.target_ports = strdup(arg);
-		port = strtok(arg, ",");
-		while (port) {
-			int port_num = strtol(port, NULL, 10);
-			if (errno || port_num <= 0 || port_num > 65536) {
-				warning("Invalid ports: %s\n", arg);
-				argp_usage(state);
-			}
-			port = strtok(NULL, ",");
-		}
+		parse_ports(arg, state);
 		break;
 	case '4':
 		env.ipv4_only = true;
@@ -125,15 +130,28 @@ static void print_header(void)
 	printf("\n");
 }
 
+union ip_addr {
+	struct in_addr  x4;
+	struct in6_addr x6;
+};
+
+static void fill_addrs(const struct data_t *event, union ip_addr *s, union ip_addr *d)
+{
+	if (event->af == AF_INET) {
+		s->x4.s_addr = event->saddr_v4;
+		d->x4.s_addr = event->daddr_v4;
+	} else if (event->af == AF_INET6) {
+		memcpy(&s->x6.s6_addr, event->saddr_v6, sizeof(s->x6.s6_addr));
+		memcpy(&d->x6.s6_addr, event->daddr_v6, sizeof(d->x6.s6_addr));
+	}
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	char time_now[16];
 	const struct data_t *event = data;
 	char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
-	union {
-		struct in_addr  x4;
-		struct in6_addr x6;
-	} s, d;
+	union ip_addr s, d;
 
 	if (env.ipv4_only && event->af == AF_INET6)
 		return 0;
@@ -141,13 +159,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 	if (env.ipv6_only && event->af == AF_INET)
 		return 0;
 
-	if (event->af == AF_INET) {
-		s.x4.s_addr = event->saddr_v4;
-		d.x4.s_addr = event->daddr_v4;
-	} else if (event->af == AF_INET6) {
-		memcpy(&s.x6.s6_addr, event->saddr_v6, sizeof(s.x6.s6_addr));
-		memcpy(&d.x6.s6_addr, event->daddr_v6, sizeof(d.x6.s6_addr));
-	}
+	fill_addrs(event, &s, &d);
 
 	if (env.time) {
 		strftime_now(time_now, sizeof(time_now), "%H:%M:%S");
@@ -172,6 +184,18 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static void populate_ports_map(int port_map_fd)
+{
+	char *port = strtok(env.target_ports, ",");
+
+	while (port) {
+		int port_num = strtol(port, NULL, 10);
+
+		bpf_map_update_elem(port_map_fd, &port_num, &port_num, BPF_ANY);
+		port = strtok(NULL, ",");
+	}
 }
 
 static int print_events(struct bpf_buffer *buf)
@@ -253,18 +277,8 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.port) {
-		int port_map_fd = bpf_map__fd(obj->maps.ports);
-		char *port = strtok(env.target_ports, ",");
-
-		while (port) {
-			int port_num = strtol(port, NULL, 10);
-
-			bpf_map_update_elem(port_map_fd, &port_num,
-					    &port_num, BPF_ANY);
-			port = strtok(NULL, ",");
-		}
-	}
+	if (env.port)
+		populate_ports_map(bpf_map__fd(obj->maps.ports));
 
 	err = tcpaccept_bpf__attach(obj);
 	if (err) {
