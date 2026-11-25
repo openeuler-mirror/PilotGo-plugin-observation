@@ -66,6 +66,13 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
     warning("Lost %llu events on CPU #%d\n", lost_cnt, cpu);
 }
 
+static void select_probes(struct mdflush_bpf *obj)
+{
+    if (fentry_can_attach("md_flush_request", NULL))
+        bpf_program__set_autoload(obj->progs.kprobe_md_flush_request, false);
+    else
+        bpf_program__set_autoload(obj->progs.md_flush_request, false);
+}
 int main(int argc, char *argv[])
 {
     static const struct argp argp = {
@@ -90,10 +97,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (fentry_can_attach("md_flush_request", NULL))
-        bpf_program__set_autoload(obj->progs.kprobe_md_flush_request, false);
-    else
-        bpf_program__set_autoload(obj->progs.md_flush_request, false);
+    select_probes(obj);
 
     err = mdflush_bpf__load(obj);
     if (err)
