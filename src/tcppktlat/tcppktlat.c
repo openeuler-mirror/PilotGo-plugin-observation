@@ -53,6 +53,15 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional(int arg_num, char *arg, struct argp_state *state)
+{
+	if (arg_num != 0) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+	env.min_us = argp_parse_long(ARGP_KEY_ARG, arg, state);
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -87,11 +96,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.target_family = AF_INET6;
 		break;
 	case ARGP_KEY_ARG:
-		if (state->arg_num != 0) {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		env.min_us = argp_parse_long(key, arg, state);
+		parse_positional(state->arg_num, arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
