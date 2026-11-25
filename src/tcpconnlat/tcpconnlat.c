@@ -92,29 +92,72 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+union ip_addr {
+	struct in_addr  x4;
+	struct in6_addr x6;
+};
+
+static int fill_addrs(const struct event *e, union ip_addr *s, union ip_addr *d)
+{
+	if (e->af == AF_INET) {
+		s->x4.s_addr = e->saddr_v4;
+		d->x4.s_addr = e->daddr_v4;
+	} else if (e->af == AF_INET6) {
+		memcpy(&s->x6.s6_addr, e->saddr_v6, sizeof(s->x6.s6_addr));
+		memcpy(&d->x6.s6_addr, e->daddr_v6, sizeof(d->x6.s6_addr));
+	} else {
+		warning("broken event: event->af=%d", e->af);
+		return 1;
+	}
+	return 0;
+}
+
+static void disable_prog(struct bpf_program *prog)
+{
+	bpf_program__set_autoload(prog, false);
+}
+
+static void configure_probes(struct tcpconnlat_bpf *obj)
+{
+	if (fentry_can_attach("tcp_v4_connect", NULL)) {
+		disable_prog(obj->progs.tcp_v4_connect);
+		disable_prog(obj->progs.tcp_v6_connect);
+		disable_prog(obj->progs.tcp_rcv_state_process);
+		disable_prog(obj->progs.tcp_v4_destroy_sock);
+		disable_prog(obj->progs.tcp_v6_destroy_sock);
+	} else {
+		disable_prog(obj->progs.fentry_tcp_v4_connect);
+		disable_prog(obj->progs.fentry_tcp_v6_connect);
+		disable_prog(obj->progs.fentry_tcp_rcv_state_process);
+		disable_prog(obj->progs.fentry_tcp_v4_destroy_sock);
+		disable_prog(obj->progs.fentry_tcp_v6_destroy_sock);
+	}
+}
+
+static void print_header(void)
+{
+	if (env.timestamp)
+		printf("%-9s ", "TIME(s)");
+	if (env.lport)
+		printf("%-6s %-16s %-2s %-16s %-6s %-16s %-5s %s\n",
+		       "PID", "COMM", "IP", "SADDR", "LPORT", "DADDR", "DPORT", "LAT(ms)");
+	else
+		printf("%-6s %-16s %-2s %-16s %-16s %-5s %s\n",
+		       "PID", "COMM", "IP", "SADDR", "DADDR", "DPORT", "LAT(ms)");
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	const struct event *e = data;
 	char src[INET6_ADDRSTRLEN];
 	char dst[INET6_ADDRSTRLEN];
-	union {
-		struct in_addr  x4;
-		struct in6_addr x6;
-	} s, d;
+	union ip_addr s, d;
 
 	if (env.timestamp)
 		printf("%-9.3f ", time_since_start());
 
-	if (e->af == AF_INET) {
-		s.x4.s_addr = e->saddr_v4;
-		d.x4.s_addr = e->daddr_v4;
-	} else if (e->af == AF_INET6) {
-		memcpy(&s.x6.s6_addr, e->saddr_v6, sizeof(s.x6.s6_addr));
-		memcpy(&d.x6.s6_addr, e->daddr_v6, sizeof(d.x6.s6_addr));
-	} else {
-		warning("broken event: event->af=%d", e->af);
+	if (fill_addrs(e, &s, &d))
 		return 1;
-	}
 
 	if (env.lport) {
 		printf("%-6d %-16.16s v%d %-16s %-6d %-16s %-5d %.2f\n", e->tgid,
@@ -167,19 +210,7 @@ int main(int argc, char *argv[])
 	obj->rodata->target_min_us = env.min_us;
 	obj->rodata->target_tgid = env.pid;
 
-    if (fentry_can_attach("tcp_v4_connect", NULL)) {
-		bpf_program__set_autoload(obj->progs.tcp_v4_connect, false);
-		bpf_program__set_autoload(obj->progs.tcp_v6_connect, false);
-		bpf_program__set_autoload(obj->progs.tcp_rcv_state_process, false);
-		bpf_program__set_autoload(obj->progs.tcp_v4_destroy_sock, false);
-		bpf_program__set_autoload(obj->progs.tcp_v6_destroy_sock, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.fentry_tcp_v4_connect, false);
-		bpf_program__set_autoload(obj->progs.fentry_tcp_v6_connect, false);
-		bpf_program__set_autoload(obj->progs.fentry_tcp_rcv_state_process, false);
-		bpf_program__set_autoload(obj->progs.fentry_tcp_v4_destroy_sock, false);
-		bpf_program__set_autoload(obj->progs.fentry_tcp_v6_destroy_sock, false);
-	}
+	configure_probes(obj);
 
 	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
 	if (!buf) {
@@ -206,15 +237,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-    /* print header */
-	if (env.timestamp)
-		printf("%-9s ", "TIME(s)");
-	if (env.lport)
-		printf("%-6s %-16s %-2s %-16s %-6s %-16s %-5s %s\n",
-		       "PID", "COMM", "IP", "SADDR", "LPORT", "DADDR", "DPORT", "LAT(ms)");
-	else
-		printf("%-6s %-16s %-2s %-16s %-16s %-5s %s\n",
-		       "PID", "COMM", "IP", "SADDR", "DADDR", "DPORT", "LAT(ms)");
+	print_header();
 
 	if (signal(SIGINT, sig_handler) == SIG_ERR) {
 		warning("Can't set signal handler: %s\n", strerror(errno));
