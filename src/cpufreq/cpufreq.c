@@ -179,6 +179,57 @@ static void print_linear_hists(struct bpf_map *hists,
 			  "syswide");
 }
 
+static int get_nr_cpus(void)
+{
+	int nr = libbpf_num_possible_cpus();
+
+	if (nr < 0) {
+		warning("Failed to get # of possible cpus: '%s'!\n",
+			strerror(-nr));
+		return -1;
+	}
+
+	if (nr > MAX_CPU_NR) {
+		warning("the number of cpu cores is too big, please "
+			"increase MAX_CPU_NR's value and recompile");
+		return -1;
+	}
+
+	return nr;
+}
+
+static void set_probe_autoload(struct cpufreq_bpf *obj)
+{
+	if (probe_tp_btf("cpu_frequency"))
+		bpf_program__set_autoload(obj->progs.cpu_frequency_raw, false);
+	else
+		bpf_program__set_autoload(obj->progs.cpu_frequency, false);
+}
+
+static int setup_cgroup_map(struct cpufreq_bpf *obj, int *cgfd)
+{
+	int idx = 0;
+	int cg_map_fd;
+
+	if (!env.cg)
+		return 0;
+
+	cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+
+	*cgfd = open(env.cgroupspath, O_RDONLY);
+	if (*cgfd < 0) {
+		warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		return -1;
+	}
+
+	if (bpf_map_update_elem(cg_map_fd, &idx, cgfd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		return -1;
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -199,18 +250,9 @@ int main(int argc, char *argv[])
 
 	libbpf_set_print(libbpf_print_fn);
 
-	nr_cpus = libbpf_num_possible_cpus();
-	if (nr_cpus < 0) {
-		warning("Failed to get # of possible cpus: '%s'!\n",
-			strerror(-nr_cpus));
+	nr_cpus = get_nr_cpus();
+	if (nr_cpus < 0)
 		return 1;
-	}
-
-	if (nr_cpus > MAX_CPU_NR) {
-		warning("the number of cpu cores is too big, please "
-			"increase MAX_CPU_NR's value and recompile");
-		return 1;
-	}
 
 	obj = cpufreq_bpf__open();
 	if (!obj) {
@@ -218,10 +260,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (probe_tp_btf("cpu_frequency"))
-		bpf_program__set_autoload(obj->progs.cpu_frequency_raw, false);
-	else
-		bpf_program__set_autoload(obj->progs.cpu_frequency, false);
+	set_probe_autoload(obj);
 
 	err = cpufreq_bpf__load(obj);
 	if (err) {
@@ -242,21 +281,8 @@ int main(int argc, char *argv[])
 
 	obj->bss->filter_memcg = env.cg;
 
-	/* update cgroup path fd to map */
-	if (env.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening Cgroup path: %s", env.cgroupspath);
-			goto cleanup;
-		}
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
-	}
+	if (setup_cgroup_map(obj, &cgfd))
+		goto cleanup;
 
 	err = open_and_attach_perf_event(env.freq, obj->progs.do_sample, links);
 	if (err)
