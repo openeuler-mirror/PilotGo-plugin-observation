@@ -91,6 +91,44 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_fs_arg(const char *arg, struct argp_state *state)
+{
+	if (!strcmp(arg, "btrfs")) {
+		fs_type = BTRFS;
+	} else if (!strcmp(arg, "ext4")) {
+		fs_type = EXT4;
+	} else if (!strcmp(arg, "nfs")) {
+		fs_type = NFS;
+	} else if (!strcmp(arg, "xfs")) {
+		fs_type = XFS;
+	} else {
+		warning("invalid filesystem\n");
+		argp_usage(state);
+	}
+}
+
+static void parse_positional_arg(const char *arg, struct argp_state *state,
+				 int pos_args)
+{
+	errno = 0;
+	if (pos_args == 0) {
+		interval = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("invalid internal\n");
+			argp_usage(state);
+		}
+	} else if (pos_args == 1) {
+		count = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("invalid count\n");
+			argp_usage(state);
+		}
+	} else {
+		warning("unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -106,18 +144,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		timestamp_in_ms = true;
 		break;
 	case 't':
-		if (!strcmp(arg, "btrfs")) {
-			fs_type = BTRFS;
-		} else if (!strcmp(arg, "ext4")) {
-			fs_type = EXT4;
-		} else if (!strcmp(arg, "nfs")) {
-			fs_type = NFS;
-		} else if (!strcmp(arg, "xfs")) {
-			fs_type = XFS;
-		} else {
-			warning("invalid filesystem\n");
-			argp_usage(state);
-		}
+		parse_fs_arg(arg, state);
 		break;
 	case 'p':
 		target_pid = argp_parse_pid(key, arg, state);
@@ -126,23 +153,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			interval = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("invalid internal\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			count = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("invalid count\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_positional_arg(arg, state, pos_args);
 		pos_args++;
 		break;
 	default:
@@ -179,6 +190,14 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_timestamp(void)
+{
+	char ts[32];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	printf("%-8s\n", ts);
+}
+
 static int print_hists(struct fsdist_bpf__bss *bss)
 {
 	const char *units = timestamp_in_ms ? "msecs" : "usecs";
@@ -193,6 +212,22 @@ static int print_hists(struct fsdist_bpf__bss *bss)
 		print_log2_hist(hist.slots, MAX_SLOTS, units);
 		printf("\n");
 	}
+	return 0;
+}
+
+static int attach_kprobe_pair(struct bpf_program *entry_prog,
+			      struct bpf_program *exit_prog, const char *func,
+			      struct bpf_link **entry_link,
+			      struct bpf_link **exit_link)
+{
+	*entry_link = bpf_program__attach_kprobe(entry_prog, false, func);
+	if (!*entry_link)
+		return -errno;
+
+	*exit_link = bpf_program__attach_kprobe(exit_prog, true, func);
+	if (!*exit_link)
+		return -errno;
+
 	return 0;
 }
 
@@ -265,46 +300,51 @@ static int attach_kprobes(struct fsdist_bpf *obj)
 	long err = 0;
 	struct fs_config *cfg = &fs_configs[fs_type];
 
-	/* F_READ */
-	obj->links.file_read_entry = bpf_program__attach_kprobe(obj->progs.file_read_entry, false, cfg->op_funcs[F_READ]);
-	if (!obj->links.file_read_entry)
+	err = attach_kprobe_pair(obj->progs.file_read_entry,
+				 obj->progs.file_read_exit,
+				 cfg->op_funcs[F_READ],
+				 &obj->links.file_read_entry,
+				 &obj->links.file_read_exit);
+	if (err)
 		goto errout;
-	obj->links.file_read_exit = bpf_program__attach_kprobe(obj->progs.file_read_exit, true, cfg->op_funcs[F_READ]);
-	if (!obj->links.file_read_exit)
+
+	err = attach_kprobe_pair(obj->progs.file_write_entry,
+				 obj->progs.file_write_exit,
+				 cfg->op_funcs[F_WRITE],
+				 &obj->links.file_write_entry,
+				 &obj->links.file_write_exit);
+	if (err)
 		goto errout;
-	/* F_WRITE */
-	obj->links.file_write_entry = bpf_program__attach_kprobe(obj->progs.file_write_entry, false, cfg->op_funcs[F_WRITE]);
-	if (!obj->links.file_write_entry)
+
+	err = attach_kprobe_pair(obj->progs.file_open_entry,
+				 obj->progs.file_open_exit,
+				 cfg->op_funcs[F_OPEN],
+				 &obj->links.file_open_entry,
+				 &obj->links.file_open_exit);
+	if (err)
 		goto errout;
-	obj->links.file_write_exit = bpf_program__attach_kprobe(obj->progs.file_write_exit, true, cfg->op_funcs[F_WRITE]);
-	if (!obj->links.file_write_exit)
+
+	err = attach_kprobe_pair(obj->progs.file_sync_entry,
+				 obj->progs.file_sync_exit,
+				 cfg->op_funcs[F_FSYNC],
+				 &obj->links.file_sync_entry,
+				 &obj->links.file_sync_exit);
+	if (err)
 		goto errout;
-	/* F_OPEN */
-	obj->links.file_open_entry = bpf_program__attach_kprobe(obj->progs.file_open_entry, false, cfg->op_funcs[F_OPEN]);
-	if (!obj->links.file_open_entry)
-		goto errout;
-	obj->links.file_open_exit = bpf_program__attach_kprobe(obj->progs.file_open_exit, true, cfg->op_funcs[F_OPEN]);
-	if (!obj->links.file_open_exit)
-		goto errout;
-	/* F_FSYNC */
-	obj->links.file_sync_entry = bpf_program__attach_kprobe(obj->progs.file_sync_entry, false, cfg->op_funcs[F_FSYNC]);
-	if (!obj->links.file_sync_entry)
-		goto errout;
-	obj->links.file_sync_exit = bpf_program__attach_kprobe(obj->progs.file_sync_exit, true, cfg->op_funcs[F_FSYNC]);
-	if (!obj->links.file_sync_exit)
-		goto errout;
-	/* F_GETATTR */
+
 	if (!cfg->op_funcs[F_GETATTR])
 		return 0;
-	obj->links.getattr_entry = bpf_program__attach_kprobe(obj->progs.getattr_entry, false, cfg->op_funcs[F_GETATTR]);
-	if (!obj->links.getattr_entry)
+
+	err = attach_kprobe_pair(obj->progs.getattr_entry,
+				 obj->progs.getattr_exit,
+				 cfg->op_funcs[F_GETATTR],
+				 &obj->links.getattr_entry,
+				 &obj->links.getattr_exit);
+	if (err)
 		goto errout;
-	obj->links.getattr_exit = bpf_program__attach_kprobe(obj->progs.getattr_exit, true, cfg->op_funcs[F_GETATTR]);
-	if (!obj->links.getattr_exit)
-		goto errout;
+
 	return 0;
 errout:
-	err = -errno;
 	warning("failed to attach kprobe: %ld\n", err);
 	return err;
 }
@@ -396,12 +436,8 @@ int main(int argc, char *argv[])
 		sleep(interval);
 		printf("\n");
 
-		if (emit_timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
+		if (emit_timestamp)
+			print_timestamp();
 
 		err = print_hists(obj->bss);
 		if (err)
