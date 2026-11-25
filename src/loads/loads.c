@@ -115,6 +115,12 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_load_value(__u64 load)
+{
+	printf("%lld.%03lld", load >> 11,
+	       ((load & ((1 << 11) - 1)) * 1000) >> 11);
+}
+
 static void print_loads(struct loads_bpf__bss *bss)
 {
 	__u64 load1 = __atomic_load_n(&bss->loads[0], __ATOMIC_RELAXED);
@@ -129,10 +135,20 @@ static void print_loads(struct loads_bpf__bss *bss)
 		printf("%s ", ts);
 	}
 
-	printf("load averages: %lld.%03lld %lld.%03lld %lld.%03lld\n",
-		   load1 >> 11, ((load1 & ((1 << 11) - 1)) * 1000) >> 11,
-		   load5 >> 11, ((load5 & ((1 << 11) - 1)) * 1000) >> 11,
-		   load15 >> 11, ((load15 & ((1 << 11) - 1)) * 1000) >> 11);
+	printf("load averages: ");
+	print_load_value(load1);
+	printf(" ");
+	print_load_value(load5);
+	printf(" ");
+	print_load_value(load15);
+	printf("\n");
+}
+
+static __u64 resolve_avenrun_addr(struct ksyms *ksyms)
+{
+	const struct ksym *ksym = ksyms__get_symbol(ksyms, "avenrun");
+
+	return ksym ? ksym->addr : 0;
 }
 
 int main(int argc, char *argv[])
@@ -146,7 +162,7 @@ int main(int argc, char *argv[])
 	struct bpf_link *link[MAX_NR_CPUS] = {};
 	struct loads_bpf *obj;
 	struct ksyms *ksyms = NULL;
-	const struct ksym *ksym;
+	__u64 avenrun_addr;
 	int err;
 
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
@@ -194,15 +210,15 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	ksym = ksyms__get_symbol(ksyms, "avenrun");
-	if (!ksym)
+	avenrun_addr = resolve_avenrun_addr(ksyms);
+	if (!avenrun_addr)
 	{
 		warning("Failed to get avenrun's kernel address\n");
 		err = 1;
 		goto cleanup;
 	}
 
-	obj->rodata->avenrun_kaddr = ksym->addr;
+	obj->rodata->avenrun_kaddr = avenrun_addr;
 
 	err = loads_bpf__load(obj);
 	if (err)
