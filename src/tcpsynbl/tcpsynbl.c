@@ -42,6 +42,20 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional(int arg_num, char *arg, struct argp_state *state)
+{
+	switch (arg_num) {
+	case 0:
+		env.interval = argp_parse_long(ARGP_KEY_ARG, arg, state);
+		break;
+	case 1:
+		env.times = argp_parse_long(ARGP_KEY_ARG, arg, state);
+		break;
+	default:
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+}
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -67,17 +81,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		}
 		break;
 	case ARGP_KEY_ARG:
-		switch (state->arg_num) {
-		case 0:
-			env.interval = argp_parse_long(key, arg, state);
-			break;
-		case 1:
-			env.times = argp_parse_long(key, arg, state);
-			break;
-		default:
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_positional(state->arg_num, arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
