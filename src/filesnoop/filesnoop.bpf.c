@@ -99,6 +99,15 @@ static __always_inline bool is_target_operation(enum file_op op)
 	return true;
 }
 
+static __always_inline void read_filename_arg(struct trace_event_raw_sys_enter *ctx,
+					      enum file_op op, struct fsfilename *filename)
+{
+	if (op == F_OPENAT || op == F_OPENAT2)
+		bpf_probe_read_user_str(&filename->name, FSFILENAME_MAX, (const char *)ctx->args[1]);
+	else
+		bpf_probe_read_user_str(&filename->name, FSFILENAME_MAX, (const char *)ctx->args[0]);
+}
+
 static __always_inline int
 handle_file_syscall_open_enter(struct trace_event_raw_sys_enter *ctx, enum file_op op)
 {
@@ -109,10 +118,7 @@ handle_file_syscall_open_enter(struct trace_event_raw_sys_enter *ctx, enum file_
 
 	pid_t tid = bpf_get_current_pid_tgid();
 
-	if (op == F_OPENAT || op == F_OPENAT2)
-		bpf_probe_read_user_str(&filename.name, FSFILENAME_MAX, (const char *)ctx->args[1]);
-	else
-		bpf_probe_read_user_str(&filename.name, FSFILENAME_MAX, (const char *)ctx->args[0]);
+	read_filename_arg(ctx, op, &filename);
 
 	/* If not match name, everything is over */
 	if (!filename_matched(filename.name))
@@ -120,6 +126,36 @@ handle_file_syscall_open_enter(struct trace_event_raw_sys_enter *ctx, enum file_
 
 	bpf_map_update_elem(&opens, &tid, &filename, BPF_ANY);
 	return 0;
+}
+
+static __always_inline int submit_open_event(struct trace_event_raw_sys_exit *ctx,
+					     enum file_op op, pid_t tid,
+					     struct fsfilename *filename)
+{
+	struct event *event = reserve_buf(sizeof(*event));
+	if (!event)
+		return -1;
+
+	event->pid = tid;
+	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+	event->op = op;
+	event->ret = ctx->ret;
+	event->fd = ctx->ret;
+	bpf_probe_read(&event->filename, FSFILENAME_MAX,
+		       &filename->name);
+	submit_buf(ctx, event, sizeof(*event));
+	return 0;
+}
+
+static __always_inline void track_open_file(pid_t tid, int fd, enum file_op op,
+					    struct fsfilename *filename)
+{
+	/* make sure open is not failed and not only filter open syscall*/
+	if (fd < 0 || (target_op != F_ALL && is_target_operation(op)))
+		return;
+
+	struct key_t key = { .tid = tid, .fd = fd, };
+	bpf_map_update_elem(&files, &key, filename, BPF_ANY);
 }
 
 static __always_inline int
@@ -134,29 +170,13 @@ handle_file_syscall_open_exit(struct trace_event_raw_sys_exit *ctx, enum file_op
 		return 0;
 
 	/* op is F_OPEN/F_OPENAT/F_OPENAT2 only */
-	if (is_target_operation(op)) {
-		struct event *event = reserve_buf(sizeof(*event));
-		if (!event)
-			return 0;
+	if (is_target_operation(op) &&
+	    submit_open_event(ctx, op, tid, filename) != 0)
+		return 0;
 
-		event->pid = tid;
-		bpf_get_current_comm(&event->comm, sizeof(event->comm));
-		event->op = op;
-		event->ret = ctx->ret;
-		event->fd = ctx->ret;
-		bpf_probe_read(&event->filename, FSFILENAME_MAX,
-			       &filename->name);
-		submit_buf(ctx, event, sizeof(*event));
-	}
-
-	/* make sure open is not failed and not only filter open syscall*/
-	if (fd >= 0 && (target_op == F_ALL || !is_target_operation(op))) {
-		struct key_t key = { .tid = tid, .fd = fd, };
-		bpf_map_update_elem(&files, &key, filename, BPF_ANY);
-	}
+	track_open_file(tid, fd, op, filename);
 
 	return 0;
-
 }
 
 static __always_inline int
@@ -187,11 +207,39 @@ handle_file_syscall_enter(void *ctx, enum file_op op, int fd)
 	return 0;
 }
 
+static __always_inline int submit_exit_event(void *ctx, enum file_op op, int ret,
+					     pid_t tid, struct print_value *val)
+{
+	struct event *event = reserve_buf(sizeof(*event));
+	if (!event)
+		return -1;
+
+	bpf_probe_read(&event->filename, sizeof(event->filename),
+		       &val->filename->name);
+
+	event->pid = tid;
+	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+	event->op = op;
+	event->ret = ret;
+	event->fd = val->key.fd;
+
+	submit_buf(ctx, event, sizeof(*event));
+	return 0;
+}
+
+static __always_inline void cleanup_close_maps(pid_t tid, struct print_value *val)
+{
+	/* value->filename is pointer of files map, we must delete
+	 * files map after CLOSE operation finish
+	 */
+	bpf_map_delete_elem(&opens, &tid);
+	bpf_map_delete_elem(&files, &val->key);
+}
+
 static __always_inline int
 handle_file_syscall_exit(void *ctx, enum file_op op, int ret)
 {
 	pid_t tid = bpf_get_current_pid_tgid();
-	struct event *event;
 
 	/* Not record by enter */
 	struct print_value *val = bpf_map_lookup_and_delete_elem(&prints, &tid);
@@ -199,30 +247,12 @@ handle_file_syscall_exit(void *ctx, enum file_op op, int ret)
 		return 0;
 
 	/* Only F_CLOSE, F_ALL or target_op can arrive here */
-	if (is_target_operation(op)) {
-		event = reserve_buf(sizeof(*event));
-		if (!event)
-			return 0;
+	if (is_target_operation(op) &&
+	    submit_exit_event(ctx, op, ret, tid, val) != 0)
+		return 0;
 
-		bpf_probe_read(&event->filename, sizeof(event->filename),
-			       &val->filename->name);
-
-		event->pid = tid;
-		bpf_get_current_comm(&event->comm, sizeof(event->comm));
-		event->op = op;
-		event->ret = ret;
-		event->fd = val->key.fd;
-
-		submit_buf(ctx, event, sizeof(*event));
-	}
-
-	/* value->filename is pointer of files map, we must delete
-	 * files map after CLOSE operation finish
-	 */
-	if (op == F_CLOSE) {
-		bpf_map_delete_elem(&opens, &tid);
-		bpf_map_delete_elem(&files, &val->key);
-	}
+	if (op == F_CLOSE)
+		cleanup_close_maps(tid, val);
 
 	return 0;
 }
