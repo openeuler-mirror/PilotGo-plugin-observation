@@ -35,22 +35,82 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
+static __always_inline bool current_task_passes_filter(uid_t *uid_out)
+{
+	uid_t uid;
+
+	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return false;
+
+	uid = (uid_t)bpf_get_current_uid_gid();
+	if (target_uid != INVALID_UID && target_uid != uid)
+		return false;
+
+	if (uid_out)
+		*uid_out = uid;
+	return true;
+}
+
+static __always_inline void record_filename(struct event *event,
+					    const char *filename)
+{
+	unsigned int len = bpf_probe_read_user_str(event->args, ARGSIZE, filename);
+
+	if (len <= ARGSIZE) {
+		event->args_size += len;
+	} else {
+		/* write an empty string */
+		event->args[0] = '\0';
+		event->args_size++;
+	}
+	event->args_count++;
+}
+
+static __always_inline int record_argv(struct event *event,
+				       const char *const *argv)
+{
+	const char *argp;
+
+	#pragma unroll
+	for (int i = 1; i < TOTAL_MAX_ARGS && i < max_args; i++) {
+		unsigned int len;
+
+		bpf_core_read_user(&argp, sizeof(argp), &argv[i]);
+		if (!argp)
+			return 0;
+
+		if (event->args_size > LAST_ARG)
+			return 0;
+
+		len = bpf_probe_read_user_str(&event->args[event->args_size],
+					      ARGSIZE, argp);
+		if (len > ARGSIZE)
+			return 0;
+
+		event->args_size += len;
+		event->args_count++;
+	}
+
+	/* try to read one more argument to check if there is one */
+	bpf_probe_read_user_str(&argp, sizeof(argp), &argv[max_args]);
+	if (!argp)
+		return 0;
+
+	/* pointer to max_args+1 isn't null, asume we have more arguments */
+	event->args_count++;
+	return 0;
+}
+
 static __always_inline int syscall_enter_execve(const char *filename,
 						const char *const *argv,
 						const char *const *env)
 {
-	uid_t uid;
-	pid_t pid, tgid;
-	struct event *event;
 	struct task_struct *task;
-	unsigned int ret;
-	const char *argp;
+	struct event *event;
+	pid_t pid, tgid;
+	uid_t uid;
 
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-	uid = (uid_t)bpf_get_current_uid_gid();
-	if (target_uid != INVALID_UID && target_uid != uid)
+	if (!current_task_passes_filter(&uid))
 		return 0;
 
 	task = (struct task_struct *)bpf_get_current_task();
@@ -67,57 +127,16 @@ static __always_inline int syscall_enter_execve(const char *filename,
 	event->args_count = 0;
 	event->args_size = 0;
 
-	/* record filename */
-	ret = bpf_probe_read_user_str(event->args, ARGSIZE, filename);
-	if (ret <= ARGSIZE) {
-		event->args_size += ret;
-	} else {
-		/* write an empty string */
-		event->args[0] = '\0';
-		event->args_size++;
-	}
-	event->args_count++;
-
-	#pragma unroll
-	for (int i = 1; i < TOTAL_MAX_ARGS && i < max_args; i++) {
-		bpf_core_read_user(&argp, sizeof(argp), &argv[i]);
-		if (!argp)
-			return 0;
-
-		if (event->args_size > LAST_ARG)
-			return 0;
-
-		ret = bpf_probe_read_user_str(&event->args[event->args_size],
-					      ARGSIZE, argp);
-
-		if (ret > ARGSIZE)
-			return 0;
-
-		event->args_size += ret;
-		event->args_count++;
-	}
-
-	/* try to read one more argument to check if there is one */
-	bpf_probe_read_user_str(&argp, sizeof(argp), &argv[max_args]);
-	if (!argp)
-		return 0;
-
-	/* pointer to max_args+1 isn't null, asume we have more arguments */
-	event->args_count++;
-	return 0;
+	record_filename(event, filename);
+	return record_argv(event, argv);
 }
 
 static __always_inline int syscall_exit_execve(void *ctx, int ret)
 {
-	pid_t pid;
-	uid_t uid;
 	struct event *event;
+	pid_t pid;
 
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-	uid = (uid_t)bpf_get_current_uid_gid();
-	if (target_uid != INVALID_UID && uid != target_uid)
+	if (!current_task_passes_filter(NULL))
 		return 0;
 
 	pid = (pid_t)bpf_get_current_pid_tgid();
