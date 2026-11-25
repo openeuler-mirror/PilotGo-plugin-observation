@@ -46,10 +46,32 @@ static const struct argp_option opts[] = {
 	{},
 };
 
-static error_t parse_arg(int key, char *arg, struct argp_state *state)
+static void parse_positional_arg(char *arg, struct argp_state *state)
 {
 	static int pos_args;
 
+	errno = 0;
+	if (pos_args == 0) {
+		env.interval = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid interval\n");
+			argp_usage(state);
+		}
+	} else if (pos_args == 1) {
+		env.times = strtol(arg, NULL, 0);
+		if (errno) {
+			warning("Invalid times\n");
+			argp_usage(state);
+		}
+	} else {
+		warning("Unrecongnized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+	pos_args++;
+}
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
 	switch (key) {
 	case 'h':
 		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
@@ -74,24 +96,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.timestamp = true;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.interval = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			env.times = strtol(arg, NULL, 0);
-			if (errno) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecongnized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -111,35 +116,51 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
-static int print_map(struct bpf_map *map)
+static void print_header(void)
 {
-	irq_key_t lookup_key = {}, next_key;
-	info_t info;
-	int fd, err;
 	const char *units = env.nanoseconds ? "nsecs" : "usecs";
 
 	if (env.count)
 		printf("%-26s %11s\n", "HARDIRQ", "TOTAL_count");
 	else if (!env.distributed)
 		printf("%-26s %6s%5s\n", "HARDIRQ", "TOTAL_", units);
+}
 
-	fd = bpf_map__fd(map);
+static void print_info(const irq_key_t *key, const info_t *info)
+{
+	const char *units = env.nanoseconds ? "nsecs" : "usecs";
+
+	if (!env.distributed) {
+		printf("%-26s %11llu\n", key->name, info->count);
+	} else {
+		printf("hardirq = %s\n", key->name);
+		print_log2_hist(info->slots, MAX_SLOTS, units);
+	}
+}
+
+static int print_entries(int fd)
+{
+	irq_key_t lookup_key = {}, next_key;
+	info_t info;
+	int err;
+
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
 		err = bpf_map_lookup_elem(fd, &next_key, &info);
 		if (err < 0) {
 			warning("failed to lookup infos: %d\n", err);
 			return -1;
 		}
-		if (!env.distributed) {
-			printf("%-26s %11llu\n", next_key.name, info.count);
-		} else {
-			printf("hardirq = %s\n", next_key.name);
-			print_log2_hist(info.slots, MAX_SLOTS, units);
-		}
+		print_info(&next_key, &info);
 		lookup_key = next_key;
 	}
 
-	memset(&lookup_key, 0, sizeof(lookup_key));
+	return 0;
+}
+
+static int clear_entries(int fd)
+{
+	irq_key_t lookup_key = {}, next_key;
+	int err;
 
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
 		err = bpf_map_delete_elem(fd, &next_key);
@@ -153,6 +174,63 @@ static int print_map(struct bpf_map *map)
 	return 0;
 }
 
+static int print_map(struct bpf_map *map)
+{
+	int fd = bpf_map__fd(map);
+	int err;
+
+	print_header();
+
+	err = print_entries(fd);
+	if (err)
+		return err;
+
+	return clear_entries(fd);
+}
+
+static void set_prog_autoload(struct hardirqs_bpf *obj)
+{
+	if (probe_tp_btf("irq_handler_entry")) {
+		bpf_program__set_autoload(obj->progs.irq_handler_entry_raw, false);
+		bpf_program__set_autoload(obj->progs.irq_handler_exit_raw, false);
+		if (env.count)
+			bpf_program__set_autoload(obj->progs.irq_handler_exit_btf, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.irq_handler_entry_btf, false);
+		bpf_program__set_autoload(obj->progs.irq_handler_exit_btf, false);
+		if (env.count)
+			bpf_program__set_autoload(obj->progs.irq_handler_exit_raw, false);
+	}
+}
+
+static int setup_cgroup_map(struct hardirqs_bpf *obj)
+{
+	int idx = 0;
+	int memcg_map_fd;
+	int memcg_fd;
+
+	memcg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+	memcg_fd = open(env.cgroupspath, O_RDONLY);
+	if (memcg_fd < 0) {
+		warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		return -1;
+	}
+	if (bpf_map_update_elem(memcg_map_fd, &idx, &memcg_fd, BPF_ANY)) {
+		warning("Failed adding target cgroup to map");
+		return -1;
+	}
+
+	return memcg_fd;
+}
+
+static void print_timestamp(void)
+{
+	char ts[32];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	printf("%-8s\n", ts);
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -162,9 +240,7 @@ int main(int argc, char *argv[])
 	};
 
 	struct hardirqs_bpf *bpf_obj;
-	char ts[32];
 	int err;
-	int idx, memcg_map_fd;
 	int memcg_fd = -1;
 
 	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
@@ -187,17 +263,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (probe_tp_btf("irq_handler_entry")) {
-		bpf_program__set_autoload(bpf_obj->progs.irq_handler_entry_raw, false);
-		bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_raw, false);
-		if (env.count)
-			bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_btf, false);
-	} else {
-		bpf_program__set_autoload(bpf_obj->progs.irq_handler_entry_btf, false);
-		bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_btf, false);
-		if (env.count)
-			bpf_program__set_autoload(bpf_obj->progs.irq_handler_exit_raw, false);
-	}
+	set_prog_autoload(bpf_obj);
 
 	/* initialize global data (filtering options) */
 	bpf_obj->rodata->filter_memcg = env.cg;
@@ -216,17 +282,9 @@ int main(int argc, char *argv[])
 
 	/* update cgroup path fd to map */
 	if (env.cg) {
-		idx = 0;
-		memcg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
-		memcg_fd = open(env.cgroupspath, O_RDONLY);
-		if (memcg_fd < 0) {
-			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+		memcg_fd = setup_cgroup_map(bpf_obj);
+		if (memcg_fd < 0)
 			goto cleanup;
-		}
-		if (bpf_map_update_elem(memcg_map_fd, &idx, &memcg_fd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup;
-		}
 	}
 
 	err = hardirqs_bpf__attach(bpf_obj);
@@ -247,10 +305,8 @@ int main(int argc, char *argv[])
 		sleep(env.interval);
 		printf("\n");
 
-		if (env.timestamp) {
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
+		if (env.timestamp)
+			print_timestamp();
 
 		err = print_map(bpf_obj->maps.infos);
 		if (err)
