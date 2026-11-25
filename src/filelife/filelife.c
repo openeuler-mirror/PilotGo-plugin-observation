@@ -76,6 +76,12 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void disable_missing_probes(struct filelife_bpf *obj)
+{
+	if (!kprobe_exists("security_inode_create"))
+		bpf_program__set_autoload(obj->progs.security_inode_create, false);
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -111,8 +117,7 @@ int main(int argc, char *argv[])
 
 	obj->rodata->target_tgid = pid;
 
-	if (!kprobe_exists("security_inode_create"))
-		bpf_program__set_autoload(obj->progs.security_inode_create, false);
+	disable_missing_probes(obj);
 
 	err = filelife_bpf__load(obj);
 	if (err) {

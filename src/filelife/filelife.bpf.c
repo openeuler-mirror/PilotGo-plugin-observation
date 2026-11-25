@@ -24,13 +24,19 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
-static __always_inline int probe_create(struct dentry *dentry)
+static __always_inline bool tgid_filtered(void)
 {
 	u64 id = bpf_get_current_pid_tgid();
 	u32 tgid = id >> 32;
+
+	return target_tgid && target_tgid != tgid;
+}
+
+static __always_inline int probe_create(struct dentry *dentry)
+{
 	u64 ts;
 
-	if (target_tgid && target_tgid != tgid)
+	if (tgid_filtered())
 		return 0;
 
 	ts = bpf_ktime_get_ns();
@@ -76,6 +82,25 @@ int BPF_KPROBE(security_inode_create, struct inode *dir,
 	return probe_create(dentry);
 }
 
+static __always_inline struct dentry *unlink_dentry(void *arg1, void *arg2,
+						    bool has_mnt_userns)
+{
+	return has_mnt_userns ? arg2 : arg1;
+}
+
+static __always_inline void fill_unlink_event(struct event *event,
+					      struct dentry *dentry, u64 delta_ns)
+{
+	const u8 *qs_name_ptr;
+	u64 id = bpf_get_current_pid_tgid();
+
+	qs_name_ptr = BPF_CORE_READ(dentry, d_name.name);
+	bpf_core_read_str(&event->file, sizeof(event->file), qs_name_ptr);
+	bpf_get_current_comm(&event->task, sizeof(event->task));
+	event->delta_ns = delta_ns;
+	event->tgid = id >> 32;
+}
+
 /*
  * In different kernel versions, function vfs_unlink() has two declarations,
  * and their parameter lists are as follows:
@@ -88,34 +113,19 @@ int BPF_KPROBE(security_inode_create, struct inode *dir,
 SEC("kprobe/vfs_unlink")
 int BPF_KPROBE(vfs_unlink, void *arg0, void *arg1, void *arg2)
 {
-	u64 id = bpf_get_current_pid_tgid();
+	bool has_mnt_userns = renamedata_has_old_mnt_userns_field();
+	struct dentry *dentry = unlink_dentry(arg1, arg2, has_mnt_userns);
 	struct event event = {};
-	const u8 *qs_name_ptr;
-	u32 tgid = id >> 32;
 	u64 *tsp, delta_ns;
-	bool has_arg = renamedata_has_old_mnt_userns_field();
 
-	tsp = has_arg ?
-		bpf_map_lookup_elem(&start, &arg2) :
-		bpf_map_lookup_elem(&start, &arg1);
+	tsp = bpf_map_lookup_elem(&start, &dentry);
 	if (!tsp)
 		return 0;
 
 	delta_ns = bpf_ktime_get_ns() - *tsp;
+	bpf_map_delete_elem(&start, &dentry);
 
-	if (has_arg)
-		bpf_map_delete_elem(&start, &arg2);
-	else
-		bpf_map_delete_elem(&start, &arg1);
-
-	qs_name_ptr = has_arg ?
-		BPF_CORE_READ((struct dentry *)arg2, d_name.name) :
-		BPF_CORE_READ((struct dentry *)arg1, d_name.name);
-
-	bpf_core_read_str(&event.file, sizeof(event.file), qs_name_ptr);
-	bpf_get_current_comm(&event.task, sizeof(event.task));
-	event.delta_ns = delta_ns;
-	event.tgid = tgid;
+	fill_unlink_event(&event, dentry, delta_ns);
 
 	/* output */
 	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
