@@ -140,19 +140,10 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	printf("Tracing sync syscalls... Hit Ctrl-C to end.\n");
-	printf("%-9s %-6s %-16s %s\n", "TIME", "PID", "COMM", "EVENT");
+	print_header();
 
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Failed to polling ring/perf buffer: %d\n", err);
-			break;
-		}
-		/* reset err to 0 when exiting */
-		err = 0;
-	}
-    
+	err = poll_events(buf);
+
 cleanup:
 	bpf_buffer__free(buf);
 	syncsnoop_bpf__destroy(obj);
