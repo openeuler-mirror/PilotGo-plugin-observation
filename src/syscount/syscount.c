@@ -208,7 +208,7 @@ static bool read_vals_batch(int fd, struct data_ext_t *vals, __u32 *count)
 	return true;
 }
 
-static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
+static bool read_vals_fallback(int fd, struct data_ext_t *vals, __u32 *count)
 {
 	__u32 keys[MAX_ENTRIES];
 	struct data_t val;
@@ -216,16 +216,6 @@ static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
 	__u32 next_key;
 	int i = 0, j;
 	int err;
-
-	if (batch_map_ops) {
-		bool ok = read_vals_batch(fd, vals, count);
-		if (!ok && errno == EINVAL) {
-			/* fallback to a racy variant */
-			batch_map_ops = false;
-		} else {
-			return ok;
-		}
-	}
 
 	if (!vals || !count || !*count)
 		return true;
@@ -269,6 +259,40 @@ static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
 	return true;
 }
 
+static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
+{
+	if (batch_map_ops) {
+		bool ok = read_vals_batch(fd, vals, count);
+		if (!ok && errno == EINVAL) {
+			/* fallback to a racy variant */
+			batch_map_ops = false;
+		} else {
+			return ok;
+		}
+	}
+
+	return read_vals_fallback(fd, vals, count);
+}
+
+static int parse_errno_arg(const char *arg, struct argp_state *state)
+{
+	int number;
+
+	errno = 0;
+	number = strtol(arg, NULL, 10);
+	if (errno) {
+		number = errno_by_name(arg);
+		if (number < 0) {
+			warning("Invalid errno: %s (bad, or can't "
+				"parse dynamically; consider using "
+				"numeric value and/or installing the "
+				"errno program from moreutils)\n", arg);
+			argp_usage(state);
+		}
+	}
+	return number;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -307,24 +331,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.cg = true;
 		break;
 	case 'e':
-		{
-		int number;
-
-		errno = 0;
-		number = strtol(arg, NULL, 10);
-		if (errno) {
-			number = errno_by_name(arg);
-			if (number < 0) {
-				warning("Invalid errno: %s (bad, or can't "
-					"parse dynamically; consider using "
-					"numeric value and/or installing the "
-					"errno program from moreutils)\n", arg);
-				argp_usage(state);
-			}
-		}
-		env.filter_errno = number;
+		env.filter_errno = parse_errno_arg(arg, state);
 		break;
-		}
 	case 'l':
 		env.list_syscalls = true;
 		break;
