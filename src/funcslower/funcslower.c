@@ -76,6 +76,15 @@ const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_function_arg(char *arg, struct argp_state *state)
+{
+	if (state->arg_num >= MAX_FUNCTIONS) {
+		warning("Too many function, limit to %d\n", MAX_FUNCTIONS);
+		argp_usage(state);
+	}
+	env.functions[state->arg_num] = arg;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -117,11 +126,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.time = true;
 		break;
 	case ARGP_KEY_ARG:
-		if (state->arg_num >= MAX_FUNCTIONS) {
-			warning("Too many function, limit to %d\n", MAX_FUNCTIONS);
-			argp_usage(state);
-		}
-		env.functions[state->arg_num] = arg;
+		parse_function_arg(arg, state);
 		break;
 	case ARGP_KEY_END:
 		if (env.duration_ns >= 1000000)
@@ -147,87 +152,159 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static struct bpf_program *find_prog_by_name(struct funcslower_bpf *obj,
+					     const char *name)
+{
+	for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
+		if (strcmp(name, obj->skeleton->progs[j].name) == 0)
+			return *obj->skeleton->progs[j].prog;
+	}
+	return NULL;
+}
+
 static void autoload_programs(struct funcslower_bpf *obj)
 {
 	char buf[128] = {};
 
 	for (int i = 0; i < ARRAY_SIZE(env.functions) && env.functions[i]; i++) {
 		bool is_kernel_func = !strchr(env.functions[i], ':');
+		struct bpf_program *prog;
 
 		if (is_kernel_func)
 			sprintf(buf, "trace_k%d", i);
 		else
 			sprintf(buf, "trace_u%d", i);
 
-		for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
-			if (strcmp(buf, obj->skeleton->progs[j].name) == 0) {
-				bpf_program__set_autoload(*obj->skeleton->progs[j].prog, true);
-				break;
-			}
-		}
+		prog = find_prog_by_name(obj, buf);
+		if (prog)
+			bpf_program__set_autoload(prog, true);
 	}
+}
+
+static void attach_kernel_prog(struct funcslower_bpf *obj, int i)
+{
+	char buf[128] = {};
+	struct bpf_program *prog;
+
+	sprintf(buf, "trace_k%d", i);
+	prog = find_prog_by_name(obj, buf);
+	if (prog)
+		bpf_program__attach_kprobe(prog, false, env.functions[i]);
+	bpf_program__attach_kprobe(obj->progs.trace_return_k, true,
+				   env.functions[i]);
+}
+
+static void attach_user_prog(struct funcslower_bpf *obj, int i)
+{
+	char buf[128] = {};
+	const char *binary;
+	char *function;
+	char bin_path[PATH_MAX];
+	off_t func_off;
+	struct bpf_program *prog;
+
+	binary = strdup(env.functions[i]);
+
+	function = strchr(binary, ':');
+	if (!function) {
+		warning("Binary should have contained ':' (internal bug!)\n");
+		goto free_binary;
+	}
+
+	*function = '\0';
+	function++;
+
+	if (resolve_binary_path(binary, getpid(), bin_path, sizeof(bin_path)))
+		goto free_binary;
+
+	func_off = get_elf_func_offset(bin_path, function);
+	if (func_off < 0) {
+		warning("Could not find %s in %s\n", function, bin_path);
+		goto free_binary;
+	}
+
+	sprintf(buf, "trace_u%d", i);
+	prog = find_prog_by_name(obj, buf);
+	if (prog)
+		bpf_program__attach_uprobe(prog, false,
+					   env.pid ? env.pid : -1, bin_path, func_off);
+
+	bpf_program__attach_uprobe(obj->progs.trace_return_u, true,
+				   env.pid ? env.pid : -1, bin_path, func_off);
+
+free_binary:
+	free((void *)binary);
 }
 
 static void attach_programs(struct funcslower_bpf *obj)
 {
-	char buf[128] = {};
-
 	for (int i = 0; i < ARRAY_SIZE(env.functions) && env.functions[i]; i++) {
 		bool is_kernel_func = !strchr(env.functions[i], ':');
 
-		if (is_kernel_func) {
-			sprintf(buf, "trace_k%d", i);
-			for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
-				if (strcmp(buf, obj->skeleton->progs[j].name) == 0) {
-					bpf_program__attach_kprobe(*obj->skeleton->progs[j].prog,
-								   false,
-								   env.functions[i]);
-					break;
-				}
+		if (is_kernel_func)
+			attach_kernel_prog(obj, i);
+		else
+			attach_user_prog(obj, i);
+	}
+}
+
+static int print_kernel_stack(struct funcslower_bpf *obj, struct event *e,
+			      unsigned long *ip, int *idx)
+{
+	if (!env.need_kernel_stack || e->kernel_stack_id == -1)
+		return 0;
+
+	if (bpf_map_lookup_elem(bpf_map__fd(obj->maps.stack_trace),
+				&e->kernel_stack_id, ip)) {
+		warning("    [Missed Kernel Stack]\n");
+		return 0;
+	}
+
+	for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
+		const struct ksym *ksym = ksyms__map_addr(ksyms, ip[i]);
+
+		if (ksym)
+			printf("    #%-2d 0x%lx %s+0x%lx\n", (*idx)++, ip[i], ksym->name, ip[i] - ksym->addr);
+		else
+			printf("    #%-2d 0x%lx [unknown]\n", (*idx)++, ip[i]);
+	}
+
+	return 1;
+}
+
+static void print_user_stack(struct funcslower_bpf *obj, struct event *e,
+			     unsigned long *ip, int *idx)
+{
+	const struct syms *syms;
+
+	if (!env.need_user_stack || e->user_stack_id == -1)
+		return;
+
+	if (bpf_map_lookup_elem(bpf_map__fd(obj->maps.stack_trace),
+				&e->user_stack_id, ip)) {
+		warning("    [Missed User Stack]\n");
+		return;
+	}
+
+	syms = syms_cache__get_syms(syms_cache, e->pid_tgid >> 32);
+	for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
+		if (!syms)
+			printf("    #%-2d 0x%016lx [unknown]\n", (*idx)++, ip[i]);
+		else {
+			const struct sym *sym;
+			char *dso_name;
+			unsigned long dso_offset;
+
+			sym = syms__map_addr_dso(syms, ip[i], &dso_name, &dso_offset);
+			printf("    #%-2d 0x%016lx", (*idx)++, ip[i]);
+			if (sym) {
+				printf(" %s+0x%lx", sym->name, sym->offset);
+				if (dso_name)
+					printf(" (%s+0x%lx)", dso_name, dso_offset);
+			} else {
+				printf(" [unknown]");
 			}
-			bpf_program__attach_kprobe(obj->progs.trace_return_k, true,
-						   env.functions[i]);
-		} else {
-			const char *binary;
-			char *function;
-			char bin_path[PATH_MAX];
-			off_t func_off;
-
-			binary = strdup(env.functions[i]);
-
-			function = strchr(binary, ':');
-			if (!function) {
-				warning("Binary should have contained ':' (internal bug!)\n");
-				goto free_binary;
-			}
-
-			*function = '\0';
-			function++;
-
-			if (resolve_binary_path(binary, getpid(), bin_path, sizeof(bin_path)))
-				goto free_binary;
-
-			func_off = get_elf_func_offset(bin_path, function);
-			if (func_off < 0) {
-				warning("Could not find %s in %s\n", function, bin_path);
-				goto free_binary;
-			}
-
-			sprintf(buf, "trace_u%d", i);
-			for (int j = 0; j < obj->skeleton->prog_cnt; j++) {
-				if (strcmp(buf, obj->skeleton->progs[j].name) == 0) {
-					bpf_program__attach_uprobe(*obj->skeleton->progs[j].prog,
-								   false,
-								   env.pid ? env.pid : -1, bin_path, func_off);
-					break;
-				}
-			}
-
-			bpf_program__attach_uprobe(obj->progs.trace_return_u, true,
-						   env.pid ? env.pid : -1, bin_path, func_off);
-
-free_binary:
-			free((void *)binary);
+			printf("\n");
 		}
 	}
 }
@@ -235,7 +312,6 @@ free_binary:
 static int print_stack(struct funcslower_bpf *obj, struct event *e)
 {
 	unsigned long *ip;
-	const struct syms *syms;
 	int idx = 0;
 
 	if (!env.need_user_stack && !env.need_kernel_stack)
@@ -247,57 +323,9 @@ static int print_stack(struct funcslower_bpf *obj, struct event *e)
 		return 0;
 	}
 
-	if (!env.need_kernel_stack || e->kernel_stack_id == -1)
-		goto print_ustack;
+	print_kernel_stack(obj, e, ip, &idx);
+	print_user_stack(obj, e, ip, &idx);
 
-	if (bpf_map_lookup_elem(bpf_map__fd(obj->maps.stack_trace),
-				&e->kernel_stack_id, ip)) {
-		warning("    [Missed Kernel Stack]\n");
-		goto print_ustack;
-	}
-
-	for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
-		const struct ksym *ksym = ksyms__map_addr(ksyms, ip[i]);
-
-		if (ksym)
-			printf("    #%-2d 0x%lx %s+0x%lx\n", idx++, ip[i], ksym->name, ip[i] - ksym->addr);
-		else
-			printf("    #%-2d 0x%lx [unknown]\n", idx++, ip[i]);
-	}
-
-print_ustack:
-	if (!env.need_user_stack || e->user_stack_id == -1)
-		goto out;
-
-	if (bpf_map_lookup_elem(bpf_map__fd(obj->maps.stack_trace),
-				&e->user_stack_id, ip)) {
-		warning("    [Missed User Stack]\n");
-		goto out;
-	}
-
-	syms = syms_cache__get_syms(syms_cache, e->pid_tgid >> 32);
-	for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
-		if (!syms)
-			printf("    #%-2d 0x%016lx [unknown]\n", idx++, ip[i]);
-		else {
-			const struct sym *sym;
-			char *dso_name;
-			unsigned long dso_offset;
-
-			sym = syms__map_addr_dso(syms, ip[i], &dso_name, &dso_offset);
-			printf("    #%-2d 0x%016lx", idx++, ip[i]);
-			if (sym) {
-				printf(" %s+0x%lx", sym->name, sym->offset);
-				if (dso_name)
-					printf(" (%s+0x%lx)", dso_name, dso_offset);
-			} else {
-				printf(" [unknown]");
-			}
-			printf("\n");
-		}
-	}
-
-out:
 	free(ip);
 	return 0;
 }
@@ -309,11 +337,8 @@ static void print_args(__u64 args[])
 	printf("\n");
 }
 
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static void print_time_prefix(void)
 {
-	struct event *e = data;
-	struct funcslower_bpf *obj = ctx;
-
 	if (env.time) {
 		char ts[16];
 
@@ -322,8 +347,16 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 	} else if (env.timestamp) {
 		printf("%-10.6f ", time_since_start());
 	}
+}
 
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	struct event *e = data;
+	struct funcslower_bpf *obj = ctx;
 	char retval[20];
+
+	print_time_prefix();
+
 	sprintf(retval, "0x%llx", e->retval);
 
 	printf("%-16s %-10lld %10.2f %16s %s", e->comm, e->pid_tgid >> 32,
@@ -338,6 +371,32 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	warning("Lost %lld events on CPU #%d!\n", lost_cnt, cpu);
+}
+
+static int load_syms(void)
+{
+	ksyms = ksyms__load();
+	if (!ksyms) {
+		warning("Failed to load kallsyms\n");
+		return 1;
+	}
+
+	syms_cache = syms_cache__new(0);
+	if (!syms_cache) {
+		warning("Failed to create syms_cache\n");
+		return 1;
+	}
+
+	return 0;
+}
+
+static void print_headers(void)
+{
+	printf("%-10s %-16s %-10s %10s %16s %s", "TIME", "COMM", "PID",
+	       env.ms ? "LAT(ms)" : "LAT(us)", "RETVAL", "FUNC");
+	if (env.need_grab_args)
+		printf(" ARGS");
+	printf("\n");
 }
 
 int main(int argc, char *argv[])
@@ -395,19 +454,9 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("Failed to load kallsyms\n");
-		err = 1;
+	err = load_syms();
+	if (err)
 		goto cleanup;
-	}
-
-	syms_cache = syms_cache__new(0);
-	if (!syms_cache) {
-		warning("Failed to create syms_cache\n");
-		err = 1;
-		goto cleanup;
-	}
 
 	err = bpf_buffer__open(buf, handle_event, handle_lost_events, obj);
 	if (err) {
@@ -417,11 +466,7 @@ int main(int argc, char *argv[])
 
 	printf("Tracing function calls slower than %g %s... Ctrl+C to quit.\n",
 	       env.duration_ns / (env.ms ? 1e6 : 1e3), env.ms ? "ms" : "us");
-	printf("%-10s %-16s %-10s %10s %16s %s", "TIME", "COMM", "PID",
-	       env.ms ? "LAT(ms)" : "LAT(us)", "RETVAL", "FUNC");
-	if (env.need_grab_args)
-		printf(" ARGS");
-	printf("\n");
+	print_headers();
 
 	while (!exiting) {
 		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
