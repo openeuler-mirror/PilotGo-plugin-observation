@@ -100,13 +100,13 @@ static void sig_handler(int sig)
     exiting = 1;
 }
 
-static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+static bool match_comm(const char *comm)
 {
-    const struct event *e = data;
+    return !env.comm || strstr(comm, env.comm) != NULL;
+}
 
-    if (env.comm && strstr(e->comm, env.comm) == NULL)
-        return;
-
+static void print_event(const struct event *e)
+{
     if (env.timestamp)
     {
         char ts[32];
@@ -118,6 +118,16 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 
     printf("%-16s %-10d %-10d %8d -> %-8d\n", e->comm, e->pid, e->tid,
            e->prev_numa_node_id, e->numa_node_id);
+}
+
+static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+    const struct event *e = data;
+
+    if (!match_comm(e->comm))
+        return;
+
+    print_event(e);
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
