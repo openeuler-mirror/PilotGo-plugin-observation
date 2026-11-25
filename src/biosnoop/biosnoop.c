@@ -42,6 +42,22 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional_arg(const char *arg, int pos,
+				 struct argp_state *state)
+{
+	if (pos > 0) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	env.duration = strtoll(arg, NULL, 10);
+	if (errno || env.duration <= 0) {
+		warning("Invalid delay (in us): %s\n", arg);
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -61,25 +77,14 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.cgroupspath = arg;
 		break;
 	case 'd':
-		env.disk = arg;
 		if (strlen(arg) + 1 > DISK_NAME_LEN) {
 			warning("Invalid disk name %s: too long\n", arg);
 			argp_usage(state);
 		}
+		env.disk = arg;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.duration = strtoll(arg, NULL, 10);
-			if (errno || env.duration <= 0) {
-				warning("Invalid delay (in us): %s\n", arg);
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -170,9 +175,94 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
-int main(int argc, char *argv[])
+static bool setup_disk_filter(struct biosnoop_bpf *obj,
+			      const struct partitions *partitions)
 {
 	const struct partition *partition;
+
+	if (!env.disk)
+		return true;
+
+	partition = partitions__get_by_name(partitions, env.disk);
+	if (!partition) {
+		warning("Invalid partition name: not exist\n");
+		return false;
+	}
+	obj->rodata->filter_dev = true;
+	obj->rodata->target_dev = partition->dev;
+	return true;
+}
+
+static void set_probe_autoload(struct biosnoop_bpf *obj,
+			       const struct ksyms *ksyms)
+{
+	if (fentry_can_attach("blk_account_io_start", NULL)) {
+		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
+					       "blk_account_io_start");
+		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start,
+					  false);
+	} else if (fentry_can_attach("__blk_account_io_start", NULL)) {
+		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
+					       "__blk_account_io_start");
+		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start,
+					  false);
+	} else {
+		bpf_program__set_autoload(obj->progs.blk_account_io_start, false);
+	}
+
+	if (!ksyms__get_symbol(ksyms, "blk_account_io_merge_bio"))
+		bpf_program__set_autoload(obj->progs.blk_account_io_merge_bio,
+					  false);
+
+	if (env.queued) {
+		if (probe_tp_btf("block_rq_insert"))
+			bpf_program__set_autoload(obj->progs.block_rq_insert_raw,
+						  false);
+		else
+			bpf_program__set_autoload(obj->progs.block_rq_insert,
+						  false);
+	} else {
+		bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
+		bpf_program__set_autoload(obj->progs.block_rq_insert, false);
+	}
+
+	if (probe_tp_btf("block_rq_complete")) {
+		bpf_program__set_autoload(obj->progs.block_rq_complete_raw, false);
+		bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.block_rq_complete, false);
+		bpf_program__set_autoload(obj->progs.block_rq_issue, false);
+	}
+}
+
+static bool setup_cgroup_map(struct biosnoop_bpf *obj, int *cgfd)
+{
+	int idx = 0;
+
+	*cgfd = open(env.cgroupspath, O_RDONLY);
+	if (*cgfd < 0) {
+		warning("Failed to opening cgroup path: %s\n", env.cgroupspath);
+		return false;
+	}
+	if (bpf_map_update_elem(bpf_map__fd(obj->maps.cgroup_map),
+				&idx, cgfd, BPF_ANY)) {
+		warning("Failed to adding target cgroup to map\n");
+		return false;
+	}
+	return true;
+}
+
+static void print_header(void)
+{
+	printf("%-11s %-14s %-7s %-7s %-4s %-10s %-7s ",
+	       "TIME(s)", "COMM", "PID", "DISK", "T", "SECTOR", "BYTES");
+	if (env.queued)
+		printf("%7s ", "QUE(ms)");
+	printf("%7s\n", "LAT(ms)");
+}
+
+int main(int argc, char *argv[])
+{
 	static const struct argp argp = {
 		.options = opts,
 		.parser = parse_arg,
@@ -206,29 +296,11 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.disk) {
-		partition = partitions__get_by_name(partitions, env.disk);
-		if (!partition) {
-			warning("Invalid partition name: not exist\n");
-			goto cleanup;
-		}
-		obj->rodata->filter_dev = true;
-		obj->rodata->target_dev = partition->dev;
-	}
+	if (!setup_disk_filter(obj, partitions))
+		goto cleanup;
+
 	obj->rodata->target_queued = env.queued;
 	obj->rodata->filter_memcg = env.cg;
-
-	if (fentry_can_attach("blk_account_io_start", NULL)) {
-		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
-					       "blk_account_io_start");
-		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start, false);
-	} else if (fentry_can_attach("__blk_account_io_start", NULL)) {
-		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
-					       "__blk_account_io_start");
-		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.blk_account_io_start, false);
-	}
 
 	ksyms = ksyms__load();
 	if (!ksyms) {
@@ -237,26 +309,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (!ksyms__get_symbol(ksyms, "blk_account_io_merge_bio"))
-		bpf_program__set_autoload(obj->progs.blk_account_io_merge_bio, false);
-
-	if (env.queued) {
-		if (probe_tp_btf("block_rq_insert"))
-			bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
-		else
-			bpf_program__set_autoload(obj->progs.block_rq_insert, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
-		bpf_program__set_autoload(obj->progs.block_rq_insert, false);
-	}
-
-	if (probe_tp_btf("block_rq_complete")) {
-		bpf_program__set_autoload(obj->progs.block_rq_complete_raw, false);
-		bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.block_rq_complete, false);
-		bpf_program__set_autoload(obj->progs.block_rq_issue, false);
-	}
+	set_probe_autoload(obj, ksyms);
 
 	err = biosnoop_bpf__load(obj);
 	if (err) {
@@ -264,20 +317,8 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed to opening cgroup path: %s\n", env.cgroupspath);
-			goto cleanup;
-		}
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed to adding target cgroup to map\n");
-			goto cleanup;
-		}
-	}
+	if (env.cg && !setup_cgroup_map(obj, &cgfd))
+		goto cleanup;
 
 	err = biosnoop_bpf__attach(obj);
 	if (err) {
@@ -293,11 +334,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	printf("%-11s %-14s %-7s %-7s %-4s %-10s %-7s ",
-	       "TIME(s)", "COMM", "PID", "DISK", "T", "SECTOR", "BYTES");
-	if (env.queued)
-		printf("%7s ", "QUE(ms)");
-	printf("%7s\n", "LAT(ms)");
+	print_header();
 
 	/* setup duration */
 	if (env.duration)

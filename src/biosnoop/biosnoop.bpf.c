@@ -53,6 +53,18 @@ struct {
 	__type(value, u32);
 } events SEC(".maps");
 
+static __always_inline bool current_task_in_cgroup(void)
+{
+	return !filter_memcg || bpf_current_task_under_cgroup(&cgroup_map, 0);
+}
+
+static __always_inline struct request *raw_tp_rq_arg(__u64 *ctx)
+{
+	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
+		return (void *)ctx[0];
+	return (void *)ctx[1];
+}
+
 static __always_inline int trace_pid(struct request *rq)
 {
 	u64 id = bpf_get_current_pid_tgid();
@@ -67,7 +79,7 @@ static __always_inline int trace_pid(struct request *rq)
 SEC("fentry/blk_account_io_start")
 int BPF_PROG(blk_account_io_start, struct request *rq)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+	if (!current_task_in_cgroup())
 		return 0;
 
 	return trace_pid(rq);
@@ -76,7 +88,7 @@ int BPF_PROG(blk_account_io_start, struct request *rq)
 SEC("kprobe/blk_account_io_start")
 int BPF_KPROBE(kprobe_blk_account_io_start, struct request *rq)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+	if (!current_task_in_cgroup())
 		return 0;
 
 	return trace_pid(rq);
@@ -85,10 +97,20 @@ int BPF_KPROBE(kprobe_blk_account_io_start, struct request *rq)
 SEC("kprobe/blk_account_io_merge_bio")
 int BPF_KPROBE(blk_account_io_merge_bio, struct request *rq)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+	if (!current_task_in_cgroup())
 		return 0;
 
 	return trace_pid(rq);
+}
+
+static __always_inline u32 rq_disk_dev(struct request *rq)
+{
+	struct gendisk *disk = get_disk(rq);
+
+	if (!disk)
+		return 0;
+	return MKDEV(BPF_CORE_READ(disk, major),
+		     BPF_CORE_READ(disk, first_minor));
 }
 
 static __always_inline int trace_rq_start(struct request *rq, bool insert)
@@ -98,10 +120,7 @@ static __always_inline int trace_rq_start(struct request *rq, bool insert)
 
 	stagep = bpf_map_lookup_elem(&start, &rq);
 	if (!stagep) {
-		struct gendisk *disk = get_disk(rq);
-
-		stage.dev = disk ? MKDEV(BPF_CORE_READ(disk, major),
-					 BPF_CORE_READ(disk, first_minor)) : 0;
+		stage.dev = rq_disk_dev(rq);
 		if (filter_dev && target_dev != stage.dev)
 			return 0;
 
@@ -118,67 +137,85 @@ static __always_inline int trace_rq_start(struct request *rq, bool insert)
 	return 0;
 }
 
+static __always_inline int handle_rq_insert(__u64 *ctx)
+{
+	if (!current_task_in_cgroup())
+		return 0;
+
+	return trace_rq_start(raw_tp_rq_arg(ctx), true);
+}
+
+static __always_inline int handle_rq_issue(__u64 *ctx)
+{
+	if (!current_task_in_cgroup())
+		return 0;
+
+	return trace_rq_start(raw_tp_rq_arg(ctx), false);
+}
+
 SEC("tp_btf/block_rq_insert")
 int BPF_PROG(block_rq_insert)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
-		return trace_rq_start((void *)ctx[0], true);
-	else
-		return trace_rq_start((void *)ctx[1], true);
+	return handle_rq_insert(ctx);
 }
 
 SEC("raw_tp/block_rq_insert")
 int BPF_PROG(block_rq_insert_raw)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
-		return trace_rq_start((void *)ctx[0], true);
-	else
-		return trace_rq_start((void *)ctx[1], true);
+	return handle_rq_insert(ctx);
 }
 
 SEC("tp_btf/block_rq_issue")
 int BPF_PROG(block_rq_issue)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
-		return trace_rq_start((void *)ctx[0], false);
-	else
-		return trace_rq_start((void *)ctx[1], false);
+	return handle_rq_issue(ctx);
 }
 
 SEC("raw_tp/block_rq_issue")
 int BPF_PROG(block_rq_issue_raw)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
+	return handle_rq_issue(ctx);
+}
 
-	if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(5, 11, 0))
-		return trace_rq_start((void *)ctx[0], false);
+static __always_inline void fill_event_pidcomm(struct event *event,
+					       struct request *rq)
+{
+	struct piddata *piddatap = bpf_map_lookup_elem(&infobyreq, &rq);
+
+	if (!piddatap) {
+		event->comm[0] = '?';
+		return;
+	}
+	__builtin_memcpy(&event->comm, piddatap->comm, sizeof(event->comm));
+	event->pid = piddatap->pid;
+}
+
+static __always_inline void fill_event_qdelta(struct event *event,
+					      struct request *rq,
+					      struct stage *stagep)
+{
+	if (!target_queued || !BPF_CORE_READ(rq, q, elevator))
+		return;
+
+	if (!stagep->insert)
+		event->qdelta = -1; /* missed or don't insert entry */
 	else
-		return trace_rq_start((void *)ctx[1], false);
+		event->qdelta = stagep->issue - stagep->insert;
 }
 
 static __always_inline int probe_block_rq_complete(void *ctx, struct request *rq,
 						   int error,
 						   unsigned int nr_bytes)
 {
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return 0;
-
-	u64 ts = bpf_ktime_get_ns();
-	struct piddata *piddatap;
 	struct event event = {};
 	struct stage *stagep;
+	u64 ts;
 	s64 delta;
 
+	if (!current_task_in_cgroup())
+		return 0;
+
+	ts = bpf_ktime_get_ns();
 	stagep = bpf_map_lookup_elem(&start, &rq);
 	if (!stagep)
 		return 0;
@@ -187,22 +224,10 @@ static __always_inline int probe_block_rq_complete(void *ctx, struct request *rq
 	if (delta < 0)
 		goto cleanup;
 
-	piddatap = bpf_map_lookup_elem(&infobyreq, &rq);
-	if (!piddatap) {
-		event.comm[0] = '?';
-	} else {
-		__builtin_memcpy(&event.comm, piddatap->comm,
-				 sizeof(event.comm));
-		event.pid = piddatap->pid;
-	}
-	event.delta = delta;
-	if (target_queued && BPF_CORE_READ(rq, q, elevator)) {
-		if (!stagep->insert)
-			event.qdelta = -1; /* missed or don't insert entry */
-		else
-			event.qdelta = stagep->issue - stagep->insert;
-	}
+	fill_event_pidcomm(&event, rq);
+	fill_event_qdelta(&event, rq, stagep);
 
+	event.delta = delta;
 	event.ts = ts;
 	event.sector = BPF_CORE_READ(rq, __sector);
 	event.len = BPF_CORE_READ(rq, __data_len);
@@ -216,7 +241,6 @@ cleanup:
 	bpf_map_delete_elem(&infobyreq, &rq);
 	return 0;
 }
-
 
 SEC("tp_btf/block_rq_complete")
 int BPF_PROG(block_rq_complete, struct request *rq, int error,
