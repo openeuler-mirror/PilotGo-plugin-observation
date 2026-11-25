@@ -22,6 +22,19 @@ struct
 const volatile pid_t target_tgid = INVALID_PID;
 const volatile pid_t target_pid = INVALID_PID;
 
+static bool match_target(pid_t tgid, pid_t pid)
+{
+    if (tgid == 0)
+        return false;
+
+    if (target_tgid != INVALID_PID && target_tgid != tgid)
+        return false;
+
+    if (target_pid != INVALID_PID && target_pid != pid)
+        return false;
+
+    return true;
+}
 static int handle_sched_switch(void *ctx, struct task_struct *prev,
                                struct task_struct *next)
 {
@@ -31,13 +44,7 @@ static int handle_sched_switch(void *ctx, struct task_struct *prev,
     u32 numa_id = bpf_get_numa_node_id();
     u32 *old_numa_id;
 
-    if (tgid == 0)
-        return 0;
-
-    if (target_tgid != INVALID_PID && target_tgid != tgid)
-        return 0;
-
-    if (target_pid != INVALID_PID && target_pid != pid)
+    if (!match_target(tgid, pid))
         return 0;
 
     old_numa_id = bpf_map_lookup_elem(&numa_node_map, &pid);
