@@ -43,6 +43,28 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_positional(int *pos_args, char *arg, struct argp_state *state)
+{
+	errno = 0;
+	if (*pos_args == 0) {
+		env.interval = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid interval\n");
+			argp_usage(state);
+		}
+	} else if (*pos_args == 1) {
+		env.times = strtol(arg, NULL, 10);
+		if (errno) {
+			warning("Invalid times\n");
+			argp_usage(state);
+		}
+	} else {
+		warning("Unrecongnized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+	(*pos_args)++;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -67,24 +89,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.count = true;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.interval = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			env.times = strtol(arg, NULL, 10);
-			if (errno) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecongnized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional(&pos_args, arg, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
