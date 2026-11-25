@@ -22,19 +22,27 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
-static int probe_entry(struct pt_regs *ctx)
+static __always_inline bool probe_filtered(struct pt_regs *ctx, u32 pid)
 {
 	if (!PT_REGS_PARM1(ctx))
-		return 0;
+		return true;
 
+	if (target_pid && target_pid != pid)
+		return true;
+
+	return false;
+}
+
+static int probe_entry(struct pt_regs *ctx)
+{
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = (__u32)pid_tgid;
+	struct event event = {};
 
-	if (target_pid && target_pid != pid)
+	if (probe_filtered(ctx, pid))
 		return 0;
 
-	struct event event = {};
 	event.time = bpf_ktime_get_ns();
 	event.pid = pid;
 	bpf_get_current_comm(&event.comm, sizeof(event.comm));
