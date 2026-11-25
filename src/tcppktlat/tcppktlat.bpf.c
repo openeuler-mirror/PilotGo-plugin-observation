@@ -61,6 +61,21 @@ handle_tcp_probe(struct sock *sk, struct sk_buff *skb)
 	return 0;
 }
 
+static __always_inline void fill_addrs(struct event *eventp, struct sock *sk)
+{
+	u16 family;
+
+	family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	if (family == AF_INET) {
+		BPF_CORE_READ_INTO(&eventp->saddr, sk, __sk_common.skc_rcv_saddr);
+		BPF_CORE_READ_INTO(&eventp->daddr, sk, __sk_common.skc_daddr);
+	} else {
+		BPF_CORE_READ_INTO(&eventp->saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		BPF_CORE_READ_INTO(&eventp->daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	}
+	eventp->family = family;
+}
+
 static __always_inline int
 handle_tcp_rcv_space_adjust(void *ctx, struct sock *sk)
 {
@@ -70,7 +85,6 @@ handle_tcp_rcv_space_adjust(void *ctx, struct sock *sk)
 	u32 pid = id >> 32, tid = id;
 	struct event *eventp;
 	s64 delta_us;
-	u16 family;
 
 	tsp = bpf_map_lookup_and_delete_elem(&start, &sock_cookie);
 	if (!tsp)
@@ -95,15 +109,7 @@ handle_tcp_rcv_space_adjust(void *ctx, struct sock *sk)
 	eventp->sport = BPF_CORE_READ(inet, inet_sport);
 	eventp->dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
 	bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
-	family = BPF_CORE_READ(sk, __sk_common.skc_family);
-	if (family == AF_INET) {
-		BPF_CORE_READ_INTO(&eventp->saddr, sk, __sk_common.skc_rcv_saddr);
-		BPF_CORE_READ_INTO(&eventp->daddr, sk, __sk_common.skc_daddr);
-	} else {
-		BPF_CORE_READ_INTO(&eventp->saddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		BPF_CORE_READ_INTO(&eventp->daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-	}
-	eventp->family = family;
+	fill_addrs(eventp, sk);
 	submit_buf(ctx, eventp, sizeof(*eventp));
 
 	return 0;
