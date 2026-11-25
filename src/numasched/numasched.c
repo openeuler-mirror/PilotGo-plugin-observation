@@ -135,6 +135,20 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
     warning("Lost %llu events on cpu #%d!\n", lost_cnt, cpu);
 }
 
+static void init_filter(struct numasched_bpf *bpf_obj)
+{
+    /* Init global data (filtering options) */
+    bpf_obj->rodata->target_tgid = env.pid;
+    bpf_obj->rodata->target_pid = env.tid;
+}
+
+static void select_probes(struct numasched_bpf *bpf_obj)
+{
+    if (probe_tp_btf("sched_switch"))
+        bpf_program__set_autoload(bpf_obj->progs.sched_switch_raw, false);
+    else
+        bpf_program__set_autoload(bpf_obj->progs.sched_switch_btf, false);
+}
 int main(int argc, char *argv[])
 {
     static struct argp argp = {
