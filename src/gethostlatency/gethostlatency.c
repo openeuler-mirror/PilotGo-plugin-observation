@@ -89,17 +89,12 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
-static int get_libc_path(char *path)
+static int find_libc_in_maps(char *path)
 {
 	FILE *fp;
 	char buf[PATH_MAX] = {};
 	char *filename;
 	float version;
-
-	if (env.libc_path) {
-		memcpy(path, env.libc_path, strlen(env.libc_path));
-		return 0;
-	}
 
 	fp = fopen("/proc/self/maps", "r");
 	if (!fp)
@@ -121,10 +116,54 @@ static int get_libc_path(char *path)
 	return -1;
 }
 
+static int get_libc_path(char *path)
+{
+	if (env.libc_path) {
+		memcpy(path, env.libc_path, strlen(env.libc_path));
+		return 0;
+	}
+
+	return find_libc_in_maps(path);
+}
+
+static int attach_uprobe_pair(struct gethostlatency_bpf *obj,
+			      struct bpf_link **entry_link,
+			      struct bpf_link **exit_link, const char *libc_path,
+			      const char *func_name)
+{
+	off_t func_off;
+
+	func_off = get_elf_func_offset(libc_path, func_name);
+	if (func_off < 0) {
+		warning("Could not find %s in %s\n", func_name, libc_path);
+		return -1;
+	}
+
+	*entry_link = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost,
+						 false, env.pid ?: -1, libc_path,
+						 func_off);
+	if (!*entry_link) {
+		warning("Failed to attach %s: %d\n", func_name, -errno);
+		return -1;
+	}
+
+	*exit_link = bpf_program__attach_uprobe(obj->progs.handle_return_gethost,
+						true, env.pid ?: -1, libc_path,
+						func_off);
+	if (!*exit_link) {
+		warning("Failed to attach %s: %d\n", func_name, -errno);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int attach_uprobes(struct gethostlatency_bpf *obj, struct bpf_link *links[])
 {
+	static const char *funcs[] = {
+		"getaddrinfo", "gethostbyname", "gethostbyname2",
+	};
 	char libc_path[PATH_MAX] = {};
-	off_t func_off;
 	int err;
 
 	err = get_libc_path(libc_path);
@@ -133,64 +172,11 @@ static int attach_uprobes(struct gethostlatency_bpf *obj, struct bpf_link *links
 		return -1;
 	}
 
-	func_off = get_elf_func_offset(libc_path, "getaddrinfo");
-	if (func_off < 0) {
-		warning("Could not find getaddrinfo in %s\n", libc_path);
-		return -1;
-	}
-
-	links[0] = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost, false,
-					      env.pid ?: -1, libc_path, func_off);
-	if (!links[0]) {
-		warning("Failed to attach getaddrinfo: %d\n", -errno);
-		return -1;
-	}
-
-	links[1] = bpf_program__attach_uprobe(obj->progs.handle_return_gethost, true,
-					      env.pid ?: -1, libc_path, func_off);
-	if (!links[1]) {
-		warning("Failed to attach getaddrinfo: %d\n", -errno);
-		return -1;
-	}
-
-	func_off = get_elf_func_offset(libc_path, "gethostbyname");
-	if (func_off < 0) {
-		warning("Could not find gethostbyname in %s\n", libc_path);
-		return -1;
-	}
-
-	links[2] = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost, false,
-					      env.pid ?: -1, libc_path, func_off);
-	if (!links[2]) {
-		warning("Failed to attach gethostbyname: %d\n", -errno);
-		return -1;
-	}
-
-	links[3] = bpf_program__attach_uprobe(obj->progs.handle_return_gethost, true,
-					      env.pid ?: -1, libc_path, func_off);
-	if (!links[3]) {
-		warning("Failed to attach gethostbyname: %d\n", -errno);
-		return -1;
-	}
-
-	func_off = get_elf_func_offset(libc_path, "gethostbyname2");
-	if (func_off < 0) {
-		warning("Could not find gethostbyname2 in %s\n", libc_path);
-		return -1;
-	}
-
-	links[4] = bpf_program__attach_uprobe(obj->progs.handle_entry_gethost, false,
-					      env.pid ?: -1, libc_path, func_off);
-	if (!links[4]) {
-		warning("Failed to attach gethostbyname2: %d\n", -errno);
-		return -1;
-	}
-
-	links[5] = bpf_program__attach_uprobe(obj->progs.handle_return_gethost, true,
-					      env.pid ?: -1, libc_path, func_off);
-	if (!links[5]) {
-		warning("Failed to attach gethostbyname2: %d\n", -errno);
-		return -1;
+	for (int i = 0; i < ARRAY_SIZE(funcs); i++) {
+		err = attach_uprobe_pair(obj, &links[2 * i], &links[2 * i + 1],
+					 libc_path, funcs[i]);
+		if (err)
+			return err;
 	}
 
 	return 0;
