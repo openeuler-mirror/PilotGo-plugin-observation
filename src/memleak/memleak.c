@@ -171,6 +171,30 @@ static uint64_t *stack;
 static struct allocation *allocs;
 static const char default_object[] = "libc.so.6";
 
+static void parse_positional(int *pos_args, int key, char *arg,
+			     struct argp_state *state)
+{
+	if (*pos_args == 0) {
+		env.interval = argp_parse_long(key, arg, state);
+	} else if (*pos_args == 1) {
+		env.nr_intervals = argp_parse_long(key, arg, state);
+	} else {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+	(*pos_args)++;
+}
+
+static void finalize_args(struct argp_state *state)
+{
+	if (env.min_size > env.max_size) {
+		warning("min size (-z) can't greater than max size (-Z)\n");
+		argp_usage(state);
+	}
+	if (env.combined_only && env.min_age_ns != DEFAULT_MIN_AGE_NS)
+		warning("Ignore min age ns for combined allocs\n");
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
     static int pos_args = 0;
@@ -229,29 +253,10 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
         env.stack_map_max_entries = argp_parse_long(key, arg, state);
         break;
     case ARGP_KEY_ARG:
-        if (pos_args == 0)
-        {
-            env.interval = argp_parse_long(key, arg, state);
-        }
-        else if (pos_args == 1)
-        {
-            env.nr_intervals = argp_parse_long(key, arg, state);
-        }
-        else
-        {
-            warning("Unrecognized positional argument: %s\n", arg);
-            argp_usage(state);
-        }
-        pos_args++;
+        parse_positional(&pos_args, key, arg, state);
         break;
     case ARGP_KEY_END:
-        if (env.min_size > env.max_size)
-        {
-            warning("min size (-z) can't greater than max size (-Z)\n");
-            argp_usage(state);
-        }
-        if (env.combined_only && env.min_age_ns != DEFAULT_MIN_AGE_NS)
-            warning("Ignore min age ns for combined allocs\n");
+        finalize_args(state);
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -527,6 +532,90 @@ static int alloc_size_compare(const void *a, const void *b)
     return 0;
 }
 
+static struct allocation_node *new_alloc_node(uint64_t address, size_t size,
+					      struct allocation_node *next)
+{
+	struct allocation_node *node = malloc(sizeof(struct allocation_node));
+
+	if (!node) {
+		perror("malloc failed");
+		return NULL;
+	}
+	node->address = address;
+	node->size = size;
+	node->next = next;
+	return node;
+}
+
+static int merge_alloc(size_t *nr_allocs, uint64_t addr,
+		       const struct alloc_info *info)
+{
+	/* when the stack_id exists in the allocs array,
+	 * increment size with info->size */
+	for (size_t i = 0; i < *nr_allocs; i++) {
+		struct allocation *alloc = &allocs[i];
+
+		if (alloc->stack_id != info->stack_id)
+			continue;
+
+		alloc->size += info->size;
+		alloc->count++;
+
+		if (env.show_allocs) {
+			struct allocation_node *node =
+				new_alloc_node(addr, info->size, alloc->allocations);
+
+			if (!node)
+				return -errno;
+			alloc->allocations = node;
+		}
+		return 1;
+	}
+	return 0;
+}
+
+static int add_alloc(size_t *nr_allocs, uint64_t addr,
+		     const struct alloc_info *info)
+{
+	struct allocation alloc = {
+		.stack_id = info->stack_id,
+		.size = info->size,
+		.count = 1,
+	};
+
+	if (env.show_allocs) {
+		struct allocation_node *node = new_alloc_node(addr, info->size, NULL);
+
+		if (!node)
+			return -errno;
+		alloc.allocations = node;
+	}
+
+	memcpy(&allocs[*nr_allocs], &alloc, sizeof(alloc));
+	(*nr_allocs)++;
+	return 0;
+}
+
+static void reset_allocs(size_t nr_allocs)
+{
+	/* Reset allocs list so that we dont accidentaly reuse data the next
+	 * time we call this function */
+	for (size_t i = 0; i < nr_allocs; i++) {
+		allocs[i].stack_id = 0;
+		if (env.show_allocs) {
+			struct allocation_node *it = allocs[i].allocations;
+
+			while (!it) {
+				struct allocation_node *this = it;
+
+				it = it->next;
+				free(this);
+			}
+			allocs[i].allocations = NULL;
+		}
+	}
+}
+
 static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
 {
     time_t t = time(NULL);
@@ -538,6 +627,7 @@ static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
     for (uint64_t prev_key = 0, curr_key = 0;; prev_key = curr_key)
     {
         struct alloc_info alloc_info = {};
+        int ret;
 
         if (bpf_map_get_next_key(allocs_fd, &prev_key, &curr_key))
         {
@@ -565,68 +655,17 @@ static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
         if (alloc_info.stack_id < 0)
             continue;
 
-        // when the stack_id exists in the allocs array,
-        // increment size with alloc_info.size
-        bool stack_exists = false;
-
-        for (size_t i = 0; !stack_exists && i < nr_allocs; i++)
-        {
-            struct allocation *alloc = &allocs[i];
-
-            if (alloc->stack_id == alloc_info.stack_id)
-            {
-                alloc->size += alloc_info.size;
-                alloc->count++;
-
-                if (env.show_allocs)
-                {
-                    struct allocation_node *node = malloc(sizeof(struct allocation_node));
-
-                    if (!node)
-                    {
-                        perror("malloc failed");
-                        return -errno;
-                    }
-                    node->address = curr_key;
-                    node->size = alloc_info.size;
-                    node->next = alloc->allocations;
-                    alloc->allocations = node;
-                }
-
-                stack_exists = true;
-                break;
-            }
-        }
-
-        if (stack_exists)
+        ret = merge_alloc(&nr_allocs, curr_key, &alloc_info);
+        if (ret < 0)
+            return ret;
+        if (ret > 0)
             continue;
 
-        // when the stack_id does not exist in the allocs array,
-        // create a new entry in the array
-        struct allocation alloc = {
-            .stack_id = alloc_info.stack_id,
-            .size = alloc_info.size,
-            .count = 1,
-        };
+        ret = add_alloc(&nr_allocs, curr_key, &alloc_info);
+        if (ret < 0)
+            return ret;
 
-        if (env.show_allocs)
-        {
-            struct allocation_node *node = malloc(sizeof(struct allocation_node));
-
-            if (!node)
-            {
-                perror("malloc failed");
-                return -errno;
-            }
-            node->address = curr_key;
-            node->size = alloc_info.size;
-            node->next = NULL;
-            alloc.allocations = node;
-        }
-
-        memcpy(&allocs[nr_allocs], &alloc, sizeof(alloc));
-
-        if (++nr_allocs > ALLOCS_MAX_ENTRIES)
+        if (nr_allocs > ALLOCS_MAX_ENTRIES)
             break;
     }
 
@@ -643,24 +682,7 @@ static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
 
         print_stack_frames(allocs, nr_allocs_to_show, stack_traces_fd);
 
-        // Reset allocs list so that we dont accidentaly reuse data the next time we call this function
-        for (size_t i = 0; i < nr_allocs; i++)
-        {
-            allocs[i].stack_id = 0;
-            if (env.show_allocs)
-            {
-                struct allocation_node *it = allocs[i].allocations;
-
-                while (!it)
-                {
-                    struct allocation_node *this = it;
-
-                    it = it->next;
-                    free(this);
-                }
-                allocs[i].allocations = NULL;
-            }
-        }
+        reset_allocs(nr_allocs);
     }
 
     return 0;
@@ -727,30 +749,35 @@ bool has_kernel_node_tracepoints()
            tracepoint_exists("kmem", "kmem_cache_alloc_node");
 }
 
+static void disable_prog(struct bpf_program *prog)
+{
+	bpf_program__set_autoload(prog, false);
+}
+
 void disable_kernel_node_tracepoints(struct memleak_bpf *skel)
 {
-    bpf_program__set_autoload(skel->progs.memleak__kmalloc_node, false);
-    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_alloc_node, false);
+	disable_prog(skel->progs.memleak__kmalloc_node);
+	disable_prog(skel->progs.memleak__kmem_cache_alloc_node);
 }
 
 void disable_kernel_percpu_tracepoints(struct memleak_bpf *skel)
 {
-    bpf_program__set_autoload(skel->progs.memleak__percpu_alloc_percpu, false);
-    bpf_program__set_autoload(skel->progs.memleak__percpu_free_percpu, false);
+	disable_prog(skel->progs.memleak__percpu_alloc_percpu);
+	disable_prog(skel->progs.memleak__percpu_free_percpu);
 }
 
 void disable_kernel_tracepoints(struct memleak_bpf *skel)
 {
-    bpf_program__set_autoload(skel->progs.memleak__kmalloc, false);
-    bpf_program__set_autoload(skel->progs.memleak__kmalloc_node, false);
-    bpf_program__set_autoload(skel->progs.memleak__kfree, false);
-    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_alloc, false);
-    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_alloc_node, false);
-    bpf_program__set_autoload(skel->progs.memleak__kmem_cache_free, false);
-    bpf_program__set_autoload(skel->progs.memleak__mm_page_alloc, false);
-    bpf_program__set_autoload(skel->progs.memleak__mm_page_free, false);
-    bpf_program__set_autoload(skel->progs.memleak__percpu_alloc_percpu, false);
-    bpf_program__set_autoload(skel->progs.memleak__percpu_free_percpu, false);
+	disable_prog(skel->progs.memleak__kmalloc);
+	disable_prog(skel->progs.memleak__kmalloc_node);
+	disable_prog(skel->progs.memleak__kfree);
+	disable_prog(skel->progs.memleak__kmem_cache_alloc);
+	disable_prog(skel->progs.memleak__kmem_cache_alloc_node);
+	disable_prog(skel->progs.memleak__kmem_cache_free);
+	disable_prog(skel->progs.memleak__mm_page_alloc);
+	disable_prog(skel->progs.memleak__mm_page_free);
+	disable_prog(skel->progs.memleak__percpu_alloc_percpu);
+	disable_prog(skel->progs.memleak__percpu_free_percpu);
 }
 
 int attach_uprobes(struct memleak_bpf *skel)
@@ -795,6 +822,76 @@ int attach_uprobes(struct memleak_bpf *skel)
 
 static int child_exec_event_fd = -1;
 
+static int spawn_child_command(void)
+{
+	if (env.pid >= 0) {
+		warning("Can not specify both command and pid\n");
+		return 1;
+	}
+
+	if (event_init(&child_exec_event_fd)) {
+		warning("Failed to init child event\n");
+		return 1;
+	}
+
+	const pid_t child_pid = fork_sync_exec(env.command, child_exec_event_fd);
+	if (child_pid < 0) {
+		perror("failed to spawn child process");
+		return -errno;
+	}
+
+	env.pid = child_pid;
+	env.pid_from_child = true;
+	return 0;
+}
+
+static int init_symbolizer(void)
+{
+#ifdef USE_BLAZESYM
+	symbolizer = blazesym_new();
+	if (!symbolizer) {
+		warning("Failed to load blazesym");
+		return -ENOMEM;
+	}
+	print_stack_frames_func = print_stack_frames_by_blazesym;
+#else
+	if (env.kernel_trace) {
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("Failed to load ksyms\n");
+			return -ENOMEM;
+		}
+		print_stack_frames_func = print_stack_frames_by_ksyms;
+	} else {
+		syms_cache = syms_cache__new(0);
+		if (!syms_cache) {
+			warning("Failed to create syms_cache\n");
+			return -ENOMEM;
+		}
+		print_stack_frames_func = print_stack_frames_by_syms_cache;
+	}
+#endif
+	return 0;
+}
+
+static int reap_child_process(void)
+{
+	if (!child_exited) {
+		if (kill(env.pid, SIGTERM)) {
+			perror("Failed to signal child process");
+			return -errno;
+		}
+		printf("Signaled child process\n");
+	}
+
+	if (waitpid(env.pid, NULL, 0) < 0) {
+		perror("Failed to reap child process");
+		return -errno;
+	}
+	printf("reaped child process\n");
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
     int ret = 0;
@@ -836,27 +933,9 @@ int main(int argc, char *argv[])
     // create the child process and use an eventfd to synchronize to call to exec()
     if (strlen(env.command))
     {
-        if (env.pid >= 0)
-        {
-            warning("Can not specify both command and pid\n");
-            return 1;
-        }
-
-        if (event_init(&child_exec_event_fd))
-        {
-            warning("Failed to init child event\n");
-            return 1;
-        }
-
-        const pid_t child_pid = fork_sync_exec(env.command, child_exec_event_fd);
-        if (child_pid < 0)
-        {
-            perror("failed to spawn child process");
-            return -errno;
-        }
-
-        env.pid = child_pid;
-        env.pid_from_child = true;
+        ret = spawn_child_command();
+        if (ret)
+            return ret;
     }
 
     // allocate space for storing a stack trace
@@ -971,39 +1050,9 @@ int main(int argc, char *argv[])
         }
     }
 
-#ifdef USE_BLAZESYM
-    symbolizer = blazesym_new();
-    if (!symbolizer)
-    {
-        warning("Failed to load blazesym");
-        ret = -ENOMEM;
+    ret = init_symbolizer();
+    if (ret)
         goto cleanup;
-    }
-    print_stack_frames_func = print_stack_frames_by_blazesym;
-#else
-    if (env.kernel_trace)
-    {
-        ksyms = ksyms__load();
-        if (!ksyms)
-        {
-            warning("Failed to load ksyms\n");
-            ret = -ENOMEM;
-            goto cleanup;
-        }
-        print_stack_frames_func = print_stack_frames_by_ksyms;
-    }
-    else
-    {
-        syms_cache = syms_cache__new(0);
-        if (!syms_cache)
-        {
-            warning("Failed to create syms_cache\n");
-            ret = -ENOMEM;
-            goto cleanup;
-        }
-        print_stack_frames_func = print_stack_frames_by_syms_cache;
-    }
-#endif
 
     printf("Tracing outstanding memory allocs... Hit Ctrl-C to end\n");
 
@@ -1023,24 +1072,9 @@ int main(int argc, char *argv[])
     // after loop ends, check for child process and cleanup accordingly
     if (env.pid > 0 && env.pid_from_child)
     {
-        if (!child_exited)
-        {
-            if (kill(env.pid, SIGTERM))
-            {
-                perror("Failed to signal child process");
-                ret = -errno;
-                goto cleanup;
-            }
-            printf("Signaled child process\n");
-        }
-
-        if (waitpid(env.pid, NULL, 0) < 0)
-        {
-            perror("Failed to reap child process");
-            ret = -errno;
+        ret = reap_child_process();
+        if (ret)
             goto cleanup;
-        }
-        printf("reaped child process\n");
     }
 
 cleanup:
