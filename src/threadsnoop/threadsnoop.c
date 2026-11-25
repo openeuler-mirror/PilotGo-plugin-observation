@@ -51,6 +51,11 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static bool is_mangled_name(const char *name)
+{
+	return strncmp(name, "_Z", 2) == 0 || strncmp(name, "____Z", 5) == 0;
+}
+
 static const char *demangling_cplusplus_function(const char *name)
 {
 	char command[256] = {};
@@ -58,7 +63,7 @@ static const char *demangling_cplusplus_function(const char *name)
 	char buf[128] = {};
 	const char *ret;
 
-	if (strncmp(name, "_Z", 2) && strncmp(name, "____Z", 5))
+	if (!is_mangled_name(name))
 		return name;
 
 	sprintf(command, "c++filt %s", name);
