@@ -84,6 +84,42 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_duration_arg(const char *arg, struct argp_state *state)
+{
+	errno = 0;
+	duration = strtol(arg, NULL, 10);
+	if (errno || duration <= 0) {
+		warning("Invalid Duration: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_min_lat_arg(const char *arg, struct argp_state *state)
+{
+	errno = 0;
+	min_lat_ms = strtol(arg, NULL, 10);
+	if (errno || min_lat_ms <= 0) {
+		warning("Invalid latency (in ms): %s\n", arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_fs_arg(const char *arg, struct argp_state *state)
+{
+	if (!strcmp(arg, "btrfs")) {
+		fs_type = BTRFS;
+	} else if (!strcmp(arg, "ext4")) {
+		fs_type = EXT4;
+	} else if (!strcmp(arg, "nfs")) {
+		fs_type = NFS;
+	} else if (!strcmp(arg, "xfs")) {
+		fs_type = XFS;
+	} else {
+		warning("Invalid filesystem\n");
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -94,34 +130,13 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		csv = true;
 		break;
 	case 'd':
-		errno = 0;
-		duration = strtol(arg, NULL, 10);
-		if (errno || duration <= 0) {
-			warning("Invalid Duration: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_duration_arg(arg, state);
 		break;
 	case 'm':
-		errno = 0;
-		min_lat_ms = strtol(arg, NULL, 10);
-		if (errno || min_lat_ms <= 0) {
-			warning("Invalid latency (in ms): %s\n", arg);
-			argp_usage(state);
-		}
+		parse_min_lat_arg(arg, state);
 		break;
 	case 't':
-		if (!strcmp(arg, "btrfs")) {
-			fs_type = BTRFS;
-		} else if (!strcmp(arg, "ext4")) {
-			fs_type = EXT4;
-		} else if (!strcmp(arg, "nfs")) {
-			fs_type = NFS;
-		} else if (!strcmp(arg, "xfs")) {
-			fs_type = XFS;
-		} else {
-			warning("Invalid filesystem\n");
-			argp_usage(state);
-		}
+		parse_fs_arg(arg, state);
 		break;
 	case 'p':
 		target_pid = argp_parse_pid(key, arg, state);
@@ -184,32 +199,16 @@ static int fentry_set_attach_targets(struct fsslower_bpf *obj)
 {
 	int err = 0;
 
-	err = fentry_set_attach_target(obj->progs.file_read_fentry, F_READ);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_read_fexit, F_READ);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_write_fentry, F_WRITE);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_write_fexit, F_WRITE);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_open_fentry, F_OPEN);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_open_fexit, F_OPEN);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_sync_fentry, F_FSYNC);
-	if (err)
-		return err;
-	err = fentry_set_attach_target(obj->progs.file_sync_fexit, F_FSYNC);
-	if (err)
-		return err;
+	err = err ?: fentry_set_attach_target(obj->progs.file_read_fentry, F_READ);
+	err = err ?: fentry_set_attach_target(obj->progs.file_read_fexit, F_READ);
+	err = err ?: fentry_set_attach_target(obj->progs.file_write_fentry, F_WRITE);
+	err = err ?: fentry_set_attach_target(obj->progs.file_write_fexit, F_WRITE);
+	err = err ?: fentry_set_attach_target(obj->progs.file_open_fentry, F_OPEN);
+	err = err ?: fentry_set_attach_target(obj->progs.file_open_fexit, F_OPEN);
+	err = err ?: fentry_set_attach_target(obj->progs.file_sync_fentry, F_FSYNC);
+	err = err ?: fentry_set_attach_target(obj->progs.file_sync_fexit, F_FSYNC);
 
-	return 0;
+	return err;
 }
 
 static void disable_fentry(struct fsslower_bpf *obj)
@@ -236,61 +235,56 @@ static void disable_kprobes(struct fsslower_bpf *obj)
 	bpf_program__set_autoload(obj->progs.file_sync_exit, false);
 }
 
+static int attach_kprobe_pair(struct bpf_program *entry_prog,
+			      struct bpf_program *exit_prog, bool exit_is_retprobe,
+			      const char *func, struct bpf_link **entry_link,
+			      struct bpf_link **exit_link)
+{
+	*entry_link = bpf_program__attach_kprobe(entry_prog, false, func);
+	if (!*entry_link)
+		return -errno;
+
+	*exit_link = bpf_program__attach_kprobe(exit_prog, exit_is_retprobe, func);
+	if (!*exit_link)
+		return -errno;
+
+	return 0;
+}
+
 static int attach_kprobes(struct fsslower_bpf *obj)
 {
-	obj->links.file_read_entry = bpf_program__attach_kprobe(obj->progs.file_read_entry,
-								false,
-								fs_configs[fs_type].op_funcs[F_READ]);
-	if (!obj->links.file_read_entry)
+	struct fs_config *cfg = &fs_configs[fs_type];
+	int err = 0;
+
+	err = attach_kprobe_pair(obj->progs.file_read_entry, obj->progs.file_read_exit,
+				 true, cfg->op_funcs[F_READ], &obj->links.file_read_entry,
+				 &obj->links.file_read_exit);
+	if (err)
 		goto errout;
 
-	obj->links.file_read_exit = bpf_program__attach_kprobe(obj->progs.file_read_exit,
-							       true,
-							       fs_configs[fs_type].op_funcs[F_READ]);
-	if (!obj->links.file_read_exit)
+	err = attach_kprobe_pair(obj->progs.file_write_entry, obj->progs.file_write_exit,
+				 true, cfg->op_funcs[F_WRITE], &obj->links.file_write_entry,
+				 &obj->links.file_write_exit);
+	if (err)
 		goto errout;
 
-	obj->links.file_write_entry = bpf_program__attach_kprobe(obj->progs.file_write_entry,
-								 false,
-								 fs_configs[fs_type].op_funcs[F_WRITE]);
-	if (!obj->links.file_write_entry)
+	err = attach_kprobe_pair(obj->progs.file_open_entry, obj->progs.file_open_exit,
+				 true, cfg->op_funcs[F_OPEN], &obj->links.file_open_entry,
+				 &obj->links.file_open_exit);
+	if (err)
 		goto errout;
 
-	obj->links.file_write_exit = bpf_program__attach_kprobe(obj->progs.file_write_exit,
-								true,
-								fs_configs[fs_type].op_funcs[F_WRITE]);
-	if (!obj->links.file_write_exit)
-		goto errout;
-
-	obj->links.file_open_entry = bpf_program__attach_kprobe(obj->progs.file_open_entry,
-								false,
-								fs_configs[fs_type].op_funcs[F_OPEN]);
-	if (!obj->links.file_open_entry)
-		goto errout;
-
-	obj->links.file_open_exit = bpf_program__attach_kprobe(obj->progs.file_open_exit,
-							       true,
-							       fs_configs[fs_type].op_funcs[F_OPEN]);
-	if (!obj->links.file_open_exit)
-		goto errout;
-
-	obj->links.file_sync_entry = bpf_program__attach_kprobe(obj->progs.file_sync_entry,
-								false,
-								fs_configs[fs_type].op_funcs[F_FSYNC]);
-	if (!obj->links.file_sync_entry)
-		goto errout;
-
-	obj->links.file_sync_exit = bpf_program__attach_kprobe(obj->progs.file_sync_exit,
-							       false,
-							       fs_configs[fs_type].op_funcs[F_FSYNC]);
-	if (!obj->links.file_sync_exit)
+	err = attach_kprobe_pair(obj->progs.file_sync_entry, obj->progs.file_sync_exit,
+				 false, cfg->op_funcs[F_FSYNC], &obj->links.file_sync_entry,
+				 &obj->links.file_sync_exit);
+	if (err)
 		goto errout;
 
 	return 0;
 
 errout:
-	warning("Failed to attach kprobe: %d\n", -errno);
-	return -errno;
+	warning("Failed to attach kprobe: %d\n", err);
+	return err;
 }
 
 static void print_headers()
@@ -316,20 +310,19 @@ static void print_headers()
 	       "TIME", "COMM", "PID", "T", "BYTES", "OFF_KB", "LAT(ms)", "FILENAME");
 }
 
-static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+static void print_event_csv(const struct event *e)
 {
-	const struct event *e = data;
-	char ts[32];
+	printf("%lld,%s,%d,%c,", e->end_ns, e->task, e->pid, file_op[e->op]);
+	if (e->size == LLONG_MAX)
+		printf("LL_MAX,");
+	else
+		printf("%ld,", e->size);
+	printf("%lld,%lld,%s\n", e->offset, e->delta_us, e->file);
+}
 
-	if (csv) {
-		printf("%lld,%s,%d,%c,", e->end_ns, e->task, e->pid, file_op[e->op]);
-		if (e->size == LLONG_MAX)
-			printf("LL_MAX,");
-		else
-			printf("%ld,", e->size);
-		printf("%lld,%lld,%s\n", e->offset, e->delta_us, e->file);
-		return;
-	}
+static void print_event_plain(const struct event *e)
+{
+	char ts[32];
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S");
 
@@ -339,6 +332,16 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 	else
 		printf("%-10ld ", e->size);
 	printf("%-8lld %7.2f %s\n", e->offset / 1024, (double)e->delta_us / 1000, e->file);
+}
+
+static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
+{
+	const struct event *e = data;
+
+	if (csv)
+		print_event_csv(e);
+	else
+		print_event_plain(e);
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)

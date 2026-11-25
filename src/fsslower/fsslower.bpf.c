@@ -53,6 +53,32 @@ static int probe_entry(struct file *fp, loff_t start, loff_t end)
 	return 0;
 }
 
+static __always_inline __s64 event_size(struct data *datap, enum fs_file_op op,
+					ssize_t size)
+{
+	if (op != F_FSYNC)
+		return size;
+	return datap->end - datap->start;
+}
+
+static __always_inline void fill_event(struct event *event, struct data *datap,
+				       enum fs_file_op op, ssize_t size, __u32 pid,
+				       __u64 end_ns, __u64 delta_ns)
+{
+	struct file *fp = datap->fp;
+	const __u8 *filename;
+
+	event->delta_us = delta_ns / 1000;
+	event->end_ns = end_ns;
+	event->offset = datap->start;
+	event->size = event_size(datap, op, size);
+	event->pid = pid;
+	event->op = op;
+	filename = BPF_CORE_READ(fp, f_path.dentry, d_name.name);
+	bpf_core_read_str(&event->file, sizeof(event->file), filename);
+	bpf_get_current_comm(&event->task, sizeof(event->task));
+}
+
 static int probe_exit(void *ctx, enum fs_file_op op, ssize_t size)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
@@ -61,8 +87,6 @@ static int probe_exit(void *ctx, enum fs_file_op op, ssize_t size)
 	__u64 end_ns, delta_ns;
 	struct data *datap;
 	struct event event = {};
-	struct file *fp;
-	const __u8 *filename;
 
 	if (target_pid && target_pid != pid)
 		return 0;
@@ -76,19 +100,7 @@ static int probe_exit(void *ctx, enum fs_file_op op, ssize_t size)
 	if (delta_ns <= min_lat_ns)
 		return 0;
 
-	event.delta_us = delta_ns / 1000;
-	event.end_ns = end_ns;
-	event.offset = datap->start;
-	if (op != F_FSYNC)
-		event.size = size;
-	else
-		event.size = datap->end - datap->start;
-	event.pid = pid;
-	event.op = op;
-	fp = datap->fp;
-	filename = BPF_CORE_READ(fp, f_path.dentry, d_name.name);
-	bpf_core_read_str(&event.file, sizeof(event.file), filename);
-	bpf_get_current_comm(&event.task, sizeof(event.task));
+	fill_event(&event, datap, op, size, pid, end_ns, delta_ns);
 	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
 	return 0;
 }
