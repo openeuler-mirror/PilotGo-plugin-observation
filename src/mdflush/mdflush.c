@@ -128,22 +128,9 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    printf("Tracing md flush requests... Hit Ctrl-C to end.\n");
-    printf("%-8s %-7s %-16s %-s\n",
-           "TIME", "PID", "COMM", "DEVICE");
+    print_header();
 
-    while (!exiting)
-    {
-        err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
-        if (err < 0 && err != -EINTR)
-        {
-            warning("Error polling perf buffer: %s\n", strerror(-err));
-            goto cleanup;
-        }
-
-        /* reset err to return 0 if exiting */
-        err = 0;
-    }
+    err = poll_events(pb);
 
 cleanup:
     perf_buffer__free(pb);
