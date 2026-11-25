@@ -27,24 +27,39 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
-static int handle_direct_reclaim_begin()
+static __always_inline bool task_filtered(u32 tgid, u32 pid)
+{
+	if (target_tgid && target_tgid != tgid)
+		return true;
+	if (target_pid && target_pid != pid)
+		return true;
+	return false;
+}
+
+static __always_inline u64 read_nr_free_pages(void)
 {
 	u64 *vm_zone_stat_kaddrp = (u64 *)vm_zone_stat_kaddr;
+	u64 nr_free_pages = 0;
+
+	if (vm_zone_stat_kaddrp)
+		bpf_core_read(&nr_free_pages, sizeof(u64),
+			      &vm_zone_stat_kaddrp[NR_FREE_PAGES]);
+
+	return nr_free_pages;
+}
+
+static int handle_direct_reclaim_begin()
+{
 	u64 id = bpf_get_current_pid_tgid();
 	struct piddata piddata = {};
 	u32 tgid = id >> 32;
 	u32 pid = id;
 
-	if (target_tgid && target_tgid != tgid)
-		return 0;
-	if (target_pid && target_pid != pid)
+	if (task_filtered(tgid, pid))
 		return 0;
 
 	piddata.ts = bpf_ktime_get_ns();
-	if (vm_zone_stat_kaddrp) {
-		bpf_core_read(&piddata.nr_free_pages, sizeof(u64),
-			      &vm_zone_stat_kaddrp[NR_FREE_PAGES]);
-	}
+	piddata.nr_free_pages = read_nr_free_pages();
 
 	bpf_map_update_elem(&start, &pid, &piddata, BPF_ANY);
 	return 0;
@@ -59,10 +74,7 @@ static int handle_direct_reclaim_end(void *ctx, unsigned long nr_reclaimed)
 	u32 pid = id;
 	s64 delta_ns;
 
-	if (target_tgid && target_tgid != tgid)
-		return 0;
-
-	if (target_pid && target_pid != pid)
+	if (task_filtered(tgid, pid))
 		return 0;
 
 	/* fetch timestamp and calculate delta */
@@ -84,7 +96,6 @@ static int handle_direct_reclaim_end(void *ctx, unsigned long nr_reclaimed)
 	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
 			      &event, sizeof(event));
 
-cleanup:
 	bpf_map_delete_elem(&start, &pid);
 	return 0;
 }

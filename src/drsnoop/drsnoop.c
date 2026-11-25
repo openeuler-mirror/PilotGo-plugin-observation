@@ -112,6 +112,50 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static int resolve_vm_zone_stat(struct drsnoop_bpf *obj)
+{
+	struct ksyms *ksyms;
+	const struct ksym *ksym;
+
+	ksyms = ksyms__load();
+	if (!ksyms) {
+		warning("Failed to load kallsyms\n");
+		return -1;
+	}
+
+	ksym = ksyms__get_symbol(ksyms, "vm_zone_stat");
+	if (!ksym) {
+		warning("Failed to get vm_zone_stat's addr\n");
+		ksyms__free(ksyms);
+		return -1;
+	}
+
+	obj->rodata->vm_zone_stat_kaddr = ksym->addr;
+	pagesize = sysconf(_SC_PAGESIZE);
+
+	ksyms__free(ksyms);
+	return 0;
+}
+
+static void set_probe_autoload(struct drsnoop_bpf *obj)
+{
+	if (probe_tp_btf("mm_vmscan_direct_reclaim_begin")) {
+		bpf_program__set_autoload(obj->progs.direct_reclaim_begin_raw, false);
+		bpf_program__set_autoload(obj->progs.direct_reclaim_end_raw, false);
+	} else {
+		bpf_program__set_autoload(obj->progs.direct_reclaim_begin_btf, false);
+		bpf_program__set_autoload(obj->progs.direct_reclaim_end_btf, false);
+	}
+}
+
+static void print_header(struct argument *argument)
+{
+	printf("%-8s %-16s %-6s %9s %7s", "TIME", "COMM", "PID", "DELTA(ms)", "RECLAIM");
+	if (argument->extended)
+		printf(" %9s", "FREEPAGES");
+	printf("\n");
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -143,34 +187,10 @@ int main(int argc, char *argv[])
 	obj->rodata->target_tgid = argument.pid;
 	obj->rodata->target_pid = argument.tid;
 
-	if (argument.extended) {
-		struct ksyms *ksyms = ksyms__load();
-		const struct ksym *ksym;
+	if (argument.extended && resolve_vm_zone_stat(obj))
+		goto cleanup;
 
-		if (!ksyms) {
-			warning("Failed to load kallsyms\n");
-			goto cleanup;
-		}
-
-		ksym = ksyms__get_symbol(ksyms, "vm_zone_stat");
-		if (!ksym) {
-			warning("Failed to get vm_zone_stat's addr\n");
-			goto cleanup;
-		}
-
-		obj->rodata->vm_zone_stat_kaddr = ksym->addr;
-		pagesize = sysconf(_SC_PAGESIZE);
-
-		ksyms__free(ksyms);
-	}
-
-	if (probe_tp_btf("mm_vmscan_direct_reclaim_begin")) {
-		bpf_program__set_autoload(obj->progs.direct_reclaim_begin_raw, false);
-		bpf_program__set_autoload(obj->progs.direct_reclaim_end_raw, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.direct_reclaim_begin_btf, false);
-		bpf_program__set_autoload(obj->progs.direct_reclaim_end_btf, false);
-	}
+	set_probe_autoload(obj);
 
 	err = drsnoop_bpf__load(obj);
 	if (err) {
@@ -208,10 +228,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	printf("%-8s %-16s %-6s %9s %7s", "TIME", "COMM", "PID", "DELTA(ms)", "RECLAIM");
-	if (argument.extended)
-		printf(" %9s", "FREEPAGES");
-	printf("\n");
+	print_header(&argument);
 
 	/* main poll */
 	while (!exiting) {
