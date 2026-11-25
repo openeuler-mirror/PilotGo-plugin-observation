@@ -218,21 +218,9 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.timestamp)
-		printf("%-8s ", "TIME(s)");
-	printf("%-7s %-7s %-16s %-*s %-5s %-*s %-5s %-s\n",
-	       "PID", "TID", "COMM", env.column_width, "LADDR", "LPORT",
-	       env.column_width, "RADDR", "RPORT", "MS");
+	print_header();
 
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling ring/perf buffer: %s\n", strerror(-err));
-			goto cleanup;
-		}
-		/* reset err to return 0 if exiting */
-		err = 0;
-	}
+	err = poll_events(buf);
 
 cleanup:
 	bpf_buffer__free(buf);
