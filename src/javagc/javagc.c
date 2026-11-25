@@ -35,6 +35,16 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_pid_arg(int key, char *arg, struct argp_state *state)
+{
+	if (state->arg_num == 0) {
+		env.pid = argp_parse_pid(key, arg, state);
+	} else {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	switch (key) {
@@ -48,12 +58,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.time = argp_parse_long(key, arg, state);
 		break;
 	case ARGP_KEY_ARG:
-		if (state->arg_num == 0) {
-			env.pid = argp_parse_pid(key, arg, state);
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_pid_arg(key, arg, state);
 		break;
 	case ARGP_KEY_END:
 		if (env.pid == -1) {
@@ -124,6 +129,53 @@ static int get_jvmso_path(char *path)
 	return 0;
 }
 
+static int attach_usdt(struct javagc_bpf *obj, const char *binary_path,
+		       struct bpf_program *prog, const char *provider,
+		       const char *name, struct bpf_link **link,
+		       const char *err_msg)
+{
+	*link = bpf_program__attach_usdt(prog, env.pid, binary_path, provider,
+					 name, NULL);
+	if (!*link) {
+		warning("%s: %s\n", err_msg, strerror(errno));
+		return errno;
+	}
+	return 0;
+}
+
+static int attach_usdts(struct javagc_bpf *obj, const char *binary_path)
+{
+	int err;
+
+	err = attach_usdt(obj, binary_path, obj->progs.handle_mem_pool_gc_start,
+			  "hotspot", "mem__pool__gc_begin",
+			  &obj->links.handle_mem_pool_gc_start,
+			  "attach usdt mem__pool__gc__begin failed");
+	if (err)
+		return err;
+
+	err = attach_usdt(obj, binary_path, obj->progs.handle_mem_pool_gc_end,
+			  "hotspot", "mem__pool__gc__end",
+			  &obj->links.handle_mem_pool_gc_end,
+			  "attach usdt mem__pool__gc_end failed");
+	if (err)
+		return err;
+
+	err = attach_usdt(obj, binary_path, obj->progs.handle_gc_start,
+			  "hotspot", "gc__begin", &obj->links.handle_gc_start,
+			  "attach usdt gc__begin failed");
+	if (err)
+		return err;
+
+	err = attach_usdt(obj, binary_path, obj->progs.handle_gc_end,
+			  "hostspot", "gc__end", &obj->links.handle_gc_end,
+			  "attch usdt gc__end failed");
+	if (err)
+		return err;
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -176,51 +228,9 @@ if (err) {
 	}
 	obj->bss->time = env.time * 100;
 
-	obj->links.handle_mem_pool_gc_start = bpf_program__attach_usdt(obj->progs.handle_mem_pool_gc_start,
-								       env.pid,
-								       binary_path,
-								       "hotspot",
-								       "mem__pool__gc_begin",
-								       NULL);
-	if (!obj->links.handle_mem_pool_gc_start) {
-		err = errno;
-		warning("attach usdt mem__pool__gc__begin failed: %s\n", strerror(err));
+	err = attach_usdts(obj, binary_path);
+	if (err)
 		goto cleanup;
-	}
-
-	obj->links.handle_mem_pool_gc_end = bpf_program__attach_usdt(obj->progs.handle_mem_pool_gc_end,
-								     env.pid,
-								     binary_path,
-								     "hotspot",
-								     "mem__pool__gc__end",
-								     NULL);
-	if (!obj->links.handle_mem_pool_gc_end) {
-		err = errno;
-		warning("attach usdt mem__pool__gc_end failed: %s\n", strerror(err));
-		goto cleanup;
-	}
-
-	obj->links.handle_gc_start = bpf_program__attach_usdt(obj->progs.handle_gc_start,
-							      env.pid,
-							      binary_path,
-							      "hotspot",
-							      "gc__begin", NULL);
-	if (!obj->links.handle_gc_start) {
-		err = errno;
-		warning("attach usdt gc__begin failed: %s\n", strerror(err));
-		goto cleanup;
-	}
-
-	obj->links.handle_gc_end = bpf_program__attach_usdt(obj->progs.handle_gc_end,
-							    env.pid,
-							    binary_path,
-							    "hostspot",
-							    "gc__end", NULL);
-	if (!obj->links.handle_gc_end) {
-		err = errno;
-		warning("attch usdt gc__end failed: %s\n", strerror(err));
-		goto cleanup;
-	}
 
 	if (signal(SIGINT, sig_handler) == SIG_ERR) {
 		warning("Can't set signal handler: %s\n", strerror(-errno));
