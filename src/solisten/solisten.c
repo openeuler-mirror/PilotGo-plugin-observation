@@ -106,9 +106,9 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
-int t argc, char *argv[])
+int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_objmain(inect_open_opts, open_opts);
+	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
 	static const struct argp argp = {
 		.options = opts,
 		.parser = parse_arg,
@@ -141,9 +141,9 @@ int t argc, char *argv[])
 
 	obj->rodata->target_pid = target_pid;
 
-	 (fentry_can_attach("inet_listen", NULL)) {
+	if (fentry_can_attach("inet_listen", NULL)) {
 		bpf_program__set_autoload(obj->progs.inet_listen_entry, false);
-		bpf_pifrogram__set_autoload(obj->progs.inet_listen_exit, false);
+		bpf_program__set_autoload(obj->progs.inet_listen_exit, false);
 	} else {
 		bpf_program__set_autoload(obj->progs.inet_listen_fexit, false);
 	}
