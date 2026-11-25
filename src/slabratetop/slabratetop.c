@@ -126,15 +126,10 @@ static int sort_column(const void *obj1, const void *obj2)
 	}
 }
 
-static int print_stat(struct slabratetop_bpf *obj)
+static void print_loadavg(void)
 {
-	FILE *f;
-	char *key, **prev_key = NULL;
-	static struct slabrate_info values[OUTPUT_ROWS_LIMIT];
-	int fd = bpf_map__fd(obj->maps.slab_entries);
-	int err = 0, rows = 0;
+	FILE *f = fopen("/proc/loadavg", "r");
 
-	f = fopen("/proc/loadavg", "r");
 	if (f) {
 		char ts[32], buf[256];
 
@@ -143,8 +138,12 @@ static int print_stat(struct slabratetop_bpf *obj)
 			printf("%8s loadavg: %s\n", ts, buf);
 		fclose(f);
 	}
+}
 
-	printf("%-32s %6s %10s\n", "CACHE", "ALLOCS", "BYTES");
+static int collect_stats(int fd, struct slabrate_info *values)
+{
+	char *key, **prev_key = NULL;
+	int err, rows = 0;
 
 	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
 		err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
@@ -154,16 +153,13 @@ static int print_stat(struct slabratetop_bpf *obj)
 		}
 		prev_key = &key;
 	}
+	return rows;
+}
 
-	qsort(values, rows, sizeof(struct slabrate_info), sort_column);
-	rows = MIN(rows, output_rows);
-
-	for (int i = 0; i < rows; i++)
-		printf("%-32s %6lld %10lld\n",
-		       values[i].name, values[i].count, values[i].size);
-
-	printf("\n");
-	prev_key = NULL;
+static int clear_stats(int fd)
+{
+	char *key, **prev_key = NULL;
+	int err;
 
 	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
 		err = bpf_map_delete_elem(fd, &key);
@@ -173,8 +169,32 @@ static int print_stat(struct slabratetop_bpf *obj)
 		}
 		prev_key = &key;
 	}
+	return 0;
+}
 
-	return err;
+static int print_stat(struct slabratetop_bpf *obj)
+{
+	static struct slabrate_info values[OUTPUT_ROWS_LIMIT];
+	int fd = bpf_map__fd(obj->maps.slab_entries);
+	int err = 0, rows;
+
+	print_loadavg();
+	printf("%-32s %6s %10s\n", "CACHE", "ALLOCS", "BYTES");
+
+	rows = collect_stats(fd, values);
+	if (rows < 0)
+		return rows;
+
+	qsort(values, rows, sizeof(struct slabrate_info), sort_column);
+	rows = MIN(rows, output_rows);
+
+	for (int i = 0; i < rows; i++)
+		printf("%-32s %6lld %10lld\n",
+		       values[i].name, values[i].count, values[i].size);
+
+	printf("\n");
+
+	return clear_stats(fd);
 }
 
 int main(int argc, char *argv[])
