@@ -145,24 +145,9 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    printf("Tracing sleeps. Hit Ctrl-C to end.\n");
+    print_header();
 
-    if (timestamp)
-        printf("%-8s ", "TIME");
-    printf("%-6s %-16s %-6s %-16s %s\n",
-           "PPID", "PCOMM", "PID", "COMM", "SECONDS");
-
-    while (!exiting)
-    {
-        err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-        if (err < 0 && err != -EINTR)
-        {
-            warning("Error polling ring/perf buffer: %d\n", err);
-            break;
-        }
-        /* reset err to 0 when exiting */
-        err = 0;
-    }
+    err = poll_events(buf);
 
 cleanup:
     naptime_bpf__destroy(obj);
