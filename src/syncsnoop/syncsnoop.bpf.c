@@ -6,6 +6,13 @@
 #include "syncsnoop.h"
 #include "compat.bpf.h"
 
+static __always_inline void fill_event(struct event *event, const char *funcname)
+{
+	event->pid = bpf_get_current_pid_tgid() >> 32;
+	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+	bpf_core_read_str(&event->funcname, sizeof(event->funcname), funcname);
+}
+
 static __always_inline int handle_enter_sync(void *ctx, const char *funcname)
 {
 	struct event *event;
@@ -14,10 +21,7 @@ static __always_inline int handle_enter_sync(void *ctx, const char *funcname)
 	if (!event)
 		return 0;
 
-	event->pid = bpf_get_current_pid_tgid() >> 32;
-	bpf_get_current_comm(&event->comm, sizeof(event->comm));
-	bpf_core_read_str(&event->funcname, sizeof(event->funcname), funcname);
-
+	fill_event(event, funcname);
 	submit_buf(ctx, event, sizeof(*event));
 
 	return 0;
