@@ -37,6 +37,21 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_duration_arg(char *arg, int pos_args,
+			       struct argp_state *state)
+{
+	if (pos_args) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+	errno = 0;
+	env.duration = strtol(arg, NULL, 10);
+	if (errno || env.duration <= 0) {
+		warning("Invalid duration");
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -60,16 +75,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		}
 		break;
 	case ARGP_KEY_ARG:
-		if (pos_args++) {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		errno = 0;
-		env.duration = strtol(arg, NULL, 10);
-		if (errno || env.duration <= 0) {
-			warning("Invalid duration");
-			argp_usage(state);
-		}
+		parse_duration_arg(arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -125,34 +131,44 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static int print_entry(int fd, struct key_info *lookup_key,
+		       struct key_info *next_key, __u64 *total_ref,
+		       __u64 *total_miss)
+{
+	struct value_info info;
+	__u64 hit;
+	int err;
+
+	err = bpf_map_lookup_elem(fd, next_key, &info);
+	if (err < 0) {
+		warning("Failed to lookup infos: %d\n", err);
+		return err;
+	}
+	hit = MAX((long)(info.ref - info.miss), 0);
+	printf("%-8u ", next_key->pid);
+	if (env.per_thread)
+		printf("%-8u ", next_key->tid);
+	printf("%-16s %-4u %12llu %12llu %6.2f%%\n",
+	       info.comm, next_key->cpu, info.ref, info.miss,
+	       info.ref > 0 ? hit * 1.0 / info.ref * 100 : 0);
+	*total_miss += info.miss;
+	*total_ref += info.ref;
+	*lookup_key = *next_key;
+	return 0;
+}
+
 static void print_map(struct bpf_map *map)
 {
-	__u64 total_ref = 0, total_miss = 0, total_hit, hit;
-	__u32 pid, cpu, tid;
+	__u64 total_ref = 0, total_miss = 0, total_hit;
 	struct key_info lookup_key = { .cpu = -1 }, next_key;
-	int err, fd = bpf_map__fd(map);
-	struct value_info info;
+	int fd = bpf_map__fd(map);
+	int err;
 
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_lookup_elem(fd, &next_key, &info);
-		if (err < 0) {
-			warning("Failed to lookup infos: %d\n", err);
+		err = print_entry(fd, &lookup_key, &next_key,
+				  &total_ref, &total_miss);
+		if (err)
 			return;
-		}
-		hit = MAX((long)(info.ref - info.miss), 0);
-		cpu = next_key.cpu;
-		pid = next_key.pid;
-		tid = next_key.tid;
-		printf("%-8u ", pid);
-		if (env.per_thread) {
-			printf("%-8u ", tid);
-		}
-		printf("%-16s %-4u %12llu %12llu %6.2f%%\n",
-		       info.comm, cpu, info.ref, info.miss,
-		       info.ref > 0 ? hit * 1.0 / info.ref * 100 : 0);
-		total_miss += info.miss;
-		total_ref += info.ref;
-		lookup_key = next_key;
 	}
 
 	total_hit = MAX((long)(total_ref - total_miss), 0);
