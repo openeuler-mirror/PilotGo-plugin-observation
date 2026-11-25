@@ -31,6 +31,29 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional_arg(struct argument *argument, const char *arg,
+				 int pos, struct argp_state *state)
+{
+	long value;
+
+	if (pos > 1) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	value = strtol(arg, NULL, 10);
+	if (errno || value <= 0) {
+		warning("Invalid %s\n", pos == 0 ? "interval" : "times");
+		argp_usage(state);
+	}
+
+	if (pos == 0)
+		argument->interval = value;
+	else
+		argument->times = value;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -47,24 +70,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		argument->timestamp = true;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			argument->interval = strtol(arg, NULL, 10);
-			if (errno || argument->interval <= 0) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			argument->times = strtol(arg, NULL, 10);
-			if (errno || argument->times <= 0) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(argument, arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -107,6 +113,134 @@ static int get_meminfo(__u64 *buffers, __u64 *cached)
 	return 0;
 }
 
+/*
+ * account_page_dirtied was renamed to folio_account_dirtied
+ * in kernel commit 203a31516616 ("mm/writeback: Add __folio_mark_dirty()")
+ */
+static bool setup_dirty_tp(struct cachestat_bpf *obj)
+{
+	if (tracepoint_exists("writeback", "writeback_dirty_folio"))
+		bpf_program__set_autoload(obj->progs.tracepoint_writeback_dirty_page,
+					  false);
+	else if (tracepoint_exists("writeback", "writeback_dirty_page"))
+		bpf_program__set_autoload(obj->progs.tracepoint_writeback_dirty_folio,
+					  false);
+	else {
+		warning("dirty entry not found in current kernel, please upgrade.\n");
+		return false;
+	}
+	return true;
+}
+
+static bool setup_misses_tp(struct cachestat_bpf *obj)
+{
+	/* misses add tracepoint */
+	if (fentry_can_attach("filemap_add_folio", NULL)) {
+		int err = bpf_program__set_attach_target(
+				obj->progs.fentry_add_to_page_cache_lru, 0,
+				"filemap_add_folio");
+		if (err) {
+			warning("Failed to set attach target\n");
+			return false;
+		}
+	}
+
+	if (fentry_can_attach("add_to_page_cache_lru", NULL) ||
+	    fentry_can_attach("filemap_add_folio", NULL)) {
+		bpf_program__set_autoload(obj->progs.kprobe_add_to_page_cache_lru,
+					  false);
+		bpf_program__set_autoload(obj->progs.kprobe_filemap_add_folio,
+					  false);
+	} else {
+		if (kprobe_exists("filemap_add_folio"))
+			bpf_program__set_autoload(
+				obj->progs.kprobe_add_to_page_cache_lru, false);
+		else
+			bpf_program__set_autoload(
+				obj->progs.kprobe_filemap_add_folio, false);
+		bpf_program__set_autoload(obj->progs.fentry_add_to_page_cache_lru,
+					  false);
+	}
+	return true;
+}
+
+static void setup_total_tp(struct cachestat_bpf *obj)
+{
+	/* total add tracepoint */
+	if (fentry_can_attach("mark_page_accessed", NULL))
+		bpf_program__set_autoload(obj->progs.kprobe_mark_page_accessed,
+					  false);
+	else
+		bpf_program__set_autoload(obj->progs.fentry_mark_page_accessed,
+					  false);
+
+	if (fentry_can_attach("mark_buffer_dirty", NULL))
+		bpf_program__set_autoload(obj->progs.kprobe_mark_buffer_dirty,
+					  false);
+	else
+		bpf_program__set_autoload(obj->progs.fentry_mark_buffer_dirty,
+					  false);
+}
+
+static void print_header(bool timestamp)
+{
+	if (timestamp)
+		printf("%-8s ", "TIME");
+	printf("%8s %8s %8s %8s %12s %10s\n", "HITS", "MISSES", "DIRTIES",
+		"HITRATIO", "BUFFERS_MB", "CACHED_MB");
+}
+
+static int print_stats(struct cachestat_bpf *obj, bool timestamp)
+{
+	__u64 buffers, cached, mbd;
+	__s64 total, misses, hits;
+	float ratio;
+	int err;
+
+	/* total = total cache accesses without counting dirties */
+	total = __atomic_exchange_n(&obj->bss->total, 0, __ATOMIC_RELAXED);
+	/* misses = total of add to lru because of read misses */
+	misses = __atomic_exchange_n(&obj->bss->misses, 0, __ATOMIC_RELAXED);
+	/* mbd = total of mark_buffer_dirty events */
+	mbd = __atomic_exchange_n(&obj->bss->mbd, 0, __ATOMIC_RELAXED);
+
+	if (total < 0)
+		total = 0;
+	if (misses < 0)
+		misses = 0;
+	hits = total - misses;
+
+	/*
+	 * If hits are < 0, then its possible misses are overestimated
+	 * due to possibly page cache read ahead adding more pages than
+	 * needed. In this case just assume misses as total and reset
+	 * hits.
+	 */
+	if (hits < 0) {
+		misses = total;
+		hits = 0;
+	}
+	ratio = total > 0 ? hits * 1.0 / total : 0.0;
+
+	err = get_meminfo(&buffers, &cached);
+	if (err) {
+		warning("Failed to get meminfo: %d\n", err);
+		return err;
+	}
+
+	if (timestamp) {
+		char ts[32];
+
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%-8s ", ts);
+	}
+	printf("%8lld %8lld %8llu %7.2f%% %12llu %10llu\n",
+		hits, misses, mbd, 100 * ratio,
+		buffers / 1024, cached / 1024);
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -118,9 +252,7 @@ int main(int argc, char *argv[])
 		.interval = -1,
 		.times = 99999999,
 	};
-	__u64 buffers, cached, mbd;
 	struct cachestat_bpf *obj;
-	__s64 total, misses, hits;
 	int err;
 
 	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
@@ -138,51 +270,10 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	/*
-	 * account_page_dirtied was renamed to folio_account_dirtied
-	 * in kernel commit 203a31516616 ("mm/writeback: Add __folio_mark_dirty()")
-	 */
-	if (tracepoint_exists("writeback", "writeback_dirty_folio")) {
-		bpf_program__set_autoload(obj->progs.tracepoint_writeback_dirty_page, false);
-	} else if (tracepoint_exists("writeback", "writeback_dirty_page")) {
-		bpf_program__set_autoload(obj->progs.tracepoint_writeback_dirty_folio, false);
-	} else {
-		warning("dirty entry not found in current kernel, please upgrade.\n");
+	if (!setup_dirty_tp(obj) || !setup_misses_tp(obj))
 		goto cleanup;
-	}
 
-	/* misses add tracepoint */
-	if (fentry_can_attach("filemap_add_folio", NULL)) {
-		err = bpf_program__set_attach_target(obj->progs.fentry_add_to_page_cache_lru, 0,
-						     "filemap_add_folio");
-		if (err) {
-			warning("Failed to set attach target\n");
-			goto cleanup;
-		}
-	}
-
-	if (fentry_can_attach("add_to_page_cache_lru", NULL) ||
-	    fentry_can_attach("filemap_add_folio", NULL)) {
-		bpf_program__set_autoload(obj->progs.kprobe_add_to_page_cache_lru, false);
-		bpf_program__set_autoload(obj->progs.kprobe_filemap_add_folio, false);
-	} else {
-		if (kprobe_exists("filemap_add_folio"))
-			bpf_program__set_autoload(obj->progs.kprobe_add_to_page_cache_lru, false);
-		else
-			bpf_program__set_autoload(obj->progs.kprobe_filemap_add_folio, false);
-		bpf_program__set_autoload(obj->progs.fentry_add_to_page_cache_lru, false);
-	}
-
-	/* total add tracepoint */
-	if (fentry_can_attach("mark_page_accessed", NULL))
-		bpf_program__set_autoload(obj->progs.kprobe_mark_page_accessed, false);
-	else
-		bpf_program__set_autoload(obj->progs.fentry_mark_page_accessed, false);
-
-	if (fentry_can_attach("mark_buffer_dirty", NULL))
-		bpf_program__set_autoload(obj->progs.kprobe_mark_buffer_dirty, false);
-	else
-		bpf_program__set_autoload(obj->progs.fentry_mark_buffer_dirty, false);
+	setup_total_tp(obj);
 
 	err = cachestat_bpf__load(obj);
 	if (err) {
@@ -203,55 +294,14 @@ int main(int argc, char *argv[])
 
 	signal(SIGINT, sig_handler);
 
-	if (argument.timestamp)
-		printf("%-8s ", "TIME");
-	printf("%8s %8s %8s %8s %12s %10s\n", "HITS", "MISSES", "DIRTIES",
-		"HITRATIO", "BUFFERS_MB", "CACHED_MB");
+	print_header(argument.timestamp);
 
 	while (1) {
-		float ratio;
-
 		sleep(argument.interval);
 
-		/* total = total cache accesses without counting dirties */
-		total = __atomic_exchange_n(&obj->bss->total, 0, __ATOMIC_RELAXED);
-		/* misses = total of add to lru because of read misses */
-		misses = __atomic_exchange_n(&obj->bss->misses, 0, __ATOMIC_RELAXED);
-		/* mbd = total of mark_buffer_dirty events */
-		mbd = __atomic_exchange_n(&obj->bss->mbd, 0, __ATOMIC_RELAXED);
-
-		if (total < 0)
-			total = 0;
-		if (misses < 0)
-			misses = 0;
-		hits = total - misses;
-
-		/*
-		 * If hits are < 0, then its possible misses are overestimated
-		 * due to possibly page cache read ahead adding more pages than
-		 * needed. In this case just assume misses as total and reset
-		 * hits.
-		 */
-		if (hits < 0) {
-			misses = total;
-			hits = 0;
-		}
-		ratio = total > 0 ? hits * 1.0 / total : 0.0;
-		err = get_meminfo(&buffers, &cached);
-		if (err) {
-			warning("Failed to get meminfo: %d\n", err);
+		err = print_stats(obj, argument.timestamp);
+		if (err)
 			goto cleanup;
-		}
-
-		if (argument.timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s ", ts);
-		}
-		printf("%8lld %8lld %8llu %7.2f%% %12llu %10llu\n",
-			hits, misses, mbd, 100 * ratio,
-			buffers / 1024, cached / 1024);
 
 		if (exiting || --argument.times == 0)
 			break;
