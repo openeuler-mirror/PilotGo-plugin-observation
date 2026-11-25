@@ -33,6 +33,22 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional_arg(const char *arg, int pos,
+				 struct argp_state *state)
+{
+	if (pos > 0) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	env.duration = strtoll(arg, NULL, 10);
+	if (errno || env.duration <= 0) {
+		warning("Invalid delay (in us) : %s\n", arg);
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -48,25 +64,14 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		env.milliseconds = true;
 		break;
 	case 'd':
-		env.disk = arg;
 		if (strlen(arg) + 1 > DISK_NAME_LEN) {
 			warning("Invalid disk name: too long\n");
 			argp_usage(state);
 		}
+		env.disk = arg;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.duration = strtoll(arg, NULL, 10);
-			if (errno || env.duration <= 0) {
-				warning("Invalid delay (in us) : %s\n", arg);
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -85,13 +90,24 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 static void sig_handler(int sig)
 {}
 
+static void print_stack(const struct ksyms *ksyms, const struct rqinfo *key)
+{
+	const struct ksym *ksym;
+	int num_stack, i;
+
+	num_stack = key->kern_stack_size / sizeof(key->kern_stack[0]);
+	for (i = 0; i < num_stack; i++) {
+		ksym = ksyms__map_addr(ksyms, key->kern_stack[i]);
+		printf("%s\n", ksym ? ksym->name : "Unknown");
+	}
+}
+
 static void print_map(struct ksyms *ksyms, struct partitions *partitions, int fd)
 {
 	const char *units = env.milliseconds ? "msecs" : "usecs";
 	struct rqinfo lookup_key = {}, next_key;
 	const struct partition *partition;
-	const struct ksym *ksym;
-	int num_stack, i, err;
+	int err;
 	struct hist hist;
 
 	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
@@ -104,24 +120,65 @@ static void print_map(struct ksyms *ksyms, struct partitions *partitions, int fd
 		printf("%-14.14s %-6d %-7s\n",
 			next_key.comm, next_key.pid,
 			partition ? partition->name : "Unknown");
-		num_stack = next_key.kern_stack_size /
-				sizeof(next_key.kern_stack[0]);
-		for (i = 0; i < num_stack; i++) {
-			ksym = ksyms__map_addr(ksyms, next_key.kern_stack[i]);
-			printf("%s\n", ksym ? ksym->name : "Unknown");
-		}
+		print_stack(ksyms, &next_key);
 		print_log2_hist(hist.slots, MAX_SLOTS, units);
 		printf("\n");
 		lookup_key = next_key;
 	}
+}
 
-	return;
+static bool setup_disk_filter(struct biostacks_bpf *obj,
+			      const struct partitions *partitions)
+{
+	const struct partition *partition;
+
+	if (!env.disk)
+		return true;
+
+	partition = partitions__get_by_name(partitions, env.disk);
+	if (!partition) {
+		warning("Invalid partition name: not exist\n");
+		return false;
+	}
+	obj->rodata->filter_dev = true;
+	obj->rodata->target_dev = partition->dev;
+	return true;
+}
+
+static void set_probe_autoload(struct biostacks_bpf *obj,
+			       const struct ksyms *ksyms)
+{
+	if (fentry_can_attach("blk_account_io_start", NULL)) {
+		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
+					       "blk_account_io_start");
+		bpf_program__set_attach_target(obj->progs.blk_account_io_done, 0,
+					       "blk_account_io_done");
+		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start,
+					  false);
+		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_done,
+					  false);
+	} else if (fentry_can_attach("__blk_account_io_start", NULL)) {
+		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
+					       "__blk_account_io_start");
+		bpf_program__set_attach_target(obj->progs.blk_account_io_done, 0,
+					       "__blk_account_io_done");
+		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start,
+					  false);
+		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_done,
+					  false);
+	} else {
+		bpf_program__set_autoload(obj->progs.blk_account_io_start, false);
+		bpf_program__set_autoload(obj->progs.blk_account_io_done, false);
+	}
+
+	if (!ksyms__get_symbol(ksyms, "blk_account_io_merge_bio"))
+		bpf_program__set_autoload(obj->progs.blk_account_io_merge_bio,
+					  false);
 }
 
 int main(int argc, char *argv[])
 {
 	struct partitions *partitions = NULL;
-	const struct partition *partition;
 	static const struct argp argp = {
 		.options = opts,
 		.parser = parse_arg,
@@ -150,36 +207,10 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (env.disk) {
-		partition = partitions__get_by_name(partitions, env.disk);
-		if (!partition) {
-			warning("Invalid partition name: not exist\n");
-			goto cleanup;
-		}
-		obj->rodata->filter_dev = true;
-		obj->rodata->target_dev = partition->dev;
-	}
+	if (!setup_disk_filter(obj, partitions))
+		goto cleanup;
 
 	obj->rodata->target_ms = env.milliseconds;
-
-	if (fentry_can_attach("blk_account_io_start", NULL)) {
-		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
-					       "blk_account_io_start");
-		bpf_program__set_attach_target(obj->progs.blk_account_io_done, 0,
-					       "blk_account_io_done");
-		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start, false);
-		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_done, false);
-	} else if (fentry_can_attach("__blk_account_io_start", NULL)) {
-		bpf_program__set_attach_target(obj->progs.blk_account_io_start, 0,
-					       "__blk_account_io_start");
-		bpf_program__set_attach_target(obj->progs.blk_account_io_done, 0,
-					       "__blk_account_io_done");
-		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_start, false);
-		bpf_program__set_autoload(obj->progs.kprobe_blk_account_io_done, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.blk_account_io_start, false);
-		bpf_program__set_autoload(obj->progs.blk_account_io_done, false);
-	}
 
 	ksyms = ksyms__load();
 	if (!ksyms) {
@@ -187,8 +218,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	if (!ksyms__get_symbol(ksyms, "blk_account_io_merge_bio"))
-		bpf_program__set_autoload(obj->progs.blk_account_io_merge_bio, false);
+	set_probe_autoload(obj, ksyms);
 
 	err = biostacks_bpf__load(obj);
 	if (err) {

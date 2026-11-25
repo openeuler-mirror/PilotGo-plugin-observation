@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
+// SPDX-License-Identifier: GPL-2.0
 #include "vmlinux.h"
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_tracing.h>
@@ -35,14 +35,33 @@ struct {
 
 static struct hist zero;
 
+static __always_inline u32 rq_disk_dev(struct request *rq)
+{
+	struct gendisk *disk = get_disk(rq);
+
+	if (!disk)
+		return 0;
+	return MKDEV(BPF_CORE_READ(disk, major),
+		     BPF_CORE_READ(disk, first_minor));
+}
+
+static __always_inline void fill_rqinfo(void *ctx, struct rqinfo *rqinfo,
+					u32 dev)
+{
+	rqinfo->pid = bpf_get_current_pid_tgid();
+	rqinfo->kern_stack_size =
+		bpf_get_stack(ctx, rqinfo->kern_stack,
+			      sizeof(rqinfo->kern_stack), 0);
+	bpf_get_current_comm(&rqinfo->comm, sizeof(rqinfo->comm));
+	rqinfo->dev = dev;
+}
+
 static __always_inline int trace_start(void *ctx, struct request *rq, bool merge_bio)
 {
 	struct internal_rqinfo *i_rqinfop = NULL, i_rqinfo = {};
-	struct gendisk *disk = get_disk(rq);
 	u32 dev;
 
-	dev = disk ? MKDEV(BPF_CORE_READ(disk, major),
-			   BPF_CORE_READ(disk, first_minor)) : 0;
+	dev = rq_disk_dev(rq);
 	if (filter_dev && dev != target_dev)
 		return 0;
 
@@ -52,13 +71,7 @@ static __always_inline int trace_start(void *ctx, struct request *rq, bool merge
 		i_rqinfop = &i_rqinfo;
 
 	i_rqinfop->start_ts = bpf_ktime_get_ns();
-	i_rqinfop->rqinfo.pid = bpf_get_current_pid_tgid();
-	i_rqinfop->rqinfo.kern_stack_size =
-		bpf_get_stack(ctx, i_rqinfop->rqinfo.kern_stack,
-			      sizeof(i_rqinfop->rqinfo.kern_stack), 0);
-	bpf_get_current_comm(&i_rqinfop->rqinfo.comm,
-			     sizeof(i_rqinfop->rqinfo.comm));
-	i_rqinfop->rqinfo.dev = dev;
+	fill_rqinfo(ctx, &i_rqinfop->rqinfo, dev);
 
 	if (i_rqinfop == &i_rqinfo)
 		bpf_map_update_elem(&rqinfos, &rq, i_rqinfop, BPF_ANY);
@@ -103,10 +116,7 @@ static __always_inline int probe_blk_account_io_done(struct request *rq)
 	if (!histp)
 		goto cleanup;
 
-	if (target_ms)
-		delta /= 1000000U;
-	else
-		delta /= 1000U;
+	delta /= target_ms ? 1000000U : 1000U;
 	slot = log2l(delta);
 	if (slot >= MAX_SLOTS)
 		slot = MAX_SLOTS - 1;
@@ -117,7 +127,6 @@ cleanup:
 
 	return 0;
 }
-
 
 SEC("fentry/blk_account_io_done")
 int BPF_PROG(blk_account_io_done, struct request *rq)
