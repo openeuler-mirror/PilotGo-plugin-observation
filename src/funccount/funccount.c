@@ -124,12 +124,10 @@ static int sort_column(const void *o1, const void *o2)
 
 struct ksyms *ksyms;
 
-static int print_maps(struct funccount_bpf *obj)
+static int collect_values(int fd, struct value *values)
 {
-	struct value values[MAX_ROWS+1];
-	int fd = bpf_map__fd(obj->maps.counts);
-	__u64 *prev_key = NULL, next_key;
-	int err = 0, rows = 0;
+	__u64 *prev_key = NULL;
+	int err, rows = 0;
 
 	while (!bpf_map_get_next_key(fd, prev_key, &values[rows].ip)) {
 		err = bpf_map_lookup_elem(fd, &values[rows].ip, &values[rows].count);
@@ -142,8 +140,11 @@ static int print_maps(struct funccount_bpf *obj)
 			break;
 	}
 
-	qsort(values, rows, sizeof(struct value), sort_column);
+	return rows;
+}
 
+static void print_values(struct value *values, int rows)
+{
 	for (int i = 0; i < rows; i++) {
 		const struct ksym *ksym = ksyms__map_addr(ksyms, values[i].ip);
 
@@ -156,8 +157,13 @@ static int print_maps(struct funccount_bpf *obj)
 			printf("[<%016llx>] b'%-26s' %8lld\n", values[i].ip, "<null sym>",
 			       values[i].count);
 	}
+}
 
-	prev_key = NULL;
+static int clear_values(int fd)
+{
+	__u64 *prev_key = NULL, next_key;
+	int err = 0;
+
 	while (!bpf_map_get_next_key(fd, prev_key, &next_key)) {
 		err = bpf_map_delete_elem(fd, &next_key);
 		if (err) {
@@ -168,6 +174,22 @@ static int print_maps(struct funccount_bpf *obj)
 	}
 
 	return err;
+}
+
+static int print_maps(struct funccount_bpf *obj)
+{
+	struct value values[MAX_ROWS+1];
+	int fd = bpf_map__fd(obj->maps.counts);
+	int rows;
+
+	rows = collect_values(fd, values);
+	if (rows < 0)
+		return rows;
+
+	qsort(values, rows, sizeof(struct value), sort_column);
+	print_values(values, rows);
+
+	return clear_values(fd);
 }
 
 static void print_tracepoint(struct funccount_bpf *obj, const char *tp_category,
@@ -232,6 +254,76 @@ static int split_pattern(const char *raw_pattern, enum TRACE_TYPE *type,
 	return 0;
 }
 
+static int set_prog_autoload(struct funccount_bpf *obj, enum TRACE_TYPE type)
+{
+	switch (type) {
+	case USDT:
+	case UPROBE:
+		bpf_program__set_autoload(obj->progs.function_entry, false);
+		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
+		warning("Not implement uprobe\n");
+		return -1;
+	case KPROBE:
+		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
+		break;
+	case TRACEPOINT:
+		bpf_program__set_autoload(obj->progs.function_entry, false);
+		break;
+	default:
+		warning("Wrong trace type, exiting.\n");
+		return -1;
+	}
+	return 0;
+}
+
+static int attach_prog(struct funccount_bpf *obj, enum TRACE_TYPE type,
+		       const char *library, const char *pattern,
+		       struct bpf_kprobe_multi_opts *kmopts)
+{
+	switch (type) {
+	case TRACEPOINT:
+		obj->links.tracepoint_entry = bpf_program__attach_tracepoint(
+				obj->progs.tracepoint_entry, library, pattern);
+		if (!obj->links.tracepoint_entry) {
+			warning("Failed to attach t:%s:%s\n", library, pattern);
+			return -errno;
+		}
+		return 1;
+	case KPROBE:
+		obj->links.function_entry = bpf_program__attach_kprobe_multi_opts(
+						obj->progs.function_entry, pattern, kmopts);
+		if (!obj->links.function_entry) {
+			warning("Failed attach kprobe multi, kernel don't support: %s\n", strerror(errno));
+			return -errno;
+		}
+		return kmopts->cnt;
+	default:
+		return -1;
+	}
+}
+
+static void print_timestamp(void)
+{
+	char ts[32];
+
+	strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	printf("%-8s\n", ts);
+}
+
+static void print_counts(struct funccount_bpf *obj, enum TRACE_TYPE type,
+			 const char *library, const char *pattern)
+{
+	if (type == KPROBE) {
+		printf("%-20s %-26s %8s\n", "ADDR", "FUNC", "COUNT");
+		print_maps(obj);
+	} else if (type == TRACEPOINT) {
+		printf("%-26s %8s\n", "FUNC", "COUNT");
+		print_tracepoint(obj, library, pattern);
+	} else {
+		warning("Not implement\n");
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_kprobe_multi_opts, kmopts);
@@ -271,23 +363,8 @@ int main(int argc, char *argv[])
 	obj->rodata->target_pid = env.pid;
 	split_pattern(env.functions, &type, &library, &pattern);
 
-	switch (type) {
-	case USDT:
-	case UPROBE:
-		bpf_program__set_autoload(obj->progs.function_entry, false);
-		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
-		warning("Not implement uprobe\n");
+	if (set_prog_autoload(obj, type))
 		goto cleanup;
-	case KPROBE:
-		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
-		break;
-	case TRACEPOINT:
-		bpf_program__set_autoload(obj->progs.function_entry, false);
-		break;
-	default:
-		warning("Wrong trace type, exiting.\n");
-		goto cleanup;
-	}
 
 	err = funccount_bpf__load(obj);
 	if (err) {
@@ -295,28 +372,9 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	switch (type) {
-	case TRACEPOINT:
-		obj->links.tracepoint_entry = bpf_program__attach_tracepoint(
-				obj->progs.tracepoint_entry, library, pattern);
-		if (!obj->links.tracepoint_entry) {
-			warning("Failed to attach t:%s:%s\n", library, pattern);
-			err = -errno;
-			goto cleanup;
-		}
-		cnt = 1;
-		break;
-	case KPROBE:
-		obj->links.function_entry = bpf_program__attach_kprobe_multi_opts(
-						obj->progs.function_entry, pattern, &kmopts);
-		if (!obj->links.function_entry) {
-			warning("Failed attach kprobe multi, kernel don't support: %s\n", strerror(errno));
-			err = -errno;
-			goto cleanup;
-		}
-		cnt = kmopts.cnt;
-		break;
-	default:
+	cnt = attach_prog(obj, type, library, pattern, &kmopts);
+	if (cnt < 0) {
+		err = cnt;
 		goto cleanup;
 	}
 
@@ -334,23 +392,14 @@ int main(int argc, char *argv[])
 		sleep(env.interval);
 
 		printf("\n");
-		if (env.timestamp) {
-			char ts[32];
+		if (env.timestamp)
+			print_timestamp();
 
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
-
-		if (type == KPROBE) {
-			printf("%-20s %-26s %8s\n", "ADDR", "FUNC", "COUNT");
-			print_maps(obj);
-		} else if (type == TRACEPOINT) {
-			printf("%-26s %8s\n", "FUNC", "COUNT");
-			print_tracepoint(obj, library, pattern);
-		} else {
+		if (type != KPROBE && type != TRACEPOINT) {
 			warning("Not implement\n");
 			break;
 		}
+		print_counts(obj, type, library, pattern);
 	}
 
 	printf("Detaching...\n");
