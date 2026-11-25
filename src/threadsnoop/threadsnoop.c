@@ -105,6 +105,28 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on cpu #%d\n", lost_cnt, cpu);
 }
 
+static void print_header(void)
+{
+	printf("%-10s %-6s %-16s %s\n", "TIME(ms)", "PID", "COMM", "FUNC");
+}
+
+static int poll_events(struct bpf_buffer *buf)
+{
+	int err = 0;
+
+	while (!exiting) {
+		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+		if (err < 0 && err != -EINTR) {
+			warning("Error polling ring/perf buffer: %d\n", err);
+			break;
+		}
+		/* reset err to 0 when exiting */
+		err = 0;
+	}
+
+	return err;
+}
+
 static int attach_uprobes(struct threadsnoop_bpf *obj, struct bpf_link **link)
 {
 	char *pthread_lib_path;
