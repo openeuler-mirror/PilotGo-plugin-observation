@@ -41,6 +41,12 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 }
 
 #define MAX_PATH_LEN	256
+#define MAX_BPF_TYPES	256
+
+struct bpf_count {
+	char bpf_name[MAX_PATH_LEN];
+	int count;
+};
 
 static char *comm_for_pid(const char *pid)
 {
@@ -70,18 +76,56 @@ static char *comm_for_pid(const char *pid)
 	return buffer;
 }
 
+static void count_bpf_name(struct bpf_count *counts, int *counts_size,
+			   const char *bpf_name)
+{
+	for (int i = 0; i < *counts_size; i++) {
+		if (strcmp(counts[i].bpf_name, bpf_name) == 0) {
+			counts[i].count++;
+			return;
+		}
+	}
+
+	counts[*counts_size].count = 1;
+	strncpy(counts[*counts_size].bpf_name, bpf_name, MAX_PATH_LEN);
+	(*counts_size)++;
+}
+
+static void collect_bpf_fds(DIR *dir, const char *root, regex_t *regex,
+			    struct bpf_count *counts, int *counts_size)
+{
+	struct dirent *entry;
+
+	while ((entry = readdir(dir)) != NULL) {
+		char fd_path[MAX_PATH_LEN*2];
+		char link_target[MAX_PATH_LEN];
+		regmatch_t match[2];
+		size_t link_len;
+
+		sprintf(fd_path, "%s/%s", root, entry->d_name);
+		link_len = readlink(fd_path, link_target, MAX_PATH_LEN - 1);
+		if (link_len == -1)
+			continue;
+		link_target[link_len] = 0;
+
+		if (regexec(regex, link_target, 2, match, 0) == 0) {
+			char bpf_name[MAX_PATH_LEN];
+
+			strncpy(bpf_name, link_target + match[1].rm_so,
+				match[1].rm_eo - match[1].rm_so);
+			bpf_name[match[1].rm_eo - match[1].rm_so] = 0;
+			count_bpf_name(counts, counts_size, bpf_name);
+		}
+	}
+}
+
 static void find_bpf_fds(const char *pid)
 {
-	char root[MAX_PATH_LEN];
-	DIR *dir;
-	struct dirent *entry;
-	regex_t regex;
-	regmatch_t match[2];
+	struct bpf_count counts[MAX_BPF_TYPES];
 	int counts_size = 0;
-	struct {
-		char bpf_name[MAX_PATH_LEN];
-		int count;
-	} counts[256];
+	char root[MAX_PATH_LEN];
+	regex_t regex;
+	DIR *dir;
 
 	if (regcomp(&regex, "anon_inode:bpf-(\\w+)", REG_EXTENDED) != 0) {
 		warning("Failed to compile regex\n");
@@ -93,40 +137,7 @@ static void find_bpf_fds(const char *pid)
 	if (!dir)
 		return;
 
-	while ((entry = readdir(dir)) != NULL) {
-		char fd_path[MAX_PATH_LEN*2];
-		char link_target[MAX_PATH_LEN];
-		size_t link_len;
-
-		sprintf(fd_path, "%s/%s", root, entry->d_name);
-		link_len = readlink(fd_path, link_target, MAX_PATH_LEN - 1);
-		if (link_len == -1)
-			continue;
-		link_target[link_len] = 0;
-
-		if (regexec(&regex, link_target, 2, match, 0) == 0) {
-			char bpf_name[MAX_PATH_LEN];
-			bool found = false;
-
-			strncpy(bpf_name, link_target + match[1].rm_so,
-				match[1].rm_eo - match[1].rm_so);
-			bpf_name[match[1].rm_eo - match[1].rm_so] = 0;
-
-			for (int i = 0; i < counts_size; i++) {
-				if (strcmp(counts[i].bpf_name, bpf_name) == 0) {
-					counts[i].count++;
-					found = true;
-					break;
-				}
-			}
-
-			if (!found) {
-				counts[counts_size].count = 1;
-				strncpy(counts[counts_size].bpf_name, bpf_name, MAX_PATH_LEN);
-				counts_size++;
-			}
-		}
-	}
+	collect_bpf_fds(dir, root, &regex, counts, &counts_size);
 
 	for (int i = 0; i < counts_size; i++)
 		printf("%-6s %-16s %-8s %-4d\n", pid, comm_for_pid(pid),
