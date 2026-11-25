@@ -492,6 +492,26 @@ static void trace_printf(void *ctx, const char *fmt, va_list args)
 #define VALID_NAME	"%[A-Za-z0-9\\-_]"
 #define ARGDATA		"%[^)]"
 
+static int parse_arg_data(char *arg, char *argname, char *membername,
+			  char **predicate)
+{
+	int ret;
+
+	ret = sscanf(arg, VALID_NAME "->" VALID_NAME, argname, membername);
+	if (ret == 2) {
+		if (strlen(arg) > strlen(argname) + strlen(membername) + 2)
+			*predicate = arg + strlen(argname) + strlen(membername) + 2;
+		pr_debug("'%s' dereferences '%s', predicate '%s'",
+			 argname, membername, *predicate);
+	} else {
+		if (strlen(arg) > strlen(argname))
+			*predicate = arg + strlen(argname);
+		pr_debug("'%s' arg, predicate '%s'", argname, *predicate);
+		membername[0] = '\0';
+	}
+	return 0;
+}
+
 static int parse_trace(char *str, struct trace *trace)
 {
 	__u8 i, nr_predicates = 0, nr_entry = 0, nr_return = 0;
@@ -562,22 +582,7 @@ static int parse_trace(char *str, struct trace *trace)
 	     arg = strtok_r(NULL, ",", &saveptr), i++) {
 		char *predicate = NULL;
 
-		ret = sscanf(arg, VALID_NAME "->" VALID_NAME,
-			     argname, membername);
-		if (ret == 2) {
-			if (strlen(arg) >
-			    strlen(argname) + strlen(membername) + 2) {
-				predicate = arg + strlen(argname) +
-					    strlen(membername) + 2;
-			}
-			pr_debug("'%s' dereferences '%s', predicate '%s'",
-				 argname, membername, predicate);
-		} else {
-			if (strlen(arg) > strlen(argname))
-				predicate = arg + strlen(argname);
-			pr_debug("'%s' arg, predicate '%s'", argname, predicate);
-			membername[0] = '\0';
-		}
+		parse_arg_data(arg, argname, membername, &predicate);
 
 		if (i >= MAX_TRACES) {
 			pr_err("Too many arguments; up to %d are supported",
@@ -685,10 +690,65 @@ static int cmd_info(int argc, char *argv[])
 	return 0;
 }
 
+static bool show_trace_value(struct trace *trace, struct value *val,
+			     struct trace_data *data, int shown)
+{
+	DECLARE_LIBBPF_OPTS(btf_dump_type_data_opts, opts);
+	bool entry = trace->data_flags & KSNOOP_F_ENTRY;
+	int ret;
+
+	opts.indent_level = 36;
+	opts.indent_str = " ";
+
+	/*
+	 * skip if it's entry data and trace data is for return, or
+	 * if it's return and trace data is for entry; only exception in
+	 * the latter case is if we stashed data; in such cases we
+	 * want to see it as it's a mix of entry/return data with
+	 * predicates.
+	 */
+	if ((entry && !base_arg_is_entry(val->base_arg)) ||
+	    (!entry && base_arg_is_entry(val->base_arg) &&
+	     !(trace->flags & KSNOOP_F_STASH)))
+		return false;
+
+	if (val->type_id == 0)
+		return false;
+
+	if (shown > 0)
+		printf(",\n");
+	printf("%34s %s = ", "", val->name);
+	if (val->flags & KSNOOP_F_PTR)
+		printf("*(0x%llx)", data->raw_value);
+	printf("\n");
+
+	if (data->err_type_id != 0) {
+		char typestr[MAX_STR];
+
+		printf("%36s /* Cannot show '%s' as '%s%s'; invalid/userspace ptr> */\n",
+		       "",
+		       val->name,
+		       type_id_to_str(trace->btf,
+				      val->type_id,
+				      typestr),
+		       val->flags & KSNOOP_F_PTR ? " *" : "");
+	} else {
+		ret = btf_dump__dump_type_data(trace->dump, val->type_id,
+					       trace->buf + data->buf_offset,
+					       data->buf_len, &opts);
+		/* truncated? */
+		if (ret == -E2BIG)
+			printf("%36s... /* %d bytes of %d */", "",
+			       data->buf_len,
+			       val->size);
+	}
+	return true;
+}
+
 static void trace_handler(void *ctx, int cpu, void *data, __u32 data_sz)
 {
 	struct trace *trace = data;
-	int i, shown, ret;
+	int i, shown;
 
 	pr_debug("got trace, size %d", data_sz);
 	if (data_sz < (sizeof(*trace) - MAX_TRACE_BUF)) {
@@ -700,57 +760,11 @@ static void trace_handler(void *ctx, int cpu, void *data, __u32 data_sz)
 	       trace->func.name);
 
 	for (i = 0, shown = 0; i < trace->nr_traces; i++) {
-		DECLARE_LIBBPF_OPTS(btf_dump_type_data_opts, opts);
-		bool entry = trace->data_flags & KSNOOP_F_ENTRY;
 		struct value *val = &trace->traces[i];
-		struct trace_data *data = &trace->trace_data[i];
+		struct trace_data *td = &trace->trace_data[i];
 
-		opts.indent_level = 36;
-		opts.indent_str = " ";
-
-		/*
-		 * skip if it's entry data and trace data is for return, or
-		 * if it's return and trace data is for entry; only exception in
-		 * the latter case is if we stashed data; in such cases we
-		 * want to see it as it's a mix of entry/return data with
-		 * predicates.
-		 */
-		if ((entry && !base_arg_is_entry(val->base_arg)) ||
-		    (!entry && base_arg_is_entry(val->base_arg) &&
-		     !(trace->flags & KSNOOP_F_STASH)))
-			continue;
-
-		if (val->type_id == 0)
-			continue;
-
-		if (shown > 0)
-			printf(",\n");
-		printf("%34s %s = ", "", val->name);
-		if (val->flags & KSNOOP_F_PTR)
-			printf("*(0x%llx)", data->raw_value);
-		printf("\n");
-
-		if (data->err_type_id != 0) {
-			char typestr[MAX_STR];
-
-			printf("%36s /* Cannot show '%s' as '%s%s'; invalid/userspace ptr> */\n",
-			       "",
-			       val->name,
-			       type_id_to_str(trace->btf,
-				              val->type_id,
-					      typestr),
-			       val->flags & KSNOOP_F_PTR ? " *" : "");
-		} else {
-			ret = btf_dump__dump_type_data(trace->dump, val->type_id,
-						       trace->buf + data->buf_offset,
-						       data->buf_len, &opts);
-			/* truncated? */
-			if (ret == -E2BIG)
-				printf("%36s... /* %d bytes of %d */", "",
-				       data->buf_len,
-				       val->size);
-		}
-		shown++;
+		if (show_trace_value(trace, val, td, shown))
+			shown++;
 	}
 	printf("\n%31s);\n\n", "");
 	fflush(stdout);
