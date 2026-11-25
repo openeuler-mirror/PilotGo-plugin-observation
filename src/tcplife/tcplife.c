@@ -48,6 +48,19 @@ static const struct argp_option opts[] = {
         {}
 };
 
+static void parse_ports(int key, char *arg, struct argp_state *state)
+{
+        char *port = strtok(arg, ",");
+
+        for (int i = 0; i < MAX_PORTS && port; i++) {
+                if (key == 'L')
+                        env.target_sports[i] = safe_strtol(port, 1, 65535, state);
+                else
+                        env.target_dports[i] = safe_strtol(port, 1, 63355, state);
+                port = strtok(NULL, ",");
+        }
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
         switch (key) {
@@ -65,18 +78,8 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
                 break;
         case 'L':
         case 'R':
-        {
-                char *port = strtok(arg, ",");
-
-                for (int i = 0; i < MAX_PORTS && port; i++) {
-                        if (key == 'L')
-                                env.target_sports[i] = safe_strtol(port, 1, 65535, state);
-                        else
-                                env.target_dports[i] = safe_strtol(port, 1, 63355, state);
-                        port = strtok(NULL, ",");
-                }
+                parse_ports(key, arg, state);
                 break;
-        }
         case 'T':
                 env.emit_timestamp = true;
                 break;
