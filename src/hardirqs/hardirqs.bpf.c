@@ -38,28 +38,56 @@ struct {
 
 static info_t zero;
 
-static int handle_entry(int irq, struct irqaction *action)
+static __always_inline bool trace_filtered(void)
 {
 	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+		return true;
+	return false;
+}
+
+static int count_irq(struct irqaction *action)
+{
+	irq_key_t key = {};
+	info_t *info;
+
+	bpf_probe_read_kernel_str(&key.name, sizeof(key.name), BPF_CORE_READ(action, name));
+	info = bpf_map_lookup_or_try_init(&infos, &key, &zero);
+	if (!info)
+		return 0;
+	info->count += 1;
+	return 0;
+}
+
+static int save_start_ts(void)
+{
+	u64 ts = bpf_ktime_get_ns();
+	u32 key = 0;
+
+	bpf_map_update_elem(&start, &key, &ts, BPF_ANY);
+	return 0;
+}
+
+static int handle_entry(int irq, struct irqaction *action)
+{
+	if (trace_filtered())
 		return 0;
 
-	if (do_count) {
-		irq_key_t key = {};
-		info_t *info;
+	if (do_count)
+		return count_irq(action);
+	return save_start_ts();
+}
 
-		bpf_probe_read_kernel_str(&key.name, sizeof(key.name), BPF_CORE_READ(action, name));
-		info = bpf_map_lookup_or_try_init(&infos, &key, &zero);
-		if (!info)
-			return 0;
-		info->count += 1;
+static __always_inline void record_delta(info_t *info, u64 delta)
+{
+	if (!target_dist) {
+		info->count += delta;
 	} else {
-		u64 ts = bpf_ktime_get_ns();
-		u32 key = 0;
+		u64 slot = log2(delta);
 
-		bpf_map_update_elem(&start, &key, &ts, BPF_ANY);
+		if (slot >= MAX_SLOTS)
+			slot = MAX_SLOTS - 1;
+		info->slots[slot]++;
 	}
-
-	return 0;
 }
 
 static int handle_exit(int irq, struct irqaction *action)
@@ -70,7 +98,7 @@ static int handle_exit(int irq, struct irqaction *action)
 	u64 delta;
 	u64 *tsp;
 
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+	if (trace_filtered())
 		return 0;
 
 	tsp = bpf_map_lookup_elem(&start, &key);
@@ -86,16 +114,7 @@ static int handle_exit(int irq, struct irqaction *action)
 	if (!info)
 		return 0;
 
-	if (!target_dist) {
-		info->count += delta;
-	} else {
-		u64 slot;
-
-		slot = log2(delta);
-		if (slot >= MAX_SLOTS)
-			slot = MAX_SLOTS - 1;
-		info->slots[slot]++;
-	}
+	record_delta(info, delta);
 
 	return 0;
 }
