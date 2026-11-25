@@ -38,6 +38,29 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional_arg(struct argument *argument, const char *arg,
+				 int pos, struct argp_state *state)
+{
+	long value;
+
+	if (pos > 1) {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+
+	errno = 0;
+	value = strtol(arg, NULL, 10);
+	if (errno || value <= 0) {
+		warning("Invalid %s\n", pos == 0 ? "interval" : "times");
+		argp_usage(state);
+	}
+
+	if (pos == 0)
+		argument->interval = value;
+	else
+		argument->times = value;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	static int pos_args;
@@ -56,34 +79,17 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		argument->comm_len = min(strlen(arg) + 1, len);
 		break;
 	case 'd':
-		argument->disk = arg;
 		if (strlen(arg) + 1 > DISK_NAME_LEN) {
 			warning("Invalid disk name: too long\n");
 			argp_usage(state);
 		}
+		argument->disk = arg;
 		break;
 	case 'T':
 		argument->timestamp = true;
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			argument->interval = strtol(arg, NULL, 10);
-			if (errno || argument->interval <= 0) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			argument->times = strtol(arg, NULL, 10);
-			if (errno || argument->times <= 0) {
-				warning("Invalid times\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
+		parse_positional_arg(argument, arg, pos_args++, state);
 		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -105,6 +111,12 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_hist(const struct hist_key *key, const struct hist *hist)
+{
+	printf("\nProcess Name = %s\n", key->comm);
+	print_log2_hist(hist->slots, MAX_SLOTS, "Kbytes");
+}
+
 static int print_log2_hists(int fd)
 {
 	struct hist_key lookup_key = {}, next_key;
@@ -117,8 +129,7 @@ static int print_log2_hists(int fd)
 			warning("Failed to lookup hist: %d\n", err);
 			return -1;
 		}
-		printf("\nProcess Name = %s\n", next_key.comm);
-		print_log2_hist(hist.slots, MAX_SLOTS, "Kbytes");
+		print_hist(&next_key, &hist);
 		lookup_key = next_key;
 	}
 
@@ -135,10 +146,28 @@ static int print_log2_hists(int fd)
 	return 0;
 }
 
+static bool setup_disk_filter(struct bitesize_bpf *obj,
+			      const struct argument *argument,
+			      const struct partitions *partitions)
+{
+	const struct partition *partition;
+
+	if (!argument->disk)
+		return true;
+
+	partition = partitions__get_by_name(partitions, argument->disk);
+	if (!partition) {
+		warning("Invalid partition name : not exist\n");
+		return false;
+	}
+	obj->rodata->filter_dev = true;
+	obj->rodata->target_dev = partition->dev;
+	return true;
+}
+
 int main(int argc, char *argv[])
 {
 	struct partitions *partitions = NULL;
-	const struct partition *partition;
 	struct argument argument = {
 		.interval = 99999999,
 		.times = 99999999,
@@ -178,16 +207,10 @@ int main(int argc, char *argv[])
 		bpf_program__set_autoload(obj->progs.block_rq_issue, false);
 
 	if (argument.comm)
-		strncpy((char *)obj->rodata->target_comm, argument.comm, argument.comm_len);
-	if (argument.disk) {
-		partition = partitions__get_by_name(partitions, argument.disk);
-		if (!partition) {
-			warning("Invalid partition name : not exist\n");
-			goto cleanup;
-		}
-		obj->rodata->filter_dev = true;
-		obj->rodata->target_dev = partition->dev;
-	}
+		strncpy((char *)obj->rodata->target_comm, argument.comm,
+			argument.comm_len);
+	if (!setup_disk_filter(obj, &argument, partitions))
+		goto cleanup;
 
 	err = bitesize_bpf__load(obj);
 	if (err) {
