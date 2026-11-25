@@ -140,19 +140,9 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	printf("Tracing writeback... Hit Ctrl-C to end.\n");
-	printf("%-9s %-8s %-8s %-16s %s\n", "TIME", "DEVICE", "PAGES",
-	       "REASON", "LAT(ms)");
+	print_header();
 
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling ring/perf buffer: %d\n", err);
-			goto cleanup;
-		}
-		/* reset err to 0 when exiting */
-		err = 0;
-	}
+	err = poll_events(buf);
 
 cleanup:
 	bpf_buffer__free(buf);
