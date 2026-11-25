@@ -6,6 +6,20 @@
 #include "naptime.h"
 #include "compat.bpf.h"
 
+static int fill_event(struct event *event, __kernel_time64_t tv_sec,
+                      long long tv_nsec)
+{
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+
+    event->ppid = BPF_CORE_READ(task, real_parent, pid);
+    event->pid = bpf_get_current_pid_tgid() >> 32;
+    BPF_CORE_READ_STR_INTO(&event->pcomm, task, real_parent, comm);
+    bpf_get_current_comm(&event->comm, sizeof(event->comm));
+    event->tv_sec = tv_sec;
+    event->tv_nsec = tv_nsec;
+    return 0;
+}
+
 SEC("tracepoint/syscalls/sys_enter_nanosleep")
 int tracepoint__sys_enter_nanosleep(struct trace_event_raw_sys_enter *ctx)
 {
@@ -22,14 +36,7 @@ int tracepoint__sys_enter_nanosleep(struct trace_event_raw_sys_enter *ctx)
     if (!event)
         return 0;
 
-    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-
-    event->ppid = BPF_CORE_READ(task, real_parent, pid);
-    event->pid = bpf_get_current_pid_tgid() >> 32;
-    BPF_CORE_READ_STR_INTO(&event->pcomm, task, real_parent, comm);
-    bpf_get_current_comm(&event->comm, sizeof(event->comm));
-    event->tv_sec = tv_sec;
-    event->tv_nsec = tv_nsec;
+    fill_event(event, tv_sec, tv_nsec);
 
     submit_buf(ctx, event, sizeof(*event));
     return 0;
