@@ -51,11 +51,64 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_sort_arg(const char *arg, struct argp_state *state)
+{
+	if (!strcmp(arg, "all"))
+		sort_by = ALL;
+	else if (!strcmp(arg, "reads"))
+		sort_by = READS;
+	else if (!strcmp(arg, "writes"))
+		sort_by = WRITES;
+	else if (!strcmp(arg, "rbytes"))
+		sort_by = RBYTES;
+	else if (!strcmp(arg, "wbytes"))
+		sort_by = WBYTES;
+	else {
+		warning("Invalid sort method: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
+static void parse_rows_arg(const char *arg, struct argument *argument,
+			   struct argp_state *state)
+{
+	int max_rows = OUTPUT_ROWS_LIMIT;
+
+	errno = 0;
+	argument->output_rows = strtol(arg, NULL, 10);
+	if (errno || argument->output_rows <= 0) {
+		warning("Invalud rows: %s\n", arg);
+		argp_usage(state);
+	}
+	argument->output_rows = min(max_rows, argument->output_rows);
+}
+
+static void parse_positional_arg(const char *arg, struct argument *argument,
+				 struct argp_state *state, int pos_args)
+{
+	errno = 0;
+	if (pos_args == 0) {
+		argument->interval = strtol(arg, NULL, 10);
+		if (errno || argument->interval <= 0) {
+			warning("Invalid interval\n");
+			argp_usage(state);
+		}
+	} else if (pos_args == 1) {
+		argument->count = strtol(arg, NULL, 10);
+		if (errno || argument->count <= 0) {
+			warning("Invalid count\n");
+			argp_usage(state);
+		}
+	} else {
+		warning("Unrecognized positional argument: %s\n", arg);
+		argp_usage(state);
+	}
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
 	struct argument *argument = state->input;
 	static int pos_args;
-	int max_rows = OUTPUT_ROWS_LIMIT;
 
 	switch (key) {
 	case 'p':
@@ -68,29 +121,10 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		argument->regular_file_only = false;
 		break;
 	case 's':
-		if (!strcmp(arg, "all"))
-			sort_by = ALL;
-		else if (!strcmp(arg, "reads"))
-			sort_by = READS;
-		else if (!strcmp(arg, "writes"))
-			sort_by = WRITES;
-		else if (!strcmp(arg, "rbytes"))
-			sort_by = RBYTES;
-		else if (!strcmp(arg, "wbytes"))
-			sort_by = WBYTES;
-		else {
-			warning("Invalid sort method: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_sort_arg(arg, state);
 		break;
 	case 'r':
-		errno = 0;
-		argument->output_rows = strtol(arg, NULL, 10);
-		if (errno || argument->output_rows <= 0) {
-			warning("Invalud rows: %s\n", arg);
-			argp_usage(state);
-		}
-		argument->output_rows = min(max_rows, argument->output_rows);
+		parse_rows_arg(arg, argument, state);
 		break;
 	case 'v':
 		verbose = true;
@@ -99,23 +133,7 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 		break;
 	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			argument->interval = strtol(arg, NULL, 10);
-			if (errno || argument->interval <= 0) {
-				warning("Invalid interval\n");
-				argp_usage(state);
-			}
-		} else if (pos_args == 1) {
-			argument->count = strtol(arg, NULL, 10);
-			if (errno || argument->count <= 0) {
-				warning("Invalid count\n");
-				argp_usage(state);
-			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
+		parse_positional_arg(arg, argument, state, pos_args);
 		pos_args++;
 		break;
 	default:
@@ -157,16 +175,10 @@ static int sort_column(const void *obj1, const void *obj2)
 	}
 }
 
-static int print_stat(struct filetop_bpf *obj, struct argument *argument)
+static void print_loadavg(void)
 {
-	FILE *f;
-	int err = 0;
-	struct file_id key, *prev_key = NULL;
-	static struct file_stat values[OUTPUT_ROWS_LIMIT];
-	int fd = bpf_map__fd(obj->maps.entries);
-	int rows = 0;
+	FILE *f = fopen("/proc/loadavg", "r");
 
-	f = fopen("/proc/loadavg", "r");
 	if (f) {
 		char ts[32], buf[256] = {};
 
@@ -176,9 +188,13 @@ static int print_stat(struct filetop_bpf *obj, struct argument *argument)
 			printf("%8s loadavg: %s\n", ts, buf);
 		fclose(f);
 	}
+}
 
-	printf("%-7s %-16s %-6s %-6s %-7s %-7s %1s %s\n",
-	       "TID", "COMM", "READS", "WRITES", "R_Kb", "W_Kb", "T", "FILE");
+static int collect_values(int fd, struct file_stat *values)
+{
+	struct file_id key, *prev_key = NULL;
+	int rows = 0;
+	int err;
 
 	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
 		err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
@@ -188,6 +204,42 @@ static int print_stat(struct filetop_bpf *obj, struct argument *argument)
 		}
 		prev_key = &key;
 	}
+
+	return rows;
+}
+
+static int clear_values(int fd)
+{
+	struct file_id key, *prev_key = NULL;
+	int err = 0;
+
+	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+		err = bpf_map_delete_elem(fd, &key);
+		if (err) {
+			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+			return err;
+		}
+		prev_key = &key;
+	}
+
+	return err;
+}
+
+static int print_stat(struct filetop_bpf *obj, struct argument *argument)
+{
+	int err = 0;
+	static struct file_stat values[OUTPUT_ROWS_LIMIT];
+	int fd = bpf_map__fd(obj->maps.entries);
+	int rows;
+
+	print_loadavg();
+
+	printf("%-7s %-16s %-6s %-6s %-7s %-7s %1s %s\n",
+	       "TID", "COMM", "READS", "WRITES", "R_Kb", "W_Kb", "T", "FILE");
+
+	rows = collect_values(fd, values);
+	if (rows < 0)
+		return rows;
 
 	qsort(values, rows, sizeof(struct file_stat), sort_column);
 	rows = min(rows, argument->output_rows);
@@ -200,16 +252,8 @@ static int print_stat(struct filetop_bpf *obj, struct argument *argument)
 	}
 
 	printf("\n");
-	prev_key = NULL;
 
-	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
-		err = bpf_map_delete_elem(fd, &key);
-		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &key;
-	}
+	err = clear_values(fd);
 
 	return err;
 }

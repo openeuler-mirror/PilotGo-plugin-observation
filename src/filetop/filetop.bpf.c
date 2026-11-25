@@ -28,6 +28,51 @@ static void get_file_path(struct file *file, char *buf, size_t size)
 	bpf_core_read(buf, size, dname.name);
 }
 
+static __always_inline bool file_filtered(struct file *file, __u32 pid)
+{
+	int mode;
+
+	if (target_pid && target_pid != pid)
+		return true;
+
+	mode = BPF_CORE_READ(file, f_inode, i_mode);
+	if (regular_file_only && !S_ISREG(mode))
+		return true;
+
+	return false;
+}
+
+static __always_inline void fill_file_key(struct file_id *key, struct file *file,
+					  __u32 pid, __u32 tid)
+{
+	key->dev = BPF_CORE_READ(file, f_inode, i_sb, s_dev);
+	key->rdev = BPF_CORE_READ(file, f_inode, i_rdev);
+	key->inode = BPF_CORE_READ(file, f_inode, i_ino);
+	key->pid = pid;
+	key->tid = tid;
+}
+
+static __always_inline char file_type(int mode)
+{
+	if (S_ISREG(mode))
+		return 'R';
+	if (S_ISSOCK(mode))
+		return 'S';
+	return 'O';
+}
+
+static __always_inline void account_op(struct file_stat *valuep, size_t count,
+				       enum op op)
+{
+	if (op == READ) {
+		valuep->reads++;
+		valuep->read_bytes += count;
+	} else {
+		valuep->writes++;
+		valuep->write_bytes += count;
+	}
+}
+
 static int probe_entry(struct pt_regs *ctx, struct file *file, size_t count,
 		       enum op op)
 {
@@ -38,18 +83,11 @@ static int probe_entry(struct pt_regs *ctx, struct file *file, size_t count,
 	struct file_id key = {};
 	struct file_stat *valuep;
 
-	if (target_pid && target_pid != pid)
+	if (file_filtered(file, pid))
 		return 0;
 
 	mode = BPF_CORE_READ(file, f_inode, i_mode);
-	if (regular_file_only && !S_ISREG(mode))
-		return 0;
-
-	key.dev = BPF_CORE_READ(file, f_inode, i_sb, s_dev);
-	key.rdev = BPF_CORE_READ(file, f_inode, i_rdev);
-	key.inode = BPF_CORE_READ(file, f_inode, i_ino);
-	key.pid = pid;
-	key.tid = tid;
+	fill_file_key(&key, file, pid, tid);
 
 	valuep = bpf_map_lookup_or_try_init(&entries, &key, &zero_value);
 	if (!valuep)
@@ -59,21 +97,9 @@ static int probe_entry(struct pt_regs *ctx, struct file *file, size_t count,
 	valuep->tid = tid;
 	bpf_get_current_comm(&valuep->comm, sizeof(valuep->comm));
 	get_file_path(file, valuep->filename, sizeof(valuep->filename));
-	if (S_ISREG(mode)) {
-		valuep->type = 'R';
-	} else if (S_ISSOCK(mode)) {
-		valuep->type = 'S';
-	} else {
-		valuep->type = 'O';
-	}
+	valuep->type = file_type(mode);
 
-	if (op == READ) {
-		valuep->reads++;
-		valuep->read_bytes += count;
-	} else {
-		valuep->writes++;
-		valuep->write_bytes += count;
-	}
+	account_op(valuep, count, op);
 
 	return 0;
 }
