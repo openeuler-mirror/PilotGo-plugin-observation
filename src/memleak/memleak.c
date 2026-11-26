@@ -822,27 +822,29 @@ int attach_uprobes(struct memleak_bpf *skel)
 
 static int child_exec_event_fd = -1;
 
+static void spawn_child_command_extra(void)
+{
+		if (env.pid >= 0) {
+			warning("Can not specify both command and pid\n");
+			return 1;
+		}
+		if (event_init(&child_exec_event_fd)) {
+			warning("Failed to init child event\n");
+			return 1;
+		}
+		const pid_t child_pid = fork_sync_exec(env.command, child_exec_event_fd);
+		if (child_pid < 0) {
+			perror("failed to spawn child process");
+			return -errno;
+		}
+		env.pid = child_pid;
+		env.pid_from_child = true;
+		return 0;
+}
+
 static int spawn_child_command(void)
 {
-	if (env.pid >= 0) {
-		warning("Can not specify both command and pid\n");
-		return 1;
-	}
-
-	if (event_init(&child_exec_event_fd)) {
-		warning("Failed to init child event\n");
-		return 1;
-	}
-
-	const pid_t child_pid = fork_sync_exec(env.command, child_exec_event_fd);
-	if (child_pid < 0) {
-		perror("failed to spawn child process");
-		return -errno;
-	}
-
-	env.pid = child_pid;
-	env.pid_from_child = true;
-	return 0;
+	spawn_child_command_extra();
 }
 
 static int init_symbolizer(void)
