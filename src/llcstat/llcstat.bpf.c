@@ -18,29 +18,31 @@ struct {
 } infos SEC(".maps");
 
 static __always_inline
+static void trace_event_extra(void)
+{
+		struct key_info key = {};
+		struct value_info *infop, zero = {};
+		u64 pid_tgid = bpf_get_current_pid_tgid();
+		key.cpu = bpf_get_smp_processor_id();
+		key.pid = pid_tgid >> 32;
+		if (target_per_thread)
+			key.tid = (u32)pid_tgid;
+		else
+			key.tid = key.pid;
+		infop = bpf_map_lookup_or_try_init(&infos, &key, &zero);
+		if (!infop)
+			return 0;
+		if (miss)
+			infop->miss += sample_period;
+		else
+			infop->ref += sample_period;
+		bpf_get_current_comm(infop->comm, sizeof(infop->comm));
+		return 0;
+}
+
 int trace_event(__u64 sample_period, bool miss)
 {
-	struct key_info key = {};
-	struct value_info *infop, zero = {};
-
-	u64 pid_tgid = bpf_get_current_pid_tgid();
-	key.cpu = bpf_get_smp_processor_id();
-	key.pid = pid_tgid >> 32;
-	if (target_per_thread)
-		key.tid = (u32)pid_tgid;
-	else
-		key.tid = key.pid;
-
-	infop = bpf_map_lookup_or_try_init(&infos, &key, &zero);
-	if (!infop)
-		return 0;
-	if (miss)
-		infop->miss += sample_period;
-	else
-		infop->ref += sample_period;
-	bpf_get_current_comm(infop->comm, sizeof(infop->comm));
-
-	return 0;
+	trace_event_extra();
 }
 
 SEC("perf_event")
