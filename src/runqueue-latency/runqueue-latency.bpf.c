@@ -47,22 +47,23 @@ static bool filter_memcg_fn(void)
 	return filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0);
 }
 
+static void trace_enqueue_extra(void)
+{
+		u64 ts;
+		if (filter_memcg_fn())
+			return 0;
+		if (!pid)
+			return 0;
+		if (target_tgid && target_tgid != tgid)
+			return 0;
+		ts = bpf_ktime_get_ns();
+		bpf_map_update_elem(&start, &pid, &ts, BPF_ANY);
+		return 0;
+}
+
 static int trace_enqueue(u32 tgid, u32 pid)
 {
-	u64 ts;
-
-	if (filter_memcg_fn())
-		return 0;
-
-	if (!pid)
-		return 0;
-	if (target_tgid && target_tgid != tgid)
-		return 0;
-
-	ts = bpf_ktime_get_ns();
-	bpf_map_update_elem(&start, &pid, &ts, BPF_ANY);
-
-	return 0;
+	trace_enqueue_extra();
 }
 
 static unsigned int pid_namespace(struct task_struct *task)
