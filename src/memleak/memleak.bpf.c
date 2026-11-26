@@ -321,21 +321,22 @@ int memleak__kmalloc(void *ctx)
 }
 
 SEC("tracepoint/kmem/kmalloc_node")
+static void memleak__kmalloc_node_extra(void)
+{
+	    if (!has_kmem_alloc_node())
+	        return 0;
+	    struct trace_event_raw_kmem_alloc_node___o *args = ctx;
+	    const void *ptr = BPF_CORE_READ(args, ptr);
+	    size_t bytes_alloc = BPF_CORE_READ(args, bytes_alloc);
+	    if (wa_missing_free)
+	        gen_free_enter(ptr);
+	    gen_alloc_enter(bytes_alloc);
+	    return gen_alloc_exit2(ctx, (u64)ptr);
+}
+
 int memleak__kmalloc_node(void *ctx)
 {
-    if (!has_kmem_alloc_node())
-        return 0;
-
-    struct trace_event_raw_kmem_alloc_node___o *args = ctx;
-    const void *ptr = BPF_CORE_READ(args, ptr);
-    size_t bytes_alloc = BPF_CORE_READ(args, bytes_alloc);
-
-    if (wa_missing_free)
-        gen_free_enter(ptr);
-
-    gen_alloc_enter(bytes_alloc);
-
-    return gen_alloc_exit2(ctx, (u64)ptr);
+	memleak__kmalloc_node_extra();
 }
 
 SEC("tracepoint/kmem/kfree")
