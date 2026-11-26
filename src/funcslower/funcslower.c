@@ -166,23 +166,25 @@ static struct bpf_program *find_prog_by_name(struct funcslower_bpf *obj,
 	return NULL;
 }
 
+static void autoload_programs_extra(void)
+{
+		char buf[128] = {};
+		for (int i = 0; i < ARRAY_SIZE(env.functions) && env.functions[i]; i++) {
+			bool is_kernel_func = !strchr(env.functions[i], ':');
+			struct bpf_program *prog;
+			if (is_kernel_func)
+				sprintf(buf, "trace_k%d", i);
+			else
+				sprintf(buf, "trace_u%d", i);
+			prog = find_prog_by_name(obj, buf);
+			if (prog)
+				bpf_program__set_autoload(prog, true);
+		}
+}
+
 static void autoload_programs(struct funcslower_bpf *obj)
 {
-	char buf[128] = {};
-
-	for (int i = 0; i < ARRAY_SIZE(env.functions) && env.functions[i]; i++) {
-		bool is_kernel_func = !strchr(env.functions[i], ':');
-		struct bpf_program *prog;
-
-		if (is_kernel_func)
-			sprintf(buf, "trace_k%d", i);
-		else
-			sprintf(buf, "trace_u%d", i);
-
-		prog = find_prog_by_name(obj, buf);
-		if (prog)
-			bpf_program__set_autoload(prog, true);
-	}
+	autoload_programs_extra();
 }
 
 static void attach_kernel_prog(struct funcslower_bpf *obj, int i)
