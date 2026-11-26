@@ -142,6 +142,14 @@ static void init_filter(struct numasched_bpf *bpf_obj)
     bpf_obj->rodata->target_pid = env.tid;
 }
 
+static void select_probes_section3_1(void)
+{
+	
+	        /* reset err to retrun 0 if exiting */
+	        err = 0;
+	    }
+}
+
 static void select_probes(struct numasched_bpf *bpf_obj)
 {
     if (probe_tp_btf("sched_switch"))
@@ -171,10 +179,7 @@ static int poll_events(struct perf_buffer *pb)
             warning("Error polling perf buffer: %s\n", strerror(-err));
             break;
         }
-
-        /* reset err to retrun 0 if exiting */
-        err = 0;
-    }
+	select_probes_section3_1();
 
     return err;
 }
