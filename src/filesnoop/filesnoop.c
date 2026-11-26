@@ -70,30 +70,34 @@ static void parse_operation_arg(const char *arg, struct argp_state *state)
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'T':
+			env.timestamp = true;
+			break;
+		case 'f':
+			env.filename = arg;
+			env.filter_filename = true;
+			break;
+		case 'o':
+			parse_operation_arg(arg, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'T':
-		env.timestamp = true;
-		break;
-	case 'f':
-		env.filename = arg;
-		env.filter_filename = true;
-		break;
-	case 'o':
-		parse_operation_arg(arg, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static void sig_handler(int sig)
