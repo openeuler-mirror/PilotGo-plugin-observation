@@ -6,7 +6,8 @@
 
 static struct env {
 	char *disk;
-	int duration;
+	/* duration field */
+	int	duration;
 	bool milliseconds;
 	bool verbose;
 } env = {
