@@ -30,37 +30,36 @@ static int handle_entry(unsigned int vec_nr)
 	return 0;
 }
 
+static void handle_exit_extra(void)
+{
+		u64 delta, *tsp;
+		u32 key = 0;
+		if (vec_nr >= NR_SOFTIRQS)
+			return 0;
+		tsp = bpf_map_lookup_elem(&start, &key);
+		if (!tsp)
+			return 0;
+		delta = bpf_ktime_get_ns() - *tsp;
+		if (!target_ns)
+			delta /= 1000U;
+		if (!target_dist) {
+			__sync_fetch_and_add(&counts[vec_nr], 1);
+			__sync_fetch_and_add(&time[vec_nr], delta);
+		} else {
+			struct hist *hist;
+			u64 slot;
+			hist = &hists[vec_nr];
+			slot = log2(delta);
+			if (slot >= MAX_SLOTS)
+				slot = MAX_SLOTS - 1;
+			__sync_fetch_and_add(&hist->slots[slot], 1);
+		}
+		return 0;
+}
+
 static int handle_exit(unsigned int vec_nr)
 {
-	u64 delta, *tsp;
-	u32 key = 0;
-
-	if (vec_nr >= NR_SOFTIRQS)
-		return 0;
-
-	tsp = bpf_map_lookup_elem(&start, &key);
-	if (!tsp)
-		return 0;
-
-	delta = bpf_ktime_get_ns() - *tsp;
-	if (!target_ns)
-		delta /= 1000U;
-
-	if (!target_dist) {
-		__sync_fetch_and_add(&counts[vec_nr], 1);
-		__sync_fetch_and_add(&time[vec_nr], delta);
-	} else {
-		struct hist *hist;
-		u64 slot;
-
-		hist = &hists[vec_nr];
-		slot = log2(delta);
-		if (slot >= MAX_SLOTS)
-			slot = MAX_SLOTS - 1;
-		__sync_fetch_and_add(&hist->slots[slot], 1);
-	}
-
-	return 0;
+	handle_exit_extra();
 }
 
 SEC("tp_btf/softirq_entry")
