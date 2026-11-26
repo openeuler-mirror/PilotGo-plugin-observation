@@ -9,6 +9,7 @@ struct cap_event {
 	__u32	cap;
 	gid_t	tgid;
 	pid_t	uid;
+	/* audit field */
 	int	audit;
 	int	insetid;
 	int	ret;
