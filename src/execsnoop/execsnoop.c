@@ -397,19 +397,22 @@ static void main_extra0(void)
 		return err != 0;
 }
 
+static void main_extra(void)
+{
+		execsnoop_print_banner();
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct perf_buffer *pb = NULL;
+		struct execsnoop_bpf *bpf_obj;
+		int err, cgfd = -1;
+		main_extra0();
+}
+
 int main(int argc, char *argv[])
 {
-	execsnoop_print_banner();
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-
-	struct perf_buffer *pb = NULL;
-	struct execsnoop_bpf *bpf_obj;
-	int err, cgfd = -1;
-
-	main_extra0();
+	main_extra();
 }
