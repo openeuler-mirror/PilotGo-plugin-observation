@@ -134,37 +134,41 @@ static void parse_positional_arg(const char *arg, struct argp_state *state,
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		static int pos_args;
+		switch (key) {
+		case 'v':
+			verbose = true;
+			break;
+		case 'T':
+			emit_timestamp = true;
+			break;
+		case 'm':
+			timestamp_in_ms = true;
+			break;
+		case 't':
+			parse_fs_arg(arg, state);
+			break;
+		case 'p':
+			target_pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case ARGP_KEY_ARG:
+			parse_positional_arg(arg, state, pos_args);
+			pos_args++;
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	static int pos_args;
-
-	switch (key) {
-	case 'v':
-		verbose = true;
-		break;
-	case 'T':
-		emit_timestamp = true;
-		break;
-	case 'm':
-		timestamp_in_ms = true;
-		break;
-	case 't':
-		parse_fs_arg(arg, state);
-		break;
-	case 'p':
-		target_pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case ARGP_KEY_ARG:
-		parse_positional_arg(arg, state, pos_args);
-		pos_args++;
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static void alias_parse(char *prog)
