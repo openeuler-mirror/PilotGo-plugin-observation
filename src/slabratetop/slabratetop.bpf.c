@@ -20,26 +20,26 @@ struct {
 	__type(value, struct slabrate_info);
 } slab_entries SEC(".maps");
 
+static void probe_entry_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		struct slabrate_info *valuep;
+		const char *name = BPF_CORE_READ(cachep, name);
+		if (target_pid && target_pid != pid)
+			return 0;
+		valuep = bpf_map_lookup_or_try_init(&slab_entries, &name, &slab_zero_value);
+		if (!valuep)
+			return 0;
+		bpf_probe_read_kernel_str(&valuep->name, sizeof(valuep->name), name);
+		valuep->count++;
+		valuep->size += BPF_CORE_READ(cachep, size);
+		return 0;
+}
+
 static __always_inline int probe_entry(struct kmem_cache *cachep)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	struct slabrate_info *valuep;
-	const char *name = BPF_CORE_READ(cachep, name);
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	valuep = bpf_map_lookup_or_try_init(&slab_entries, &name, &slab_zero_value);
-	if (!valuep)
-		return 0;
-
-	bpf_probe_read_kernel_str(&valuep->name, sizeof(valuep->name), name);
-
-	valuep->count++;
-	valuep->size += BPF_CORE_READ(cachep, size);
-
-	return 0;
+	probe_entry_extra();
 }
 
 SEC("kprobe/kmem_cache_alloc")
