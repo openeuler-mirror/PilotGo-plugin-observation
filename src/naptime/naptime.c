@@ -35,23 +35,28 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
     return vfprintf(stderr, format, args);
 }
 
+static void parse_arg_extra(void)
+{
+	    switch (key)
+	    {
+	    case 'v':
+	        verbose = true;
+	        break;
+	    case 'h':
+	        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+	        break;
+	    case 'T':
+	        timestamp = true;
+	        break;
+	    default:
+	        return ARGP_ERR_UNKNOWN;
+	    }
+	    return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-    switch (key)
-    {
-    case 'v':
-        verbose = true;
-        break;
-    case 'h':
-        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-        break;
-    case 'T':
-        timestamp = true;
-        break;
-    default:
-        return ARGP_ERR_UNKNOWN;
-    }
-    return 0;
+	parse_arg_extra();
 }
 
 static void print_event(const struct event *e)
