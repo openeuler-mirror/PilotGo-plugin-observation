@@ -165,89 +165,77 @@ static bool setup_disk_filter(struct bitesize_bpf *obj,
 	return true;
 }
 
+static void main_extra(void)
+{
+		struct partitions *partitions = NULL;
+		struct argument argument = {
+			.interval = 99999999,
+			.times = 99999999,
+		};
+		const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct bitesize_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = bitesize_bpf__open();
+		if (!obj) {
+			warning("Failed to load partitions info\n");
+			goto cleanup;
+		}
+		partitions = partitions__load();
+		if (!partitions) {
+			warning("failed to load partitions info\n");
+			goto cleanup;
+		}
+		if (probe_tp_btf("block_rq_issue"))
+			bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
+		else
+			bpf_program__set_autoload(obj->progs.block_rq_issue, false);
+		if (argument.comm)
+			strncpy((char *)obj->rodata->target_comm, argument.comm,
+				argument.comm_len);
+		if (!setup_disk_filter(obj, &argument, partitions))
+			goto cleanup;
+		err = bitesize_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = bitesize_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs\n");
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		printf("Tracing block device I/O... Hit Ctrl-C to end.\n");
+		while (1) {
+			sleep(argument.interval);
+			if (argument.timestamp) {
+				char ts[32];
+				strftime_now(ts, sizeof(ts), "%H:%H:%S");
+				printf("%-8s\n", ts);
+			}
+			err = print_log2_hists(bpf_map__fd(obj->maps.hists));
+			if (err < 0)
+				break;
+			if (exiting || --argument.times == 0)
+				break;
+		}
+	cleanup:
+		bitesize_bpf__destroy(obj);
+		partitions__free(partitions);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	struct partitions *partitions = NULL;
-	struct argument argument = {
-		.interval = 99999999,
-		.times = 99999999,
-	};
-	const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct bitesize_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = bitesize_bpf__open();
-	if (!obj) {
-		warning("Failed to load partitions info\n");
-		goto cleanup;
-	}
-
-	partitions = partitions__load();
-	if (!partitions) {
-		warning("failed to load partitions info\n");
-		goto cleanup;
-	}
-
-	if (probe_tp_btf("block_rq_issue"))
-		bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
-	else
-		bpf_program__set_autoload(obj->progs.block_rq_issue, false);
-
-	if (argument.comm)
-		strncpy((char *)obj->rodata->target_comm, argument.comm,
-			argument.comm_len);
-	if (!setup_disk_filter(obj, &argument, partitions))
-		goto cleanup;
-
-	err = bitesize_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = bitesize_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs\n");
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	printf("Tracing block device I/O... Hit Ctrl-C to end.\n");
-
-	while (1) {
-		sleep(argument.interval);
-		if (argument.timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%H:%S");
-			printf("%-8s\n", ts);
-		}
-
-		err = print_log2_hists(bpf_map__fd(obj->maps.hists));
-		if (err < 0)
-			break;
-
-		if (exiting || --argument.times == 0)
-			break;
-	}
-
-cleanup:
-	bitesize_bpf__destroy(obj);
-	partitions__free(partitions);
-
-	return err != 0;
+	main_extra();
 }
