@@ -318,31 +318,33 @@ static void print_stat_row(const struct data_t *data)
 	print_stat_row_extra();
 }
 
+static void fetch_counts_extra(void)
+{
+		struct info_t *prev_key = NULL;
+		int rows = 0, err;
+		while (1) {
+			err = bpf_map_get_next_key(fd, prev_key, &datas[rows].key);
+			if (err) {
+				if (errno == ENOENT)
+					return rows;
+				warning("bpf_map_get_next_key failed: %s\n",
+					strerror(errno));
+				return -1;
+			}
+			prev_key = &datas[rows].key;
+			err = bpf_map_lookup_elem(fd, &datas[rows].key, &datas[rows].value);
+			if (err) {
+				warning("bpf_map_lookup_elem failed: %s\n",
+					strerror(errno));
+				return -1;
+			}
+			rows++;
+		}
+}
+
 static int fetch_counts(int fd, struct data_t *datas)
 {
-	struct info_t *prev_key = NULL;
-	int rows = 0, err;
-
-	while (1) {
-		err = bpf_map_get_next_key(fd, prev_key, &datas[rows].key);
-		if (err) {
-			if (errno == ENOENT)
-				return rows;
-			warning("bpf_map_get_next_key failed: %s\n",
-				strerror(errno));
-			return -1;
-		}
-		prev_key = &datas[rows].key;
-
-		err = bpf_map_lookup_elem(fd, &datas[rows].key, &datas[rows].value);
-		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n",
-				strerror(errno));
-			return -1;
-		}
-
-		rows++;
-	}
+	fetch_counts_extra();
 }
 
 static void clear_counts_extra(void)
