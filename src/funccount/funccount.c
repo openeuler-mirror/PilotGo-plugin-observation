@@ -147,20 +147,24 @@ static int collect_values(int fd, struct value *values)
 	return rows;
 }
 
+static void print_values_extra(void)
+{
+		for (int i = 0; i < rows; i++) {
+			const struct ksym *ksym = ksyms__map_addr(ksyms, values[i].ip);
+			if (ksym) {
+				char buf[26] = {};
+				sprintf(buf, "b'%s'", ksym->name);
+				printf("[<%016llx>] %-26s %8lld\n", values[i].ip, buf,
+				       values[i].count);
+			} else
+				printf("[<%016llx>] b'%-26s' %8lld\n", values[i].ip, "<null sym>",
+				       values[i].count);
+		}
+}
+
 static void print_values(struct value *values, int rows)
 {
-	for (int i = 0; i < rows; i++) {
-		const struct ksym *ksym = ksyms__map_addr(ksyms, values[i].ip);
-
-		if (ksym) {
-			char buf[26] = {};
-			sprintf(buf, "b'%s'", ksym->name);
-			printf("[<%016llx>] %-26s %8lld\n", values[i].ip, buf,
-			       values[i].count);
-		} else
-			printf("[<%016llx>] b'%-26s' %8lld\n", values[i].ip, "<null sym>",
-			       values[i].count);
-	}
+	print_values_extra();
 }
 
 static int clear_values(int fd)
