@@ -18,7 +18,7 @@
 #define warn(...) fprintf(stderr, __VA_ARGS__)
 
 /*
- * Returns 0 on success; -1 on failure.  On sucess, returns via `path` the full
+ * Returns 0 on success; -1 on failure.  On success, returns via `path` the full
  * path to the program for pid.
  */
 int get_pid_binary_path(pid_t pid, char *path, size_t path_sz)
