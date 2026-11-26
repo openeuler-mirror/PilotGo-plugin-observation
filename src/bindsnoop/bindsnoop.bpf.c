@@ -81,46 +81,45 @@ static int probe_entry(struct pt_regs *ctx, struct socket *socket)
 	return 0;
 }
 
+static void probe_exit_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		pid_t tgid = pid_tgid >> 32;
+		pid_t pid = (pid_t)pid_tgid;
+		struct socket **socketp;
+		struct sock *sock;
+		struct bind_event event = {};
+		__u16 sport;
+		int ret;
+		socketp = bpf_map_lookup_elem(&sockets, &pid);
+		if (!socketp)
+			return 0;
+		ret = PT_REGS_RC(ctx);
+		if (ignore_errors && ret != 0)
+			goto cleanup;
+		sock = BPF_CORE_READ(*socketp, sk);
+		sport = bpf_ntohs(BPF_CORE_READ((struct inet_sock *)sock, inet_sport));
+		if (filter_by_port && !bpf_map_lookup_elem(&ports, &sport))
+			goto cleanup;
+		event.opts = read_bind_options(sock).data;
+		event.ts_us = bpf_ktime_get_ns() / 1000;
+		event.pid = tgid;
+		event.port = sport;
+		event.bound_dev_if = BPF_CORE_READ(sock, __sk_common.skc_bound_dev_if);
+		event.ret = ret;
+		event.proto = BPF_CORE_READ_BITFIELD_PROBED(sock, sk_protocol);
+		event.ver = ver;
+		bpf_get_current_comm(&event.task, sizeof(event.task));
+		read_bind_addr(&event, sock, ver);
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
+	cleanup:
+		bpf_map_delete_elem(&sockets, &pid);
+		return 0;
+}
+
 static int probe_exit(struct pt_regs *ctx, short ver)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	pid_t tgid = pid_tgid >> 32;
-	pid_t pid = (pid_t)pid_tgid;
-	struct socket **socketp;
-	struct sock *sock;
-	struct bind_event event = {};
-	__u16 sport;
-	int ret;
-
-	socketp = bpf_map_lookup_elem(&sockets, &pid);
-	if (!socketp)
-		return 0;
-
-	ret = PT_REGS_RC(ctx);
-	if (ignore_errors && ret != 0)
-		goto cleanup;
-
-	sock = BPF_CORE_READ(*socketp, sk);
-	sport = bpf_ntohs(BPF_CORE_READ((struct inet_sock *)sock, inet_sport));
-	if (filter_by_port && !bpf_map_lookup_elem(&ports, &sport))
-		goto cleanup;
-
-	event.opts = read_bind_options(sock).data;
-	event.ts_us = bpf_ktime_get_ns() / 1000;
-	event.pid = tgid;
-	event.port = sport;
-	event.bound_dev_if = BPF_CORE_READ(sock, __sk_common.skc_bound_dev_if);
-	event.ret = ret;
-	event.proto = BPF_CORE_READ_BITFIELD_PROBED(sock, sk_protocol);
-	event.ver = ver;
-	bpf_get_current_comm(&event.task, sizeof(event.task));
-	read_bind_addr(&event, sock, ver);
-
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
-
-cleanup:
-	bpf_map_delete_elem(&sockets, &pid);
-	return 0;
+	probe_exit_extra();
 }
 
 SEC("kprobe/inet_bind")
