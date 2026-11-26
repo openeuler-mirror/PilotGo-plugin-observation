@@ -167,21 +167,24 @@ static void print_values(struct value *values, int rows)
 	print_values_extra();
 }
 
+static void clear_values_extra(void)
+{
+		__u64 *prev_key = NULL, next_key;
+		int err = 0;
+		while (!bpf_map_get_next_key(fd, prev_key, &next_key)) {
+			err = bpf_map_delete_elem(fd, &next_key);
+			if (err) {
+				warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
+				return err;
+			}
+			prev_key = &next_key;
+		}
+		return err;
+}
+
 static int clear_values(int fd)
 {
-	__u64 *prev_key = NULL, next_key;
-	int err = 0;
-
-	while (!bpf_map_get_next_key(fd, prev_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err) {
-			warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &next_key;
-	}
-
-	return err;
+	clear_values_extra();
 }
 
 static void print_maps_extra(void)
