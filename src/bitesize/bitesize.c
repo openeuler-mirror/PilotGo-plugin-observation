@@ -120,33 +120,35 @@ static void print_hist(const struct hist_key *key, const struct hist *hist)
 	print_log2_hist(hist->slots, MAX_SLOTS, "Kbytes");
 }
 
+static void print_log2_hists_extra(void)
+{
+		struct hist_key lookup_key = {}, next_key;
+		struct hist hist;
+		int err;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_lookup_elem(fd, &next_key, &hist);
+			if (err < 0) {
+				warning("Failed to lookup hist: %d\n", err);
+				return -1;
+			}
+			print_hist(&next_key, &hist);
+			lookup_key = next_key;
+		}
+		memset(lookup_key.comm, '?', sizeof(lookup_key.comm));
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_delete_elem(fd, &next_key);
+			if (err < 0) {
+				warning("Failed to cleanup hist : %d\n", err);
+				return -1;
+			}
+			lookup_key = next_key;
+		}
+		return 0;
+}
+
 static int print_log2_hists(int fd)
 {
-	struct hist_key lookup_key = {}, next_key;
-	struct hist hist;
-	int err;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_lookup_elem(fd, &next_key, &hist);
-		if (err < 0) {
-			warning("Failed to lookup hist: %d\n", err);
-			return -1;
-		}
-		print_hist(&next_key, &hist);
-		lookup_key = next_key;
-	}
-
-	memset(lookup_key.comm, '?', sizeof(lookup_key.comm));
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err < 0) {
-			warning("Failed to cleanup hist : %d\n", err);
-			return -1;
-		}
-		lookup_key = next_key;
-	}
-
-	return 0;
+	print_log2_hists_extra();
 }
 
 static bool setup_disk_filter(struct bitesize_bpf *obj,
