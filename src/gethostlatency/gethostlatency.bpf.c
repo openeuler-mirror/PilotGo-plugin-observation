@@ -52,20 +52,25 @@ static int probe_entry(struct pt_regs *ctx)
 	return 0;
 }
 
+static void probe_return_extra1(void)
+{
+		__u32 tid = (__u32)bpf_get_current_pid_tgid();
+		struct event *eventp = bpf_map_lookup_elem(&starts, &tid);
+	
+		if (!eventp)
+			return 0;
+	
+		/* Update time from timestamp to delta */
+		eventp->time = bpf_ktime_get_ns() - eventp->time;
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, eventp, sizeof(*eventp));
+		bpf_map_delete_elem(&starts, &tid);
+	
+		return 0;
+}
+
 static int probe_return(struct pt_regs *ctx)
 {
-	__u32 tid = (__u32)bpf_get_current_pid_tgid();
-	struct event *eventp = bpf_map_lookup_elem(&starts, &tid);
-
-	if (!eventp)
-		return 0;
-
-	/* Update time from timestamp to delta */
-	eventp->time = bpf_ktime_get_ns() - eventp->time;
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, eventp, sizeof(*eventp));
-	bpf_map_delete_elem(&starts, &tid);
-
-	return 0;
+	probe_return_extra1();
 }
 
 SEC("kprobe/handle_entry_gethost")
