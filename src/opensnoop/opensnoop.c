@@ -87,7 +87,7 @@ static struct openmode openmodes[] = {
 };
 
 const char *argp_program_version = "opensnoop 0.1";
-const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char *argp_program_bug_address = "<maintainer@kylinos.cn>";
 const char argp_program_doc[] =
     "Trace open family syscalls\n"
     "\n"
