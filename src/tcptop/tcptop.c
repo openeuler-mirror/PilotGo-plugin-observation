@@ -171,6 +171,12 @@ static int sort_column(const void *obj1, const void *obj2)
                 return (i2->value.sent + i2->value.received) - (i1->value.sent + i1->value.received);
 }
 
+static void print_stat_section4_1(void)
+{
+	        printf("%-6s %-12s %-21s %-21s %6s %6s", "PID", "COMM", "LADDR", "RADDR",
+	               "RX_KB", "TX_KB\n");
+}
+
 static int print_stat(struct tcptop_bpf *obj)
 {
         struct ip_key_t key, *prev_key = NULL;
@@ -202,9 +208,7 @@ static int print_stat(struct tcptop_bpf *obj)
                 prev_key = &infos[rows].key;
                 rows++;
         }
-
-        printf("%-6s %-12s %-21s %-21s %6s %6s", "PID", "COMM", "LADDR", "RADDR",
-               "RX_KB", "TX_KB\n");
+	print_stat_section4_1();
 
         qsort(infos, rows, sizeof(struct info_t), sort_column);
         rows = MIN(rows, env.output_rows);
