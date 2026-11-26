@@ -59,23 +59,25 @@ static int read_loadavg(char *buf, size_t size)
     return n;
 }
 
+static void handle_event_extra(void)
+{
+	    char buf[256];
+	    char ts[32];
+	    struct data_t *e = data;
+	    int n = read_loadavg(buf, sizeof(buf));
+	    strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	    printf("%s Trigger by PID %d (\"%s\"), OOM kill of PID %d (\"%s\"), %lld pages",
+	           ts, e->fpid, e->fcomm, e->tpid, e->tcomm, e->pages);
+	    if (n)
+	        printf(", loadavg: %s", buf);
+	    else
+	        printf("\n");
+	    return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t len)
 {
-    char buf[256];
-    char ts[32];
-    struct data_t *e = data;
-    int n = read_loadavg(buf, sizeof(buf));
-
-    strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
-    printf("%s Trigger by PID %d (\"%s\"), OOM kill of PID %d (\"%s\"), %lld pages",
-           ts, e->fpid, e->fcomm, e->tpid, e->tcomm, e->pages);
-    if (n)
-        printf(", loadavg: %s", buf);
-    else
-        printf("\n");
-
-    return 0;
+	handle_event_extra();
 }
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
