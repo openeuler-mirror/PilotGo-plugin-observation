@@ -51,22 +51,27 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_sort_arg_extra(void)
+{
+		if (!strcmp(arg, "all"))
+			sort_by = ALL;
+		else if (!strcmp(arg, "reads"))
+			sort_by = READS;
+		else if (!strcmp(arg, "writes"))
+			sort_by = WRITES;
+		else if (!strcmp(arg, "rbytes"))
+			sort_by = RBYTES;
+		else if (!strcmp(arg, "wbytes"))
+			sort_by = WBYTES;
+		else {
+			warning("Invalid sort method: %s\n", arg);
+			argp_usage(state);
+		}
+}
+
 static void parse_sort_arg(const char *arg, struct argp_state *state)
 {
-	if (!strcmp(arg, "all"))
-		sort_by = ALL;
-	else if (!strcmp(arg, "reads"))
-		sort_by = READS;
-	else if (!strcmp(arg, "writes"))
-		sort_by = WRITES;
-	else if (!strcmp(arg, "rbytes"))
-		sort_by = RBYTES;
-	else if (!strcmp(arg, "wbytes"))
-		sort_by = WBYTES;
-	else {
-		warning("Invalid sort method: %s\n", arg);
-		argp_usage(state);
-	}
+	parse_sort_arg_extra();
 }
 
 static void parse_rows_arg(const char *arg, struct argument *argument,
