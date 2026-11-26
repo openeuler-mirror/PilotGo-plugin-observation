@@ -68,35 +68,39 @@ static __always_inline bool filename_matched(const char *filename)
 }
 
 /* Filter target operation */
+static void is_target_operation_extra(void)
+{
+		switch (target_op) {
+		case F_READ:
+		case F_READV:
+			return op == F_READ || op == F_READV;
+		case F_WRITE:
+		case F_WRITEV:
+			return op == F_WRITE || op == F_WRITEV;
+		case F_OPEN:
+		case F_OPENAT:
+		case F_OPENAT2:
+			return op == F_OPEN || op == F_OPENAT || op == F_OPENAT2;
+		case F_STATX:
+		case F_FSTATFS:
+		case F_NEWFSTAT:
+			return op == F_STATX || op == F_FSTATFS || op == F_NEWFSTAT;
+		case F_RENAMEAT:
+		case F_RENAMEAT2:
+			return op == F_RENAMEAT || op == F_RENAMEAT2;
+		case F_UNLINKAT:
+			return op == F_UNLINKAT;
+		case F_CLOSE:
+			return op == F_CLOSE;
+		case F_UTIMENSAT:
+			return op == F_UTIMENSAT;
+		}
+		return true;
+}
+
 static __always_inline bool is_target_operation(enum file_op op)
 {
-	switch (target_op) {
-	case F_READ:
-	case F_READV:
-		return op == F_READ || op == F_READV;
-	case F_WRITE:
-	case F_WRITEV:
-		return op == F_WRITE || op == F_WRITEV;
-	case F_OPEN:
-	case F_OPENAT:
-	case F_OPENAT2:
-		return op == F_OPEN || op == F_OPENAT || op == F_OPENAT2;
-	case F_STATX:
-	case F_FSTATFS:
-	case F_NEWFSTAT:
-		return op == F_STATX || op == F_FSTATFS || op == F_NEWFSTAT;
-	case F_RENAMEAT:
-	case F_RENAMEAT2:
-		return op == F_RENAMEAT || op == F_RENAMEAT2;
-	case F_UNLINKAT:
-		return op == F_UNLINKAT;
-	case F_CLOSE:
-		return op == F_CLOSE;
-	case F_UTIMENSAT:
-		return op == F_UTIMENSAT;
-	}
-
-	return true;
+	is_target_operation_extra();
 }
 
 static __always_inline void read_filename_arg(struct trace_event_raw_sys_enter *ctx,
