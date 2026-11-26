@@ -119,53 +119,56 @@ static void finalize_args(struct env *env, struct argp_state *state)
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		struct env *env = state->input;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env->verbose = true;
+			break;
+		case 'T':
+			env->timestamp = true;
+			break;
+		case 'k':
+			env->kprobes = true;
+			break;
+		case 'c':
+			env->cgroupspath = arg;
+			env->cg = true;
+			break;
+		case 'p':
+			env->pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'm':
+			set_units(env, MSEC, state);
+			break;
+		case 'u':
+			set_units(env, USEC, state);
+			break;
+		case 'd':
+			parse_duration_arg(env, arg, state);
+			break;
+		case 'i':
+			parse_interval_arg(env, arg, state);
+			break;
+		case ARGP_KEY_ARG:
+			parse_funcname_arg(env, arg, state);
+			break;
+		case ARGP_KEY_END:
+			finalize_args(env, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	struct env *env = state->input;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env->verbose = true;
-		break;
-	case 'T':
-		env->timestamp = true;
-		break;
-	case 'k':
-		env->kprobes = true;
-		break;
-	case 'c':
-		env->cgroupspath = arg;
-		env->cg = true;
-		break;
-	case 'p':
-		env->pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'm':
-		set_units(env, MSEC, state);
-		break;
-	case 'u':
-		set_units(env, USEC, state);
-		break;
-	case 'd':
-		parse_duration_arg(env, arg, state);
-		break;
-	case 'i':
-		parse_interval_arg(env, arg, state);
-		break;
-	case ARGP_KEY_ARG:
-		parse_funcname_arg(env, arg, state);
-		break;
-	case ARGP_KEY_END:
-		finalize_args(env, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
