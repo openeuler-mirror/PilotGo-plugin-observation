@@ -124,76 +124,64 @@ static int print_map(int map_fd)
 	print_map_extra();
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct swapin_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = swapin_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		if (fentry_can_attach("swap_readpage", NULL))
+			bpf_program__set_autoload(obj->progs.swap_readpage_kprobe, false);
+		else
+			bpf_program__set_autoload(obj->progs.swap_readpage_fentry, false);
+		obj->rodata->target_pid = env.pid;
+		err = swapin_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = swapin_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		while (!exiting) {
+			sleep(env.interval);
+			printf("\n");
+			if (env.timestamp) {
+				char ts[32];
+				strftime_now(ts, sizeof(ts), "%H:%M:%S");
+				printf("%-8s\n", ts);
+			}
+			printf("%-16s %-7s %s\n", "COMM", "PID", "COUNT");
+			err = print_map(bpf_map__fd(obj->maps.counts));
+			if (err)
+				break;
+			if (--env.times == 0)
+				break;
+		}
+	cleanup:
+		swapin_bpf__destroy(obj);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct swapin_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = swapin_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	if (fentry_can_attach("swap_readpage", NULL))
-		bpf_program__set_autoload(obj->progs.swap_readpage_kprobe, false);
-	else
-		bpf_program__set_autoload(obj->progs.swap_readpage_fentry, false);
-
-	obj->rodata->target_pid = env.pid;
-
-	err = swapin_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = swapin_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	while (!exiting) {
-		sleep(env.interval);
-		printf("\n");
-
-		if (env.timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
-
-		printf("%-16s %-7s %s\n", "COMM", "PID", "COUNT");
-
-		err = print_map(bpf_map__fd(obj->maps.counts));
-		if (err)
-			break;
-
-		if (--env.times == 0)
-			break;
-	}
-
-cleanup:
-	swapin_bpf__destroy(obj);
-
-	return err != 0;
+	main_extra();
 }
 
