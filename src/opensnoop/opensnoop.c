@@ -213,25 +213,27 @@ static void sig_handler(int sig)
     exiting = 1;
 }
 
+static void parse_open_flags_extra(void)
+{
+	    char flags_string[1024] = {0};
+	    for (int j = 0; j < ARRAY_SIZE(openflags); j++)
+	    {
+	        if (!(flag & openflags[j].flag))
+	            continue;
+	        if (flags_string[0])
+	            strcat(flags_string, " | ");
+	        strcat(flags_string, openflags[j].name);
+	    }
+	    if (strlen(flags_string) == 0)
+	        return;
+	    for (int j = 0; j < sps_cnt; j++)
+	        printf(" ");
+	    printf("FLAGS: %s\n", flags_string);
+}
+
 static void parse_open_flags(int flag, int sps_cnt)
 {
-    char flags_string[1024] = {0};
-
-    for (int j = 0; j < ARRAY_SIZE(openflags); j++)
-    {
-        if (!(flag & openflags[j].flag))
-            continue;
-        if (flags_string[0])
-            strcat(flags_string, " | ");
-        strcat(flags_string, openflags[j].name);
-    }
-    if (strlen(flags_string) == 0)
-        return;
-
-    for (int j = 0; j < sps_cnt; j++)
-        printf(" ");
-
-    printf("FLAGS: %s\n", flags_string);
+	parse_open_flags_extra();
 }
 
 static void parse_open_modes(unsigned short mode, int sps_cnt)
