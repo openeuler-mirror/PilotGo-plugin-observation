@@ -259,40 +259,39 @@ static int attach_kprobe_pair(struct bpf_program *entry_prog,
 	return 0;
 }
 
+static void attach_kprobes_extra(void)
+{
+		struct fs_config *cfg = &fs_configs[fs_type];
+		int err = 0;
+		err = attach_kprobe_pair(obj->progs.file_read_entry, obj->progs.file_read_exit,
+					 true, cfg->op_funcs[F_READ], &obj->links.file_read_entry,
+					 &obj->links.file_read_exit);
+		if (err)
+			goto errout;
+		err = attach_kprobe_pair(obj->progs.file_write_entry, obj->progs.file_write_exit,
+					 true, cfg->op_funcs[F_WRITE], &obj->links.file_write_entry,
+					 &obj->links.file_write_exit);
+		if (err)
+			goto errout;
+		err = attach_kprobe_pair(obj->progs.file_open_entry, obj->progs.file_open_exit,
+					 true, cfg->op_funcs[F_OPEN], &obj->links.file_open_entry,
+					 &obj->links.file_open_exit);
+		if (err)
+			goto errout;
+		err = attach_kprobe_pair(obj->progs.file_sync_entry, obj->progs.file_sync_exit,
+					 false, cfg->op_funcs[F_FSYNC], &obj->links.file_sync_entry,
+					 &obj->links.file_sync_exit);
+		if (err)
+			goto errout;
+		return 0;
+	errout:
+		warning("Failed to attach kprobe: %d\n", err);
+		return err;
+}
+
 static int attach_kprobes(struct fsslower_bpf *obj)
 {
-	struct fs_config *cfg = &fs_configs[fs_type];
-	int err = 0;
-
-	err = attach_kprobe_pair(obj->progs.file_read_entry, obj->progs.file_read_exit,
-				 true, cfg->op_funcs[F_READ], &obj->links.file_read_entry,
-				 &obj->links.file_read_exit);
-	if (err)
-		goto errout;
-
-	err = attach_kprobe_pair(obj->progs.file_write_entry, obj->progs.file_write_exit,
-				 true, cfg->op_funcs[F_WRITE], &obj->links.file_write_entry,
-				 &obj->links.file_write_exit);
-	if (err)
-		goto errout;
-
-	err = attach_kprobe_pair(obj->progs.file_open_entry, obj->progs.file_open_exit,
-				 true, cfg->op_funcs[F_OPEN], &obj->links.file_open_entry,
-				 &obj->links.file_open_exit);
-	if (err)
-		goto errout;
-
-	err = attach_kprobe_pair(obj->progs.file_sync_entry, obj->progs.file_sync_exit,
-				 false, cfg->op_funcs[F_FSYNC], &obj->links.file_sync_entry,
-				 &obj->links.file_sync_exit);
-	if (err)
-		goto errout;
-
-	return 0;
-
-errout:
-	warning("Failed to attach kprobe: %d\n", err);
-	return err;
+	attach_kprobes_extra();
 }
 
 static void print_headers_extra(void)
