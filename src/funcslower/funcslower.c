@@ -353,23 +353,24 @@ static void print_time_prefix(void)
 	}
 }
 
+static void handle_event_extra(void)
+{
+		struct event *e = data;
+		struct funcslower_bpf *obj = ctx;
+		char retval[20];
+		print_time_prefix();
+		sprintf(retval, "0x%llx", e->retval);
+		printf("%-16s %-10lld %10.2f %16s %s", e->comm, e->pid_tgid >> 32,
+		       e->duration_ns / (env.ms ? 1e6 : 1e3), retval,
+		       env.functions[e->id]);
+		print_args(e->args);
+		print_stack(obj, e);
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	struct event *e = data;
-	struct funcslower_bpf *obj = ctx;
-	char retval[20];
-
-	print_time_prefix();
-
-	sprintf(retval, "0x%llx", e->retval);
-
-	printf("%-16s %-10lld %10.2f %16s %s", e->comm, e->pid_tgid >> 32,
-	       e->duration_ns / (env.ms ? 1e6 : 1e3), retval,
-	       env.functions[e->id]);
-
-	print_args(e->args);
-	print_stack(obj, e);
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
