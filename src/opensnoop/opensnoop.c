@@ -255,33 +255,32 @@ static void parse_open_modes(unsigned short mode, int sps_cnt)
     printf("MODES: %s\n", modes_string);
 }
 
+static void print_event_header_extra(void)
+{
+		int sps_cnt = 0;
+		if (env.timestamp) {
+			char ts[32];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s ", ts);
+			sps_cnt += 9;
+		}
+		if (env.print_uid) {
+			printf("%-7d ", e->uid);
+			sps_cnt += 8;
+		}
+		printf("%-6d %-16s %3d %3d ", e->pid, e->comm, fd, err);
+		sps_cnt += 7 + 17 + 4 + 4;
+		if (env.extended && !env.fuller_extended) {
+			printf("%08o %08o ", e->flags, e->modes);
+			sps_cnt += 18;
+		}
+		printf("%s\n", e->fname);
+		return sps_cnt;
+}
+
 static int print_event_header(const struct event *e, int fd, int err)
 {
-	int sps_cnt = 0;
-
-	if (env.timestamp) {
-		char ts[32];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		printf("%-8s ", ts);
-		sps_cnt += 9;
-	}
-
-	if (env.print_uid) {
-		printf("%-7d ", e->uid);
-		sps_cnt += 8;
-	}
-
-	printf("%-6d %-16s %3d %3d ", e->pid, e->comm, fd, err);
-	sps_cnt += 7 + 17 + 4 + 4;
-
-	if (env.extended && !env.fuller_extended) {
-		printf("%08o %08o ", e->flags, e->modes);
-		sps_cnt += 18;
-	}
-	printf("%s\n", e->fname);
-
-	return sps_cnt;
+	print_event_header_extra();
 }
 
 #ifdef USE_BLAZESYM
