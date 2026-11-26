@@ -310,25 +310,26 @@ static void print_user_stack(struct funcslower_bpf *obj, struct event *e,
 	}
 }
 
+static void print_stack_extra(void)
+{
+		unsigned long *ip;
+		int idx = 0;
+		if (!env.need_user_stack && !env.need_kernel_stack)
+			return 0;
+		ip = calloc(env.perf_max_stack_depth, sizeof(*ip));
+		if (!ip) {
+			warning("Failed to alloc ip\n");
+			return 0;
+		}
+		print_kernel_stack(obj, e, ip, &idx);
+		print_user_stack(obj, e, ip, &idx);
+		free(ip);
+		return 0;
+}
+
 static int print_stack(struct funcslower_bpf *obj, struct event *e)
 {
-	unsigned long *ip;
-	int idx = 0;
-
-	if (!env.need_user_stack && !env.need_kernel_stack)
-		return 0;
-
-	ip = calloc(env.perf_max_stack_depth, sizeof(*ip));
-	if (!ip) {
-		warning("Failed to alloc ip\n");
-		return 0;
-	}
-
-	print_kernel_stack(obj, e, ip, &idx);
-	print_user_stack(obj, e, ip, &idx);
-
-	free(ip);
-	return 0;
+	print_stack_extra();
 }
 
 static void print_args(__u64 args[])
