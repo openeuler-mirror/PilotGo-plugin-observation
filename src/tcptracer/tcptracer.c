@@ -135,53 +135,52 @@ static void print_events_header()
 	       "T", "PID", "COMM", "IP", "SADDR", "DADDR", "SPORT", "DPORT");
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		char src[INET6_ADDRSTRLEN];
+		char dst[INET6_ADDRSTRLEN];
+		union {
+			struct in_addr x4;
+			struct in6_addr x6;
+		} s, d;
+		if (e->af == AF_INET) {
+			s.x4.s_addr = e->saddr_v4;
+			d.x4.s_addr = e->daddr_v4;
+		} else if (e->af == AF_INET6) {
+			memcpy(&s.x6.s6_addr, &e->saddr_v6, sizeof(s.x6.s6_addr));
+			memcpy(&d.x6.s6_addr, &e->daddr_v6, sizeof(d.x6.s6_addr));
+		} else {
+			warning("Broken event: event->af=%d\n", e->af);
+			return 1;
+		}
+		if (env.print_timestamp)
+			printf("%-9.3f", time_since_start());
+		if (env.print_uid)
+			printf("%-6d", e->uid);
+		char type = '-';
+		switch (e->type) {
+		case TCP_EVENT_TYPE_CONNECT:
+			type = 'C';
+			break;
+		case TCP_EVENT_TYPE_ACCEPT:
+			type = 'A';
+			break;
+		case TCP_EVENT_TYPE_CLOSE:
+			type = 'X';
+			break;
+		}
+		printf("%c %-6d %-12.12s %-2d %-16s %-16s %-4d %-4d\n",
+		       type, e->pid, e->task, e->af == AF_INET ? 4 : 6,
+		       inet_ntop(e->af, &s, src, sizeof(src)),
+		       inet_ntop(e->af, &d, dst, sizeof(dst)),
+		       ntohs(e->sport), ntohs(e->dport));
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-	char src[INET6_ADDRSTRLEN];
-	char dst[INET6_ADDRSTRLEN];
-	union {
-		struct in_addr x4;
-		struct in6_addr x6;
-	} s, d;
-
-	if (e->af == AF_INET) {
-		s.x4.s_addr = e->saddr_v4;
-		d.x4.s_addr = e->daddr_v4;
-	} else if (e->af == AF_INET6) {
-		memcpy(&s.x6.s6_addr, &e->saddr_v6, sizeof(s.x6.s6_addr));
-		memcpy(&d.x6.s6_addr, &e->daddr_v6, sizeof(d.x6.s6_addr));
-	} else {
-		warning("Broken event: event->af=%d\n", e->af);
-		return 1;
-	}
-
-	if (env.print_timestamp)
-		printf("%-9.3f", time_since_start());
-
-	if (env.print_uid)
-		printf("%-6d", e->uid);
-
-	char type = '-';
-	switch (e->type) {
-	case TCP_EVENT_TYPE_CONNECT:
-		type = 'C';
-		break;
-	case TCP_EVENT_TYPE_ACCEPT:
-		type = 'A';
-		break;
-	case TCP_EVENT_TYPE_CLOSE:
-		type = 'X';
-		break;
-	}
-
-	printf("%c %-6d %-12.12s %-2d %-16s %-16s %-4d %-4d\n",
-	       type, e->pid, e->task, e->af == AF_INET ? 4 : 6,
-	       inet_ntop(e->af, &s, src, sizeof(src)),
-	       inet_ntop(e->af, &d, dst, sizeof(dst)),
-	       ntohs(e->sport), ntohs(e->dport));
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
