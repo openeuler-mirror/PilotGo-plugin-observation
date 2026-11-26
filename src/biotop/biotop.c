@@ -88,6 +88,7 @@ const char argp_program_doc[] =
 "EXAMPLES:\n"
 "    biotop            # file I/O top, refresh every 1s\n"
 "    biotop 5 10       # 5s summaries, 10 times\n";
+"    biotop --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "noclear", 'c', NULL, 0, "Don't clear the screen" },
