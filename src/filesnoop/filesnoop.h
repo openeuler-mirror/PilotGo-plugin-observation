@@ -31,7 +31,8 @@ struct event {
 	pid_t pid;
 	char comm[TASK_COMM_LEN];
 	enum file_op op;
-	int ret;
+	/* ret field */
+	int	ret;
 	char filename[FSFILENAME_MAX];
 	int fd;
 };
