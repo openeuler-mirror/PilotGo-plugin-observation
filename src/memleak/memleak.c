@@ -895,204 +895,179 @@ static int reap_child_process(void)
 	return 0;
 }
 
+static void main_extra(void)
+{
+	    int ret = 0;
+	    struct memleak_bpf *skel = NULL;
+	    static const struct argp argp = {
+	        .options = opts,
+	        .parser = parse_arg,
+	        .doc = argp_program_doc,
+	    };
+	    // parse command line args to env setting
+	    ret = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	    if (ret)
+	        return ret;
+	    if (!bpf_is_root())
+	        return 1;
+	    if (signal(SIGINT, sig_handler) == SIG_ERR ||
+	        signal(SIGCHLD, sig_handler) == SIG_ERR)
+	    {
+	        perror("Failed to setup signal handling");
+	        return errno;
+	    }
+	    if (!strlen(env.object))
+	    {
+	        warning("Using default object: %s\n", default_object);
+	        strncpy(env.object, default_object, sizeof(env.object) - 1);
+	    }
+	    env.page_size = sysconf(_SC_PAGE_SIZE);
+	    printf("Using pages size %ld\n", env.page_size);
+	    env.kernel_trace = env.pid < 0 && !strlen(env.command);
+	    printf("tracing kernel: %s\n", env.kernel_trace ? "true" : "false");
+	    // if specific userspace program was specified,
+	    // create the child process and use an eventfd to synchronize to call to exec()
+	    if (strlen(env.command))
+	    {
+	        ret = spawn_child_command();
+	        if (ret)
+	            return ret;
+	    }
+	    // allocate space for storing a stack trace
+	    stack = calloc(env.perf_max_stack_depth, sizeof(*stack));
+	    if (!stack)
+	    {
+	        warning("Failed to allocate stack array\n");
+	        return -ENOMEM;
+	    }
+	#ifdef USE_BLAZESYM
+	    if (env.pid < 0)
+	    {
+	        src_cfg.src_type = BLAZESYM_SRC_T_KERNEL;
+	        src_cfg.params.kernel.kallsyms = NULL;
+	        src_cfg.params.kernel.kernel_image = NULL;
+	    }
+	    else
+	    {
+	        src_cfg.src_type = BLAZESYM_SRC_T_PROCESS;
+	        src_cfg.params.process.pid = env.pid;
+	    }
+	#endif
+	    // allocate space for storing "allocation" structs
+	    if (env.combined_only)
+	        allocs = calloc(COMBINED_ALLOCS_MAX_ENTRIES, sizeof(*allocs));
+	    else
+	        allocs = calloc(ALLOCS_MAX_ENTRIES, sizeof(*allocs));
+	    if (!allocs)
+	    {
+	        warning("Failed to allocate array\n");
+	        ret = -ENOMEM;
+	        goto cleanup;
+	    }
+	    libbpf_set_print(libbpf_print_fn);
+	    skel = memleak_bpf__open();
+	    if (!skel)
+	    {
+	        warning("Failed to open bpf object\n");
+	        ret = 1;
+	        goto cleanup;
+	    }
+	    skel->rodata->min_size = env.min_size;
+	    skel->rodata->max_size = env.max_size;
+	    skel->rodata->page_size = env.page_size;
+	    skel->rodata->sample_rate = env.sample_rate;
+	    skel->rodata->trace_all = env.trace_all;
+	    skel->rodata->stack_flags = env.kernel_trace ? 0 : BPF_F_USER_STACK;
+	    skel->rodata->wa_missing_free = env.wa_missing_free;
+	    bpf_map__set_value_size(skel->maps.stack_traces,
+	                            env.perf_max_stack_depth * sizeof(unsigned long));
+	    bpf_map__set_max_entries(skel->maps.stack_traces, env.stack_map_max_entries);
+	    // disable kernel tracepoints based on setting or avaiability
+	    if (env.kernel_trace)
+	    {
+	        if (!has_kernel_node_tracepoints())
+	            disable_kernel_node_tracepoints(skel);
+	        if (!env.percpu)
+	            disable_kernel_percpu_tracepoints(skel);
+	    }
+	    else
+	    {
+	        disable_kernel_tracepoints(skel);
+	    }
+	    ret = memleak_bpf__load(skel);
+	    if (ret)
+	    {
+	        warning("Failed to load BPF object\n");
+	        goto cleanup;
+	    }
+	    const int allocs_fd = bpf_map__fd(skel->maps.allocs);
+	    const int combined_allocs_fd = bpf_map__fd(skel->maps.combined_allocs);
+	    const int stack_traces_fd = bpf_map__fd(skel->maps.stack_traces);
+	    // if userspace oriented, attach uprobes
+	    if (!env.kernel_trace)
+	    {
+	        ret = attach_uprobes(skel);
+	        if (ret)
+	        {
+	            warning("Failed to attach uprobes\n");
+	            goto cleanup;
+	        }
+	    }
+	    ret = memleak_bpf__attach(skel);
+	    if (ret)
+	    {
+	        warning("Failed to attach BPF programs\n");
+	        goto cleanup;
+	    }
+	    // if running a specific userspace program,
+	    // nitify the child process that it can exec its program
+	    if (strlen(env.command))
+	    {
+	        ret = event_notify(child_exec_event_fd, 1);
+	        if (ret)
+	        {
+	            warning("Failed to notify child to perform exec\n");
+	            goto cleanup;
+	        }
+	    }
+	    ret = init_symbolizer();
+	    if (ret)
+	        goto cleanup;
+	    printf("Tracing outstanding memory allocs... Hit Ctrl-C to end\n");
+	    // main loop
+	    while (!exiting && env.nr_intervals)
+	    {
+	        env.nr_intervals--;
+	        sleep(env.interval);
+	        if (env.combined_only)
+	            print_outstanding_combined_allocs(combined_allocs_fd, stack_traces_fd);
+	        else
+	            print_outstanding_allocs(allocs_fd, stack_traces_fd);
+	    }
+	    // after loop ends, check for child process and cleanup accordingly
+	    if (env.pid > 0 && env.pid_from_child)
+	    {
+	        ret = reap_child_process();
+	        if (ret)
+	            goto cleanup;
+	    }
+	cleanup:
+	#ifdef USE_BLAZESYM
+	    blazesym_free(symbolizer);
+	#else
+	    if (syms_cache)
+	        syms_cache__free(syms_cache);
+	    if (ksyms)
+	        ksyms__free(ksyms);
+	#endif
+	    memleak_bpf__destroy(skel);
+	    free(allocs);
+	    free(stack);
+	    printf("done\n");
+	    return ret;
+}
+
 int main(int argc, char *argv[])
 {
-    int ret = 0;
-    struct memleak_bpf *skel = NULL;
-    static const struct argp argp = {
-        .options = opts,
-        .parser = parse_arg,
-        .doc = argp_program_doc,
-    };
-
-    // parse command line args to env setting
-    ret = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-    if (ret)
-        return ret;
-
-    if (!bpf_is_root())
-        return 1;
-
-    if (signal(SIGINT, sig_handler) == SIG_ERR ||
-        signal(SIGCHLD, sig_handler) == SIG_ERR)
-    {
-        perror("Failed to setup signal handling");
-        return errno;
-    }
-
-    if (!strlen(env.object))
-    {
-        warning("Using default object: %s\n", default_object);
-        strncpy(env.object, default_object, sizeof(env.object) - 1);
-    }
-
-    env.page_size = sysconf(_SC_PAGE_SIZE);
-    printf("Using pages size %ld\n", env.page_size);
-
-    env.kernel_trace = env.pid < 0 && !strlen(env.command);
-    printf("tracing kernel: %s\n", env.kernel_trace ? "true" : "false");
-
-    // if specific userspace program was specified,
-    // create the child process and use an eventfd to synchronize to call to exec()
-    if (strlen(env.command))
-    {
-        ret = spawn_child_command();
-        if (ret)
-            return ret;
-    }
-
-    // allocate space for storing a stack trace
-    stack = calloc(env.perf_max_stack_depth, sizeof(*stack));
-    if (!stack)
-    {
-        warning("Failed to allocate stack array\n");
-        return -ENOMEM;
-    }
-
-#ifdef USE_BLAZESYM
-    if (env.pid < 0)
-    {
-        src_cfg.src_type = BLAZESYM_SRC_T_KERNEL;
-        src_cfg.params.kernel.kallsyms = NULL;
-        src_cfg.params.kernel.kernel_image = NULL;
-    }
-    else
-    {
-        src_cfg.src_type = BLAZESYM_SRC_T_PROCESS;
-        src_cfg.params.process.pid = env.pid;
-    }
-#endif
-
-    // allocate space for storing "allocation" structs
-    if (env.combined_only)
-        allocs = calloc(COMBINED_ALLOCS_MAX_ENTRIES, sizeof(*allocs));
-    else
-        allocs = calloc(ALLOCS_MAX_ENTRIES, sizeof(*allocs));
-
-    if (!allocs)
-    {
-        warning("Failed to allocate array\n");
-        ret = -ENOMEM;
-        goto cleanup;
-    }
-
-    libbpf_set_print(libbpf_print_fn);
-
-    skel = memleak_bpf__open();
-    if (!skel)
-    {
-        warning("Failed to open bpf object\n");
-        ret = 1;
-        goto cleanup;
-    }
-
-    skel->rodata->min_size = env.min_size;
-    skel->rodata->max_size = env.max_size;
-    skel->rodata->page_size = env.page_size;
-    skel->rodata->sample_rate = env.sample_rate;
-    skel->rodata->trace_all = env.trace_all;
-    skel->rodata->stack_flags = env.kernel_trace ? 0 : BPF_F_USER_STACK;
-    skel->rodata->wa_missing_free = env.wa_missing_free;
-
-    bpf_map__set_value_size(skel->maps.stack_traces,
-                            env.perf_max_stack_depth * sizeof(unsigned long));
-    bpf_map__set_max_entries(skel->maps.stack_traces, env.stack_map_max_entries);
-
-    // disable kernel tracepoints based on setting or avaiability
-    if (env.kernel_trace)
-    {
-        if (!has_kernel_node_tracepoints())
-            disable_kernel_node_tracepoints(skel);
-
-        if (!env.percpu)
-            disable_kernel_percpu_tracepoints(skel);
-    }
-    else
-    {
-        disable_kernel_tracepoints(skel);
-    }
-
-    ret = memleak_bpf__load(skel);
-    if (ret)
-    {
-        warning("Failed to load BPF object\n");
-        goto cleanup;
-    }
-
-    const int allocs_fd = bpf_map__fd(skel->maps.allocs);
-    const int combined_allocs_fd = bpf_map__fd(skel->maps.combined_allocs);
-    const int stack_traces_fd = bpf_map__fd(skel->maps.stack_traces);
-
-    // if userspace oriented, attach uprobes
-    if (!env.kernel_trace)
-    {
-        ret = attach_uprobes(skel);
-        if (ret)
-        {
-            warning("Failed to attach uprobes\n");
-            goto cleanup;
-        }
-    }
-
-    ret = memleak_bpf__attach(skel);
-    if (ret)
-    {
-        warning("Failed to attach BPF programs\n");
-        goto cleanup;
-    }
-
-    // if running a specific userspace program,
-    // nitify the child process that it can exec its program
-    if (strlen(env.command))
-    {
-        ret = event_notify(child_exec_event_fd, 1);
-        if (ret)
-        {
-            warning("Failed to notify child to perform exec\n");
-            goto cleanup;
-        }
-    }
-
-    ret = init_symbolizer();
-    if (ret)
-        goto cleanup;
-
-    printf("Tracing outstanding memory allocs... Hit Ctrl-C to end\n");
-
-    // main loop
-    while (!exiting && env.nr_intervals)
-    {
-        env.nr_intervals--;
-
-        sleep(env.interval);
-
-        if (env.combined_only)
-            print_outstanding_combined_allocs(combined_allocs_fd, stack_traces_fd);
-        else
-            print_outstanding_allocs(allocs_fd, stack_traces_fd);
-    }
-
-    // after loop ends, check for child process and cleanup accordingly
-    if (env.pid > 0 && env.pid_from_child)
-    {
-        ret = reap_child_process();
-        if (ret)
-            goto cleanup;
-    }
-
-cleanup:
-#ifdef USE_BLAZESYM
-    blazesym_free(symbolizer);
-#else
-    if (syms_cache)
-        syms_cache__free(syms_cache);
-    if (ksyms)
-        ksyms__free(ksyms);
-#endif
-    memleak_bpf__destroy(skel);
-    free(allocs);
-    free(stack);
-    printf("done\n");
-
-    return ret;
+	main_extra();
 }
