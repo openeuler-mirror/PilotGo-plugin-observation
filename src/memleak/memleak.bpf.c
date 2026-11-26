@@ -56,20 +56,22 @@ struct
 
 static union combined_alloc_info initial_cinfo;
 
+static void update_statistics_add_extra(void)
+{
+	    union combined_alloc_info *existing_cinfo;
+	    existing_cinfo = bpf_map_lookup_or_try_init(&combined_allocs, &stack_id,
+	                                                &initial_cinfo);
+	    if (!existing_cinfo)
+	        return;
+	    const union combined_alloc_info incremental_cinfo = {
+	        .total_size = sz,
+	        .number_of_allocs = 1};
+	    __sync_fetch_and_add(&existing_cinfo->bits, incremental_cinfo.bits);
+}
+
 static __always_inline void update_statistics_add(u64 stack_id, u64 sz)
 {
-    union combined_alloc_info *existing_cinfo;
-
-    existing_cinfo = bpf_map_lookup_or_try_init(&combined_allocs, &stack_id,
-                                                &initial_cinfo);
-    if (!existing_cinfo)
-        return;
-
-    const union combined_alloc_info incremental_cinfo = {
-        .total_size = sz,
-        .number_of_allocs = 1};
-
-    __sync_fetch_and_add(&existing_cinfo->bits, incremental_cinfo.bits);
+	update_statistics_add_extra();
 }
 
 static __always_inline void update_statistics_del(u64 stack_id, u64 sz)
