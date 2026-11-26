@@ -253,27 +253,31 @@ static bool check_fentry()
 	return true;
 }
 
+static void fentry_set_attach_target_extra(void)
+{
+		struct fs_config *cfg = &fs_configs[fs_type];
+		int err = 0;
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_read_fentry, 0, cfg->op_funcs[F_READ]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_read_fexit, 0, cfg->op_funcs[F_READ]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_write_fentry, 0, cfg->op_funcs[F_WRITE]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_write_fexit, 0, cfg->op_funcs[F_WRITE]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_open_fentry, 0, cfg->op_funcs[F_OPEN]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_open_fexit, 0, cfg->op_funcs[F_OPEN]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_sync_fentry, 0, cfg->op_funcs[F_FSYNC]);
+		err = err ?: bpf_program__set_attach_target(obj->progs.file_sync_fexit, 0, cfg->op_funcs[F_FSYNC]);
+		if (cfg->op_funcs[F_GETATTR]) {
+			err = err ?: bpf_program__set_attach_target(obj->progs.getattr_fentry, 0, cfg->op_funcs[F_GETATTR]);
+			err = err ?: bpf_program__set_attach_target(obj->progs.getattr_fexit, 0, cfg->op_funcs[F_GETATTR]);
+		} else {
+			bpf_program__set_autoload(obj->progs.getattr_fentry, false);
+			bpf_program__set_autoload(obj->progs.getattr_fexit, false);
+		}
+		return err;
+}
+
 static int fentry_set_attach_target(struct fsdist_bpf *obj)
 {
-	struct fs_config *cfg = &fs_configs[fs_type];
-	int err = 0;
-
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_read_fentry, 0, cfg->op_funcs[F_READ]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_read_fexit, 0, cfg->op_funcs[F_READ]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_write_fentry, 0, cfg->op_funcs[F_WRITE]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_write_fexit, 0, cfg->op_funcs[F_WRITE]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_open_fentry, 0, cfg->op_funcs[F_OPEN]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_open_fexit, 0, cfg->op_funcs[F_OPEN]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_sync_fentry, 0, cfg->op_funcs[F_FSYNC]);
-	err = err ?: bpf_program__set_attach_target(obj->progs.file_sync_fexit, 0, cfg->op_funcs[F_FSYNC]);
-	if (cfg->op_funcs[F_GETATTR]) {
-		err = err ?: bpf_program__set_attach_target(obj->progs.getattr_fentry, 0, cfg->op_funcs[F_GETATTR]);
-		err = err ?: bpf_program__set_attach_target(obj->progs.getattr_fexit, 0, cfg->op_funcs[F_GETATTR]);
-	} else {
-		bpf_program__set_autoload(obj->progs.getattr_fentry, false);
-		bpf_program__set_autoload(obj->progs.getattr_fexit, false);
-	}
-	return err;
+	fentry_set_attach_target_extra();
 }
 
 static void disable_fentry(struct fsdist_bpf *obj)
