@@ -373,126 +373,109 @@ static void print_header(struct argument *argument)
 		       "PID", "COMM", "CAP", "NAME", "AUDIT", "VERDICT");
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-
-	struct capable_bpf *obj;
-	struct perf_buffer *pb = NULL;
-	int err;
-	int cgfd = -1;
-	enum uniqueness uniqueness_type = UNQ_OFF;
-	struct argument argument = {
-		.pid = -1,
-		.stack_storage_size = 1024,
-		.perf_max_stack_depth = 127,
-		.unique = false,
-	};
-	struct context ctx = {
-		.argument = &argument,
-	};
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	if (setup_unique_type(&argument, &uniqueness_type))
-		return -1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = capable_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->target_pid = argument.pid;
-	obj->rodata->filter_cg = argument.cg;
-	obj->rodata->user_stack = argument.user_stack;
-	obj->rodata->kernel_stack = argument.kernel_stack;
-	obj->rodata->unique_type = uniqueness_type;
-
-	setup_stackmap(obj, &argument);
-
-	err = capable_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	if (!obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	if (fill_myinfo(obj))
-		goto cleanup;
-
-	if (setup_cgroup_map(obj, &argument, &cgfd))
-		goto cleanup;
-
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("Failed to load kallsyms\n");
-		goto cleanup;
-	}
-
-	syms_cache = syms_cache__new(0);
-	if (!syms_cache) {
-		warning("Failed to create syms_cache\n");
-		goto cleanup;
-	}
-
-	ctx.ifd = bpf_map__fd(obj->maps.info);
-	ctx.sfd = bpf_map__fd(obj->maps.stackmap);
-
-	err = capable_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF program: %d\n", err);
-		goto cleanup;
-	}
-
-	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
-			      handle_event, handle_lost_events, &ctx, NULL);
-	if (!pb) {
-		err = -errno;
-		warning("Failed to open perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	print_header(&argument);
-
-	/* main: poll */
-	while (!exiting) {
-		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling perf buffer: %s\n", strerror(-err));
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct capable_bpf *obj;
+		struct perf_buffer *pb = NULL;
+		int err;
+		int cgfd = -1;
+		enum uniqueness uniqueness_type = UNQ_OFF;
+		struct argument argument = {
+			.pid = -1,
+			.stack_storage_size = 1024,
+			.perf_max_stack_depth = 127,
+			.unique = false,
+		};
+		struct context ctx = {
+			.argument = &argument,
+		};
+		err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		if (setup_unique_type(&argument, &uniqueness_type))
+			return -1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = capable_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->target_pid = argument.pid;
+		obj->rodata->filter_cg = argument.cg;
+		obj->rodata->user_stack = argument.user_stack;
+		obj->rodata->kernel_stack = argument.kernel_stack;
+		obj->rodata->unique_type = uniqueness_type;
+		setup_stackmap(obj, &argument);
+		err = capable_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
 			goto cleanup;
 		}
-		/* reset err to return 0 if exiting */
-		err = 0;
-	}
+		if (!obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		if (fill_myinfo(obj))
+			goto cleanup;
+		if (setup_cgroup_map(obj, &argument, &cgfd))
+			goto cleanup;
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("Failed to load kallsyms\n");
+			goto cleanup;
+		}
+		syms_cache = syms_cache__new(0);
+		if (!syms_cache) {
+			warning("Failed to create syms_cache\n");
+			goto cleanup;
+		}
+		ctx.ifd = bpf_map__fd(obj->maps.info);
+		ctx.sfd = bpf_map__fd(obj->maps.stackmap);
+		err = capable_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF program: %d\n", err);
+			goto cleanup;
+		}
+		pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+				      handle_event, handle_lost_events, &ctx, NULL);
+		if (!pb) {
+			err = -errno;
+			warning("Failed to open perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		print_header(&argument);
+		/* main: poll */
+		while (!exiting) {
+			err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+			if (err < 0 && err != -EINTR) {
+				warning("Error polling perf buffer: %s\n", strerror(-err));
+				goto cleanup;
+			}
+			/* reset err to return 0 if exiting */
+			err = 0;
+		}
+	cleanup:
+		capable_bpf__destroy(obj);
+		syms_cache__free(syms_cache);
+		ksyms__free(ksyms);
+		if (cgfd > 0)
+			close(cgfd);
+		return err != 0;
+}
 
-cleanup:
-	capable_bpf__destroy(obj);
-	syms_cache__free(syms_cache);
-	ksyms__free(ksyms);
-	if (cgfd > 0)
-		close(cgfd);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
