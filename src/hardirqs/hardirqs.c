@@ -203,24 +203,27 @@ static void set_prog_autoload(struct hardirqs_bpf *obj)
 	}
 }
 
+static void setup_cgroup_map_extra4(void)
+{
+		int idx = 0;
+		int memcg_map_fd;
+		int memcg_fd;
+		memcg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+		memcg_fd = open(env.cgroupspath, O_RDONLY);
+		if (memcg_fd < 0) {
+			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+			return -1;
+		}
+		if (bpf_map_update_elem(memcg_map_fd, &idx, &memcg_fd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map");
+			return -1;
+		}
+		return memcg_fd;
+}
+
 static int setup_cgroup_map(struct hardirqs_bpf *obj)
 {
-	int idx = 0;
-	int memcg_map_fd;
-	int memcg_fd;
-
-	memcg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-	memcg_fd = open(env.cgroupspath, O_RDONLY);
-	if (memcg_fd < 0) {
-		warning("Failed opening Cgroup path: %s", env.cgroupspath);
-		return -1;
-	}
-	if (bpf_map_update_elem(memcg_map_fd, &idx, &memcg_fd, BPF_ANY)) {
-		warning("Failed adding target cgroup to map");
-		return -1;
-	}
-
-	return memcg_fd;
+	setup_cgroup_map_extra4();
 }
 
 static void print_timestamp(void)
