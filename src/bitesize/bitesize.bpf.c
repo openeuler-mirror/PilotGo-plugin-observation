@@ -48,29 +48,29 @@ static __always_inline bool dev_allowed(struct request *rq)
 	return !filter_dev || target_dev == rq_disk_dev(rq);
 }
 
+static void trace_rq_issue_extra(void)
+{
+		struct hist_key hkey;
+		struct hist *histp;
+		u64 slot;
+		if (!dev_allowed(rq))
+			return 0;
+		bpf_get_current_comm(&hkey.comm, sizeof(hkey.comm));
+		if (!comm_allowed(hkey.comm))
+			return 0;
+		histp = bpf_map_lookup_or_try_init(&hists, &hkey, &zero);
+		if (!histp)
+			return 0;
+		slot = log2l(BPF_CORE_READ(rq, __data_len) / 1024);
+		if (slot >= MAX_SLOTS)
+			slot = MAX_SLOTS - 1;
+		__sync_fetch_and_add(&histp->slots[slot], 1);
+		return 0;
+}
+
 static __always_inline int trace_rq_issue(struct request *rq)
 {
-	struct hist_key hkey;
-	struct hist *histp;
-	u64 slot;
-
-	if (!dev_allowed(rq))
-		return 0;
-
-	bpf_get_current_comm(&hkey.comm, sizeof(hkey.comm));
-	if (!comm_allowed(hkey.comm))
-		return 0;
-
-	histp = bpf_map_lookup_or_try_init(&hists, &hkey, &zero);
-	if (!histp)
-		return 0;
-
-	slot = log2l(BPF_CORE_READ(rq, __data_len) / 1024);
-	if (slot >= MAX_SLOTS)
-		slot = MAX_SLOTS - 1;
-	__sync_fetch_and_add(&histp->slots[slot], 1);
-
-	return 0;
+	trace_rq_issue_extra();
 }
 
 static __always_inline struct request *raw_tp_rq_arg(__u64 *ctx)
