@@ -78,20 +78,23 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void clear_map_extra(void)
+{
+		struct key_t lookup_key = { .pid = -1 }, next_key;
+		while (!bpf_map_get_next_key(map_fd, &lookup_key, &next_key)) {
+			int err = bpf_map_delete_elem(map_fd, &next_key);
+			if (err < 0) {
+				warning("Failed to cleanup info: %d\n", err);
+				return err;
+			}
+			lookup_key = next_key;
+		}
+		return 0;
+}
+
 static int clear_map(int map_fd)
 {
-	struct key_t lookup_key = { .pid = -1 }, next_key;
-
-	while (!bpf_map_get_next_key(map_fd, &lookup_key, &next_key)) {
-		int err = bpf_map_delete_elem(map_fd, &next_key);
-		if (err < 0) {
-			warning("Failed to cleanup info: %d\n", err);
-			return err;
-		}
-		lookup_key = next_key;
-	}
-
-	return 0;
+	clear_map_extra();
 }
 
 static int print_map(int map_fd)
