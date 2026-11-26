@@ -213,28 +213,28 @@ static void set_probe_autoload(struct cpufreq_bpf *obj)
 		bpf_program__set_autoload(obj->progs.cpu_frequency, false);
 }
 
+static void setup_cgroup_map_extra(void)
+{
+		int idx = 0;
+		int cg_map_fd;
+		if (!env.cg)
+			return 0;
+		cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+		*cgfd = open(env.cgroupspath, O_RDONLY);
+		if (*cgfd < 0) {
+			warning("Failed opening Cgroup path: %s", env.cgroupspath);
+			return -1;
+		}
+		if (bpf_map_update_elem(cg_map_fd, &idx, cgfd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map");
+			return -1;
+		}
+		return 0;
+}
+
 static int setup_cgroup_map(struct cpufreq_bpf *obj, int *cgfd)
 {
-	int idx = 0;
-	int cg_map_fd;
-
-	if (!env.cg)
-		return 0;
-
-	cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-	*cgfd = open(env.cgroupspath, O_RDONLY);
-	if (*cgfd < 0) {
-		warning("Failed opening Cgroup path: %s", env.cgroupspath);
-		return -1;
-	}
-
-	if (bpf_map_update_elem(cg_map_fd, &idx, cgfd, BPF_ANY)) {
-		warning("Failed adding target cgroup to map");
-		return -1;
-	}
-
-	return 0;
+	setup_cgroup_map_extra();
 }
 
 static void main_extra(void)
