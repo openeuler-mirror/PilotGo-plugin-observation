@@ -236,23 +236,26 @@ static bool try_fentry(struct funclatency_bpf *obj)
 	try_fentry_helper0();
 }
 
+static void attach_kprobes_extra(void)
+{
+		obj->links.dummy_kprobe = bpf_program__attach_kprobe(obj->progs.dummy_kprobe, false,
+								     env.funcname);
+		if (!obj->links.dummy_kprobe) {
+			warning("Failed to attach kprobe: %d\n", -errno);
+			return -1;
+		}
+		obj->links.dummy_kretprobe = bpf_program__attach_kprobe(obj->progs.dummy_kretprobe, true,
+									env.funcname);
+		if (!obj->links.dummy_kretprobe) {
+			warning("Failed to attach kretprobe: %d\n", -errno);
+			return -1;
+		}
+		return 0;
+}
+
 static int attach_kprobes(struct funclatency_bpf *obj)
 {
-	obj->links.dummy_kprobe = bpf_program__attach_kprobe(obj->progs.dummy_kprobe, false,
-							     env.funcname);
-	if (!obj->links.dummy_kprobe) {
-		warning("Failed to attach kprobe: %d\n", -errno);
-		return -1;
-	}
-
-	obj->links.dummy_kretprobe = bpf_program__attach_kprobe(obj->progs.dummy_kretprobe, true,
-								env.funcname);
-	if (!obj->links.dummy_kretprobe) {
-		warning("Failed to attach kretprobe: %d\n", -errno);
-		return -1;
-	}
-
-	return 0;
+	attach_kprobes_extra();
 }
 
 static void attach_uprobes_helper1_extra(void)
