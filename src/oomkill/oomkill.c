@@ -90,95 +90,86 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
     return vfprintf(stderr, format, args);
 }
 
+static void main_extra(void)
+{
+	    LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	    static const struct argp argp = {
+	        .options = opts,
+	        .parser = parse_arg,
+	        .doc = argp_program_doc,
+	    };
+	    struct bpf_buffer *buf = NULL;
+	    struct oomkill_bpf *obj;
+	    int err;
+	    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	    if (err)
+	        return err;
+	    if (!bpf_is_root())
+	        return 1;
+	    libbpf_set_print(libbpf_print_fn);
+	    err = ensure_core_btf(&open_opts);
+	    if (err)
+	    {
+	        warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+	        return 1;
+	    }
+	    obj = oomkill_bpf__open_opts(&open_opts);
+	    if (!obj)
+	    {
+	        warning("Failed to open BPF object\n");
+	        return 1;
+	    }
+	    buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	    if (!buf)
+	    {
+	        err = -errno;
+	        warning("Failed to create ring/perf buffer: %d\n", err);
+	        goto cleanup;
+	    }
+	    err = oomkill_bpf__load(obj);
+	    if (err)
+	    {
+	        warning("Failed to load BPF object: %d\n", err);
+	        goto cleanup;
+	    }
+	    err = oomkill_bpf__attach(obj);
+	    if (err)
+	    {
+	        warning("Failed to attach BPF programs: %d\n", err);
+	        goto cleanup;
+	    }
+	    err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	    if (err)
+	    {
+	        warning("Failed to open ring/perf buffer: %d\n", err);
+	        goto cleanup;
+	    }
+	    if (signal(SIGINT, sig_handler) == SIG_ERR)
+	    {
+	        warning("Can't set signal handler: %d\n", err);
+	        err = 1;
+	        goto cleanup;
+	    }
+	    printf("Tracing OOM kill... Ctrl-C to stop.\n");
+	    while (!exiting)
+	    {
+	        err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+	        if (err < 0 && err != -EINTR)
+	        {
+	            warning("error polling ring/perf buffer: %d\n", err);
+	            goto cleanup;
+	        }
+	        /* reset err to return 0 if exiting */
+	        err = 0;
+	    }
+	cleanup:
+	    bpf_buffer__free(buf);
+	    oomkill_bpf__destroy(obj);
+	    cleanup_core_btf(&open_opts);
+	    return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-    LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-    static const struct argp argp = {
-        .options = opts,
-        .parser = parse_arg,
-        .doc = argp_program_doc,
-    };
-    struct bpf_buffer *buf = NULL;
-    struct oomkill_bpf *obj;
-    int err;
-
-    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-    if (err)
-        return err;
-
-    if (!bpf_is_root())
-        return 1;
-
-    libbpf_set_print(libbpf_print_fn);
-
-    err = ensure_core_btf(&open_opts);
-    if (err)
-    {
-        warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-        return 1;
-    }
-
-    obj = oomkill_bpf__open_opts(&open_opts);
-    if (!obj)
-    {
-        warning("Failed to open BPF object\n");
-        return 1;
-    }
-
-    buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-    if (!buf)
-    {
-        err = -errno;
-        warning("Failed to create ring/perf buffer: %d\n", err);
-        goto cleanup;
-    }
-
-    err = oomkill_bpf__load(obj);
-    if (err)
-    {
-        warning("Failed to load BPF object: %d\n", err);
-        goto cleanup;
-    }
-
-    err = oomkill_bpf__attach(obj);
-    if (err)
-    {
-        warning("Failed to attach BPF programs: %d\n", err);
-        goto cleanup;
-    }
-
-    err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
-    if (err)
-    {
-        warning("Failed to open ring/perf buffer: %d\n", err);
-        goto cleanup;
-    }
-
-    if (signal(SIGINT, sig_handler) == SIG_ERR)
-    {
-        warning("Can't set signal handler: %d\n", err);
-        err = 1;
-        goto cleanup;
-    }
-
-    printf("Tracing OOM kill... Ctrl-C to stop.\n");
-
-    while (!exiting)
-    {
-        err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-        if (err < 0 && err != -EINTR)
-        {
-            warning("error polling ring/perf buffer: %d\n", err);
-            goto cleanup;
-        }
-        /* reset err to return 0 if exiting */
-        err = 0;
-    }
-
-cleanup:
-    bpf_buffer__free(buf);
-    oomkill_bpf__destroy(obj);
-    cleanup_core_btf(&open_opts);
-
-    return err != 0;
+	main_extra();
 }
