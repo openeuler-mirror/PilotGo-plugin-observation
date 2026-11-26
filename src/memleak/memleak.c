@@ -323,22 +323,25 @@ static int event_wait(int fd, uint64_t expected_event)
     return 0;
 }
 
+static void event_notify_extra(void)
+{
+	    const ssize_t bytes = write(fd, &event, sizeof(event));
+	    if (bytes < 0)
+	    {
+	        perror("Failed to write to fd");
+	        return -errno;
+	    }
+	    else if (bytes != sizeof(event))
+	    {
+	        warning("attempted to write %zu bytes, wrote %zd bytes\n", sizeof(event), bytes);
+	        return 1;
+	    }
+	    return 0;
+}
+
 static int event_notify(int fd, uint64_t event)
 {
-    const ssize_t bytes = write(fd, &event, sizeof(event));
-
-    if (bytes < 0)
-    {
-        perror("Failed to write to fd");
-        return -errno;
-    }
-    else if (bytes != sizeof(event))
-    {
-        warning("attempted to write %zu bytes, wrote %zd bytes\n", sizeof(event), bytes);
-        return 1;
-    }
-
-    return 0;
+	event_notify_extra();
 }
 
 static pid_t fork_sync_exec(const char *command, int fd)
