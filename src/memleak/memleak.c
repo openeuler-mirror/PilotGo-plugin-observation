@@ -455,37 +455,39 @@ static void print_stack_frames_by_ksyms()
     }
 }
 
+static void print_stack_frames_by_syms_cache_extra(void)
+{
+	    const struct syms *syms = syms_cache__get_syms(syms_cache, env.pid);
+	    if (!syms)
+	    {
+	        warning("Failed to get syms\n");
+	        return;
+	    }
+	    for (size_t i = 0; i < env.perf_max_stack_depth; i++)
+	    {
+	        const uint64_t addr = stack[i];
+	        if (!addr)
+	            break;
+	        char *dso_name;
+	        uint64_t dso_offset;
+	        const struct sym *sym = syms__map_addr_dso(syms, addr, &dso_name, &dso_offset);
+	        if (sym)
+	        {
+	            printf("\t%zu [<%016lx>] %s+0x%lx", i, addr, sym->name, sym->offset);
+	            if (dso_name)
+	                printf(" [%s]", dso_name);
+	            printf("\n");
+	        }
+	        else
+	        {
+	            printf("\t%zu [<%016lx>] <%s>\n", i, addr, "null sym");
+	        }
+	    }
+}
+
 static void print_stack_frames_by_syms_cache()
 {
-    const struct syms *syms = syms_cache__get_syms(syms_cache, env.pid);
-    if (!syms)
-    {
-        warning("Failed to get syms\n");
-        return;
-    }
-
-    for (size_t i = 0; i < env.perf_max_stack_depth; i++)
-    {
-        const uint64_t addr = stack[i];
-
-        if (!addr)
-            break;
-
-        char *dso_name;
-        uint64_t dso_offset;
-        const struct sym *sym = syms__map_addr_dso(syms, addr, &dso_name, &dso_offset);
-        if (sym)
-        {
-            printf("\t%zu [<%016lx>] %s+0x%lx", i, addr, sym->name, sym->offset);
-            if (dso_name)
-                printf(" [%s]", dso_name);
-            printf("\n");
-        }
-        else
-        {
-            printf("\t%zu [<%016lx>] <%s>\n", i, addr, "null sym");
-        }
-    }
+	print_stack_frames_by_syms_cache_extra();
 }
 #endif
 
