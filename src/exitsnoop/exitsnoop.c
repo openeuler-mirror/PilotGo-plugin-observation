@@ -75,24 +75,27 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
+static void print_exit_reason_extra(void)
+{
+		if (!e->sig) {
+			if (!e->exit_code)
+				printf("0\n");
+			else
+				printf("code %d\n", e->exit_code);
+			return;
+		}
+		int sig = e->sig & 0x7f;
+		int coredump = e->sig & 0x80;
+		if (sig)
+			printf("signal %d (%s)", sig, strsignal(sig));
+		if (coredump)
+			printf(", core dumped");
+		printf("\n");
+}
+
 static void print_exit_reason(const struct event *e)
 {
-	if (!e->sig) {
-		if (!e->exit_code)
-			printf("0\n");
-		else
-			printf("code %d\n", e->exit_code);
-		return;
-	}
-
-	int sig = e->sig & 0x7f;
-	int coredump = e->sig & 0x80;
-
-	if (sig)
-		printf("signal %d (%s)", sig, strsignal(sig));
-	if (coredump)
-		printf(", core dumped");
-	printf("\n");
+	print_exit_reason_extra();
 }
 
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
