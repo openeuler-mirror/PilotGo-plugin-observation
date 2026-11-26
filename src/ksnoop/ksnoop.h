@@ -49,7 +49,7 @@ enum arg {
 					 KSNOOP_F_PREDICATE_GT | \
 					 KSNOOP_F_PREDICATE_LT)
 
-/* for kprobes, entry is function IP + sizeof(kprobe_opcode_t),
+/* for kprobes, entry is function IP + sizeof ( kprobe_opcode_t ),
  * subtract in BPF prog context to get fn address.
  */
 #ifdef __TARGET_ARCH_x86
