@@ -25,20 +25,24 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_arg_extra0(void)
+{
+		switch (key) {
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'T':
+			env.timestamp = true;
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'T':
-		env.timestamp = true;
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra0();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
