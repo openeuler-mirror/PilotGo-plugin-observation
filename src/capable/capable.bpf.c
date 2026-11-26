@@ -95,24 +95,25 @@ static __always_inline bool is_traced_task(__u64 pid_tgid)
 	return true;
 }
 
+static void already_seen_extra(void)
+{
+		struct unique_key key = { .cap = argsp->cap };
+		u64 zero = 0;
+		if (!unique_type)
+			return false;
+		if (unique_type == UNQ_CGROUP)
+			key.cgroupid = bpf_get_current_cgroup_id();
+		else
+			key.tgid = pid_tgid;
+		if (bpf_map_lookup_elem(&seen, &key))
+			return true;
+		bpf_map_update_elem(&seen, &key, &zero, BPF_ANY);
+		return false;
+}
+
 static __always_inline bool already_seen(struct args_t *argsp, __u64 pid_tgid)
 {
-	struct unique_key key = { .cap = argsp->cap };
-	u64 zero = 0;
-
-	if (!unique_type)
-		return false;
-
-	if (unique_type == UNQ_CGROUP)
-		key.cgroupid = bpf_get_current_cgroup_id();
-	else
-		key.tgid = pid_tgid;
-
-	if (bpf_map_lookup_elem(&seen, &key))
-		return true;
-
-	bpf_map_update_elem(&seen, &key, &zero, BPF_ANY);
-	return false;
+	already_seen_extra();
 }
 
 static __always_inline void fill_event(struct cap_event *event,
