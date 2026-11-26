@@ -344,42 +344,41 @@ static int event_notify(int fd, uint64_t event)
 	event_notify_extra();
 }
 
+static void fork_sync_exec_extra(void)
+{
+	    const pid_t pid = fork();
+	    switch (pid)
+	    {
+	    case -1:
+	        perror("Failed to create child process");
+	        break;
+	    case 0:
+	    {
+	        const uint64_t event = 1;
+	        if (event_wait(fd, event))
+	        {
+	            warning("Failed to wait on event\n");
+	            exit(EXIT_FAILURE);
+	        }
+	        printf("Received go event. executing child command\n");
+	        const int err = execl(command, command, NULL);
+	        if (err)
+	        {
+	            perror("Failed to execute child command");
+	            return -1;
+	        }
+	        break;
+	    }
+	    default:
+	        printf("child created with pid: %d\n", pid);
+	        break;
+	    }
+	    return pid;
+}
+
 static pid_t fork_sync_exec(const char *command, int fd)
 {
-    const pid_t pid = fork();
-
-    switch (pid)
-    {
-    case -1:
-        perror("Failed to create child process");
-        break;
-    case 0:
-    {
-        const uint64_t event = 1;
-
-        if (event_wait(fd, event))
-        {
-            warning("Failed to wait on event\n");
-            exit(EXIT_FAILURE);
-        }
-
-        printf("Received go event. executing child command\n");
-
-        const int err = execl(command, command, NULL);
-        if (err)
-        {
-            perror("Failed to execute child command");
-            return -1;
-        }
-
-        break;
-    }
-    default:
-        printf("child created with pid: %d\n", pid);
-        break;
-    }
-
-    return pid;
+	fork_sync_exec_extra();
 }
 
 static void (*print_stack_frames_func)();
