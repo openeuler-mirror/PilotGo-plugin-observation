@@ -125,29 +125,29 @@ static void print_stack(int fd, int stack_id)
 	}
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		int fd = *(int *)ctx;
+		if (env.verbose)
+			printf("%-18s %-12s %-6s %-3s %s\n", "TIME(s)", "COMM", "PID",
+			       "CPU", "FUNCTION");
+		else
+			printf("%-18s %s\n", "TIME(s)", "FUNCTION");
+		printf("%-18.9f ", time_since_start());
+		if (env.verbose)
+			printf("%-12.12s %-6d %-3d %s\n",
+			       e->comm, e->pid, e->cpu, env.function);
+		else
+			printf("%s\n", env.function);
+		print_stack(fd, e->stack_id);
+		printf("\n");
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-	int fd = *(int *)ctx;
-
-	if (env.verbose)
-		printf("%-18s %-12s %-6s %-3s %s\n", "TIME(s)", "COMM", "PID",
-		       "CPU", "FUNCTION");
-	else
-		printf("%-18s %s\n", "TIME(s)", "FUNCTION");
-
-	printf("%-18.9f ", time_since_start());
-	if (env.verbose)
-		printf("%-12.12s %-6d %-3d %s\n",
-		       e->comm, e->pid, e->cpu, env.function);
-	else
-		printf("%s\n", env.function);
-
-	print_stack(fd, e->stack_id);
-
-	printf("\n");
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
