@@ -173,7 +173,7 @@ static void print_header(void)
 {
 	if (env.timestamp)
 		printf("%-9s ", "TIME");
-	printf("%-8s %-16s %-10s %5s %5s %s\n", "PID", "COMM", "OPERATION", "FD",
+	printf("%-8s  %-16s %-10s %5s %5s %s\n", "PID", "COMM", "OPERATION", "FD",
 	       "RET", "FILENAME");
 }
 
