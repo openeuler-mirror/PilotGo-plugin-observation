@@ -179,23 +179,25 @@ static void print_linear_hists(struct bpf_map *hists,
 			  "syswide");
 }
 
+static void get_nr_cpus_extra(void)
+{
+		int nr = libbpf_num_possible_cpus();
+		if (nr < 0) {
+			warning("Failed to get # of possible cpus: '%s'!\n",
+				strerror(-nr));
+			return -1;
+		}
+		if (nr > MAX_CPU_NR) {
+			warning("the number of cpu cores is too big, please "
+				"increase MAX_CPU_NR's value and recompile");
+			return -1;
+		}
+		return nr;
+}
+
 static int get_nr_cpus(void)
 {
-	int nr = libbpf_num_possible_cpus();
-
-	if (nr < 0) {
-		warning("Failed to get # of possible cpus: '%s'!\n",
-			strerror(-nr));
-		return -1;
-	}
-
-	if (nr > MAX_CPU_NR) {
-		warning("the number of cpu cores is too big, please "
-			"increase MAX_CPU_NR's value and recompile");
-		return -1;
-	}
-
-	return nr;
+	get_nr_cpus_extra();
 }
 
 static void set_probe_autoload(struct cpufreq_bpf *obj)
