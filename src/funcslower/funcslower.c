@@ -377,21 +377,24 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %lld events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void load_syms_extra(void)
+{
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("Failed to load kallsyms\n");
+			return 1;
+		}
+		syms_cache = syms_cache__new(0);
+		if (!syms_cache) {
+			warning("Failed to create syms_cache\n");
+			return 1;
+		}
+		return 0;
+}
+
 static int load_syms(void)
 {
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("Failed to load kallsyms\n");
-		return 1;
-	}
-
-	syms_cache = syms_cache__new(0);
-	if (!syms_cache) {
-		warning("Failed to create syms_cache\n");
-		return 1;
-	}
-
-	return 0;
+	load_syms_extra();
 }
 
 static void print_headers(void)
