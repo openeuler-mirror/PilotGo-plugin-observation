@@ -250,45 +250,43 @@ static void print_events_headers(void)
         printf(" %-5s\n", "DPORT");
 }
 
+static void handle_event_extra(void)
+{
+	        const struct event *event = data;
+	        char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
+	        union {
+	                struct in_addr  x4;
+	                struct in6_addr x6;
+	        } s, d;
+	        if (event->af == AF_INET) {
+	                s.x4.s_addr = event->saddr_v4;
+	                d.x4.s_addr = event->daddr_v4;
+	        } else if (event->af == AF_INET6) {
+	                memcpy(&s.x6.s6_addr, event->saddr_v6, sizeof(s.x6.s6_addr));
+	                memcpy(&d.x6.s6_addr, event->daddr_v6, sizeof(d.x6.s6_addr));
+	        } else {
+	                warning("Broken event: event->af=%d\n", event->af);
+	                return 0;
+	        }
+	        if (env.print_timestamp)
+	                printf("%-9.3f ", time_since_start(start_time));
+	        if (env.print_uid)
+	                printf("%-6d ", event->uid);
+	        printf("%-6d %-16.16s %-2d %-25s %-25s",
+	               event->pid, event->task,
+	               event->af == AF_INET ? 4 : 6,
+	               inet_ntop(event->af, &s, src, sizeof(src)),
+	               inet_ntop(event->af, &d, dst, sizeof(dst)));
+	        if (env.source_port)
+	                printf(" %-5d", event->sport);
+	        printf(" %-5d", ntohs(event->dport));
+	        printf("\n");
+	        return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-        const struct event *event = data;
-        char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
-        union {
-                struct in_addr  x4;
-                struct in6_addr x6;
-        } s, d;
-
-        if (event->af == AF_INET) {
-                s.x4.s_addr = event->saddr_v4;
-                d.x4.s_addr = event->daddr_v4;
-        } else if (event->af == AF_INET6) {
-                memcpy(&s.x6.s6_addr, event->saddr_v6, sizeof(s.x6.s6_addr));
-                memcpy(&d.x6.s6_addr, event->daddr_v6, sizeof(d.x6.s6_addr));
-        } else {
-                warning("Broken event: event->af=%d\n", event->af);
-                return 0;
-        }
-
-        if (env.print_timestamp)
-                printf("%-9.3f ", time_since_start(start_time));
-
-        if (env.print_uid)
-                printf("%-6d ", event->uid);
-
-        printf("%-6d %-16.16s %-2d %-25s %-25s",
-               event->pid, event->task,
-               event->af == AF_INET ? 4 : 6,
-               inet_ntop(event->af, &s, src, sizeof(src)),
-               inet_ntop(event->af, &d, dst, sizeof(dst)));
-
-        if (env.source_port)
-                printf(" %-5d", event->sport);
-
-        printf(" %-5d", ntohs(event->dport));
-        printf("\n");
-
-        return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
