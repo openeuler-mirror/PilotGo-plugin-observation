@@ -240,21 +240,26 @@ static int print_log2_hists(struct bpf_map *hists, struct partitions *partitions
 	print_log2_hists_extra();
 }
 
+static void set_probe_autoload_extra(void)
+{
+		if (probe_tp_btf("block_rq_insert")) {
+			bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
+			bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
+			bpf_program__set_autoload(obj->progs.block_rq_complete_raw, false);
+			if (!env.queued)
+				bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
+		} else {
+			bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
+			bpf_program__set_autoload(obj->progs.block_rq_issue_btf, false);
+			bpf_program__set_autoload(obj->progs.block_rq_complete_btf, false);
+			if (!env.queued)
+				bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
+		}
+}
+
 static void set_probe_autoload(struct biolatency_bpf *obj)
 {
-	if (probe_tp_btf("block_rq_insert")) {
-		bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
-		bpf_program__set_autoload(obj->progs.block_rq_issue_raw, false);
-		bpf_program__set_autoload(obj->progs.block_rq_complete_raw, false);
-		if (!env.queued)
-			bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.block_rq_insert_btf, false);
-		bpf_program__set_autoload(obj->progs.block_rq_issue_btf, false);
-		bpf_program__set_autoload(obj->progs.block_rq_complete_btf, false);
-		if (!env.queued)
-			bpf_program__set_autoload(obj->progs.block_rq_insert_raw, false);
-	}
+	set_probe_autoload_extra();
 }
 
 static void setup_cgroup_map_extra(void)
