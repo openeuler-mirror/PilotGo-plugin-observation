@@ -67,24 +67,25 @@ int tracepoint__syscalls__sys_enter_open(struct trace_event_raw_sys_enter *ctx)
 }
 
 SEC("tracepoint/syscalls/sys_enter_openat")
+static void tracepoint__syscalls__sys_enter_openat_extra(void)
+{
+	    u64 id = bpf_get_current_pid_tgid();
+	    pid_t tgid = id >> 32;
+	    pid_t pid = (pid_t)id;
+	    if (trace_allowed(tgid, pid))
+	    {
+	        struct args_t args = {};
+	        args.fname = (const char *)ctx->args[1];
+	        args.flags = (int)ctx->args[2];
+	        args.modes = (umode_t)ctx->args[3];
+	        bpf_map_update_elem(&start, &pid, &args, BPF_ANY);
+	    }
+	    return 0;
+}
+
 int tracepoint__syscalls__sys_enter_openat(struct trace_event_raw_sys_enter *ctx)
 {
-    u64 id = bpf_get_current_pid_tgid();
-    pid_t tgid = id >> 32;
-    pid_t pid = (pid_t)id;
-
-    if (trace_allowed(tgid, pid))
-    {
-        struct args_t args = {};
-
-        args.fname = (const char *)ctx->args[1];
-        args.flags = (int)ctx->args[2];
-        args.modes = (umode_t)ctx->args[3];
-
-        bpf_map_update_elem(&start, &pid, &args, BPF_ANY);
-    }
-
-    return 0;
+	tracepoint__syscalls__sys_enter_openat_extra();
 }
 
 static void trace_exit_extra(void)
