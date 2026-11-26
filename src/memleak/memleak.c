@@ -910,22 +910,26 @@ static int init_symbolizer(void)
 	return 0;
 }
 
-static int reap_child_process(void)
+static void reap_child_process_extra(void)
 {
-	if (!child_exited) {
-		if (kill(env.pid, SIGTERM)) {
-			perror("Failed to signal child process");
+		if (!child_exited) {
+			if (kill(env.pid, SIGTERM)) {
+				perror("Failed to signal child process");
+				return -errno;
+			}
+			printf("Signaled child process\n");
+		}
+		if (waitpid(env.pid, NULL, 0) < 0) {
+			perror("Failed to reap child process");
 			return -errno;
 		}
-		printf("Signaled child process\n");
-	}
+		printf("reaped child process\n");
+		return 0;
+}
 
-	if (waitpid(env.pid, NULL, 0) < 0) {
-		perror("Failed to reap child process");
-		return -errno;
-	}
-	printf("reaped child process\n");
-	return 0;
+static int reap_child_process(void)
+{
+	reap_child_process_extra();
 }
 
 static void main_extra(void)
