@@ -338,7 +338,7 @@ static void print_timestamp(void)
 	char ts[32];
 
 	strftime_now(ts, sizeof(ts), "%H:%M:%S");
-	printf("%-8s\n", ts);
+	printf("%-8s\n ", ts);
 }
 
 static void print_and_reset_hists(__u32 *hists)
