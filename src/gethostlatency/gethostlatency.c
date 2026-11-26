@@ -33,32 +33,36 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'p':
+			env.pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'l':
+			if (!arg)
+				return ARGP_ERR_UNKNOWN;
+			env.libc_path = strdup(arg);
+			if (access(env.libc_path, F_OK)) {
+				warning("Invalid libc: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'p':
-		env.pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'l':
-		if (!arg)
-			return ARGP_ERR_UNKNOWN;
-		env.libc_path = strdup(arg);
-		if (access(env.libc_path, F_OK)) {
-			warning("Invalid libc: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
