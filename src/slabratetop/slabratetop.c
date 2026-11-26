@@ -172,29 +172,28 @@ static int clear_stats(int fd)
 	return 0;
 }
 
+static void print_stat_extra(void)
+{
+		static struct slabrate_info values[OUTPUT_ROWS_LIMIT];
+		int fd = bpf_map__fd(obj->maps.slab_entries);
+		int err = 0, rows;
+		print_loadavg();
+		printf("%-32s %6s %10s\n", "CACHE", "ALLOCS", "BYTES");
+		rows = collect_stats(fd, values);
+		if (rows < 0)
+			return rows;
+		qsort(values, rows, sizeof(struct slabrate_info), sort_column);
+		rows = MIN(rows, output_rows);
+		for (int i = 0; i < rows; i++)
+			printf("%-32s %6lld %10lld\n",
+			       values[i].name, values[i].count, values[i].size);
+		printf("\n");
+		return clear_stats(fd);
+}
+
 static int print_stat(struct slabratetop_bpf *obj)
 {
-	static struct slabrate_info values[OUTPUT_ROWS_LIMIT];
-	int fd = bpf_map__fd(obj->maps.slab_entries);
-	int err = 0, rows;
-
-	print_loadavg();
-	printf("%-32s %6s %10s\n", "CACHE", "ALLOCS", "BYTES");
-
-	rows = collect_stats(fd, values);
-	if (rows < 0)
-		return rows;
-
-	qsort(values, rows, sizeof(struct slabrate_info), sort_column);
-	rows = MIN(rows, output_rows);
-
-	for (int i = 0; i < rows; i++)
-		printf("%-32s %6lld %10lld\n",
-		       values[i].name, values[i].count, values[i].size);
-
-	printf("\n");
-
-	return clear_stats(fd);
+	print_stat_extra();
 }
 
 int main(int argc, char *argv[])
