@@ -112,29 +112,30 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void resolve_vm_zone_stat_extra(void)
+{
+		struct ksyms *ksyms;
+		const struct ksym *ksym;
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("Failed to load kallsyms\n");
+			return -1;
+		}
+		ksym = ksyms__get_symbol(ksyms, "vm_zone_stat");
+		if (!ksym) {
+			warning("Failed to get vm_zone_stat's addr\n");
+			ksyms__free(ksyms);
+			return -1;
+		}
+		obj->rodata->vm_zone_stat_kaddr = ksym->addr;
+		pagesize = sysconf(_SC_PAGESIZE);
+		ksyms__free(ksyms);
+		return 0;
+}
+
 static int resolve_vm_zone_stat(struct drsnoop_bpf *obj)
 {
-	struct ksyms *ksyms;
-	const struct ksym *ksym;
-
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("Failed to load kallsyms\n");
-		return -1;
-	}
-
-	ksym = ksyms__get_symbol(ksyms, "vm_zone_stat");
-	if (!ksym) {
-		warning("Failed to get vm_zone_stat's addr\n");
-		ksyms__free(ksyms);
-		return -1;
-	}
-
-	obj->rodata->vm_zone_stat_kaddr = ksym->addr;
-	pagesize = sysconf(_SC_PAGESIZE);
-
-	ksyms__free(ksyms);
-	return 0;
+	resolve_vm_zone_stat_extra();
 }
 
 static void set_probe_autoload(struct drsnoop_bpf *obj)
