@@ -291,23 +291,26 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void setup_unique_type_extra(void)
+{
+		if (!argument->unique) {
+			*type = UNQ_OFF;
+			return 0;
+		}
+		if (strcmp(argument->unique_type, "pid") == 0) {
+			*type = UNQ_PID;
+		} else if (strcmp(argument->unique_type, "cgroup") == 0) {
+			*type = UNQ_CGROUP;
+		} else {
+			warning("Unknown unique type %s\n", argument->unique_type);
+			return -1;
+		}
+		return 0;
+}
+
 static int setup_unique_type(struct argument *argument, enum uniqueness *type)
 {
-	if (!argument->unique) {
-		*type = UNQ_OFF;
-		return 0;
-	}
-
-	if (strcmp(argument->unique_type, "pid") == 0) {
-		*type = UNQ_PID;
-	} else if (strcmp(argument->unique_type, "cgroup") == 0) {
-		*type = UNQ_CGROUP;
-	} else {
-		warning("Unknown unique type %s\n", argument->unique_type);
-		return -1;
-	}
-
-	return 0;
+	setup_unique_type_extra();
 }
 
 static void setup_stackmap(struct capable_bpf *obj, struct argument *argument)
