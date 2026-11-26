@@ -117,21 +117,26 @@ static void disable_prog(struct bpf_program *prog)
 	bpf_program__set_autoload(prog, false);
 }
 
+static void configure_probes_extra(void)
+{
+		if (fentry_can_attach("tcp_v4_connect", NULL)) {
+			disable_prog(obj->progs.tcp_v4_connect);
+			disable_prog(obj->progs.tcp_v6_connect);
+			disable_prog(obj->progs.tcp_rcv_state_process);
+			disable_prog(obj->progs.tcp_v4_destroy_sock);
+			disable_prog(obj->progs.tcp_v6_destroy_sock);
+		} else {
+			disable_prog(obj->progs.fentry_tcp_v4_connect);
+			disable_prog(obj->progs.fentry_tcp_v6_connect);
+			disable_prog(obj->progs.fentry_tcp_rcv_state_process);
+			disable_prog(obj->progs.fentry_tcp_v4_destroy_sock);
+			disable_prog(obj->progs.fentry_tcp_v6_destroy_sock);
+		}
+}
+
 static void configure_probes(struct tcpconnlat_bpf *obj)
 {
-	if (fentry_can_attach("tcp_v4_connect", NULL)) {
-		disable_prog(obj->progs.tcp_v4_connect);
-		disable_prog(obj->progs.tcp_v6_connect);
-		disable_prog(obj->progs.tcp_rcv_state_process);
-		disable_prog(obj->progs.tcp_v4_destroy_sock);
-		disable_prog(obj->progs.tcp_v6_destroy_sock);
-	} else {
-		disable_prog(obj->progs.fentry_tcp_v4_connect);
-		disable_prog(obj->progs.fentry_tcp_v6_connect);
-		disable_prog(obj->progs.fentry_tcp_rcv_state_process);
-		disable_prog(obj->progs.fentry_tcp_v4_destroy_sock);
-		disable_prog(obj->progs.fentry_tcp_v6_destroy_sock);
-	}
+	configure_probes_extra();
 }
 
 static void print_header(void)
