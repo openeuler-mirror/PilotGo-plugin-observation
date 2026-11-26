@@ -52,26 +52,31 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_positional_extra(void)
+{
+		errno = 0;
+		if (*pos_args == 0) {
+			env.interval = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid interval\n");
+				argp_usage(state);
+			}
+		} else if (*pos_args == 1) {
+			env.times = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid times\n");
+				argp_usage(state);
+			}
+		} else {
+			warning("Unrecognized positional argument: %s\n", arg);
+			argp_usage(state);
+		}
+		(*pos_args)++;
+}
+
 static void parse_positional(int *pos_args, char *arg, struct argp_state *state)
 {
-	errno = 0;
-	if (*pos_args == 0) {
-		env.interval = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid interval\n");
-			argp_usage(state);
-		}
-	} else if (*pos_args == 1) {
-		env.times = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid times\n");
-			argp_usage(state);
-		}
-	} else {
-		warning("Unrecognized positional argument: %s\n", arg);
-		argp_usage(state);
-	}
-	(*pos_args)++;
+	parse_positional_extra();
 }
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
