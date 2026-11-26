@@ -21,21 +21,25 @@ static const struct argp_option opts[] = {
     {NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help"},
     {}};
 
+static void parse_arg_extra(void)
+{
+	    switch (key)
+	    {
+	    case 'h':
+	        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+	        break;
+	    case 'v':
+	        verbose = true;
+	        break;
+	    default:
+	        return ARGP_ERR_UNKNOWN;
+	    }
+	    return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-    switch (key)
-    {
-    case 'h':
-        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-        break;
-    case 'v':
-        verbose = true;
-        break;
-    default:
-        return ARGP_ERR_UNKNOWN;
-    }
-
-    return 0;
+	parse_arg_extra();
 }
 
 static void sig_handler(int sig)
