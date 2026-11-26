@@ -29,22 +29,25 @@ struct {
 
 /* record enqueue timestamp */
 __always_inline
+static void trace_enqueue_extra(void)
+{
+		u32 pid = BPF_CORE_READ(p, pid);
+		u32 tgid = BPF_CORE_READ(p, tgid);
+		u64 ts;
+		if (!pid)
+			return 0;
+		if (target_pid && target_pid != pid)
+			return 0;
+		if (target_tgid && target_tgid != tgid)
+			return 0;
+		ts = bpf_ktime_get_ns();
+		bpf_map_update_elem(&start, &pid, &ts, 0);
+		return 0;
+}
+
 static int trace_enqueue(struct task_struct *p)
 {
-	u32 pid = BPF_CORE_READ(p, pid);
-	u32 tgid = BPF_CORE_READ(p, tgid);
-	u64 ts;
-
-	if (!pid)
-		return 0;
-	if (target_pid && target_pid != pid)
-		return 0;
-	if (target_tgid && target_tgid != tgid)
-		return 0;
-
-	ts = bpf_ktime_get_ns();
-	bpf_map_update_elem(&start, &pid, &ts, 0);
-	return 0;
+	trace_enqueue_extra();
 }
 
 
