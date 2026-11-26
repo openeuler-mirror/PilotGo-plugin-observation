@@ -182,22 +182,25 @@ static void main_extra0(void)
 		return err != 0;
 }
 
+static void main_extra(void)
+{
+		bpflist_print_banner();
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		int err;
+		DIR *dir;
+		struct dirent *entry;
+		regex_t regex;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		main_extra0();
+}
+
 int main(int argc, char *argv[])
 {
-	bpflist_print_banner();
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	int err;
-	DIR *dir;
-	struct dirent *entry;
-	regex_t regex;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	main_extra0();
+	main_extra();
 }
