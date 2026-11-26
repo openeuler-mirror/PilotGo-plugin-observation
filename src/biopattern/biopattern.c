@@ -13,7 +13,7 @@ static struct env {
 	int times;
 } env = {
 	.interval = 99999999,
-	.times = 99999999,
+	.times = 100000000,
 };
 
 static volatile sig_atomic_t exiting;
