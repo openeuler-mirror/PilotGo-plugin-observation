@@ -149,25 +149,28 @@ static void blk_fill_rwbs(char *rwbs, unsigned int op)
 
 static struct partitions *partitions;
 
+static void handle_event_extra(void)
+{
+		const struct partition *partition;
+		const struct event *e = data;
+		char rwbs[RWBS_LEN];
+		if (!start_ts)
+			start_ts = e->ts;
+		blk_fill_rwbs(rwbs, e->cmd_flags);
+		partition = partitions__get_by_dev(partitions, e->dev);
+		printf("%-11.6f %-14.14s %-7d %-7s %-4s %-10lld %-7d ",
+		       (e->ts - start_ts) / 1000000000.0,
+		       e->comm, e->pid, partition ? partition->name : "Unknown", rwbs,
+		       e->sector, e->len);
+		if (env.queued)
+			printf("%7.3f ", e->qdelta != -1 ?
+				e->qdelta / 1000000.0 : -1);
+		printf("%7.3f\n", e->delta / 1000000.0);
+}
+
 void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
-	const struct partition *partition;
-	const struct event *e = data;
-	char rwbs[RWBS_LEN];
-
-	if (!start_ts)
-		start_ts = e->ts;
-
-	blk_fill_rwbs(rwbs, e->cmd_flags);
-	partition = partitions__get_by_dev(partitions, e->dev);
-	printf("%-11.6f %-14.14s %-7d %-7s %-4s %-10lld %-7d ",
-	       (e->ts - start_ts) / 1000000000.0,
-	       e->comm, e->pid, partition ? partition->name : "Unknown", rwbs,
-	       e->sector, e->len);
-	if (env.queued)
-		printf("%7.3f ", e->qdelta != -1 ?
-			e->qdelta / 1000000.0 : -1);
-	printf("%7.3f\n", e->delta / 1000000.0);
+	handle_event_extra();
 }
 
 void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
