@@ -104,20 +104,25 @@ static void parse_min_lat_arg(const char *arg, struct argp_state *state)
 	}
 }
 
+static void parse_fs_arg_extra(void)
+{
+		if (!strcmp(arg, "btrfs")) {
+			fs_type = BTRFS;
+		} else if (!strcmp(arg, "ext4")) {
+			fs_type = EXT4;
+		} else if (!strcmp(arg, "nfs")) {
+			fs_type = NFS;
+		} else if (!strcmp(arg, "xfs")) {
+			fs_type = XFS;
+		} else {
+			warning("Invalid filesystem\n");
+			argp_usage(state);
+		}
+}
+
 static void parse_fs_arg(const char *arg, struct argp_state *state)
 {
-	if (!strcmp(arg, "btrfs")) {
-		fs_type = BTRFS;
-	} else if (!strcmp(arg, "ext4")) {
-		fs_type = EXT4;
-	} else if (!strcmp(arg, "nfs")) {
-		fs_type = NFS;
-	} else if (!strcmp(arg, "xfs")) {
-		fs_type = XFS;
-	} else {
-		warning("Invalid filesystem\n");
-		argp_usage(state);
-	}
+	parse_fs_arg_extra();
 }
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
