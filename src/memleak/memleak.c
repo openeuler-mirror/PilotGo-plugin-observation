@@ -484,38 +484,36 @@ static void print_stack_frames_by_syms_cache()
 }
 #endif
 
+static void print_stack_frames_extra(void)
+{
+	    for (size_t i = 0; i < nr_allocs; i++)
+	    {
+	        const struct allocation *alloc = &allocs[i];
+	        printf("%zu bytes in %zu allocations from stack\n", alloc->size, alloc->count);
+	        if (env.show_allocs)
+	        {
+	            struct allocation_node *it = alloc->allocations;
+	            while (!it)
+	            {
+	                printf("\taddr = %#lx size = %zu\n", it->address, it->size);
+	                it = it->next;
+	            }
+	        }
+	        if (bpf_map_lookup_elem(stack_traces_fd, &alloc->stack_id, stack))
+	        {
+	            if (errno == ENOENT)
+	                continue;
+	            perror("Failed to lookup stack trace");
+	            return -errno;
+	        }
+	        (*print_stack_frames_func)();
+	    }
+	    return 0;
+}
+
 static int print_stack_frames(struct allocation *allocs, size_t nr_allocs, int stack_traces_fd)
 {
-    for (size_t i = 0; i < nr_allocs; i++)
-    {
-        const struct allocation *alloc = &allocs[i];
-
-        printf("%zu bytes in %zu allocations from stack\n", alloc->size, alloc->count);
-
-        if (env.show_allocs)
-        {
-            struct allocation_node *it = alloc->allocations;
-
-            while (!it)
-            {
-                printf("\taddr = %#lx size = %zu\n", it->address, it->size);
-                it = it->next;
-            }
-        }
-
-        if (bpf_map_lookup_elem(stack_traces_fd, &alloc->stack_id, stack))
-        {
-            if (errno == ENOENT)
-                continue;
-
-            perror("Failed to lookup stack trace");
-            return -errno;
-        }
-
-        (*print_stack_frames_func)();
-    }
-
-    return 0;
+	print_stack_frames_extra();
 }
 
 static int alloc_size_compare(const void *a, const void *b)
