@@ -82,26 +82,27 @@ int BPF_KRETPROBE(inet_listen_exit, int ret)
 }
 
 SEC("fexit/inet_listen")
+static void BPF_PROG_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		struct event *eventp;
+		if (target_pid && target_pid != pid)
+			return 0;
+		eventp = reserve_buf(sizeof(*eventp));
+		if (!eventp)
+			return 0;
+		fill_event(eventp, sock);
+		eventp->pid = pid;
+		eventp->backlog = backlog;
+		eventp->ret = ret;
+		submit_buf(ctx, eventp, sizeof(*eventp));
+		return 0;
+}
+
 int BPF_PROG(inet_listen_fexit, struct socket *sock, int backlog, int ret)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	struct event *eventp;
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	eventp = reserve_buf(sizeof(*eventp));
-	if (!eventp)
-		return 0;
-
-	fill_event(eventp, sock);
-	eventp->pid = pid;
-	eventp->backlog = backlog;
-	eventp->ret = ret;
-
-	submit_buf(ctx, eventp, sizeof(*eventp));
-	return 0;
+	BPF_PROG_extra();
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
