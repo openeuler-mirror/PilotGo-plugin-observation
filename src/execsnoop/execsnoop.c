@@ -281,22 +281,26 @@ static void disable_missing_tracepoints(struct execsnoop_bpf *bpf_obj)
 	}
 }
 
+static void setup_cgroup_map_extra(void)
+{
+		int idx = 0;
+		int cg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
+		int cgfd = open(env.cgroupspath, O_RDONLY);
+		if (cgfd < 0) {
+			warning("Failed opening Cgroup path: %s\n", env.cgroupspath);
+			return -1;
+		}
+		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+			warning("Failed adding target cgroup to map\n");
+			close(cgfd);
+			return -1;
+		}
+		return cgfd;
+}
+
 static int setup_cgroup_map(struct execsnoop_bpf *bpf_obj)
 {
-	int idx = 0;
-	int cg_map_fd = bpf_map__fd(bpf_obj->maps.cgroup_map);
-	int cgfd = open(env.cgroupspath, O_RDONLY);
-
-	if (cgfd < 0) {
-		warning("Failed opening Cgroup path: %s\n", env.cgroupspath);
-		return -1;
-	}
-	if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-		warning("Failed adding target cgroup to map\n");
-		close(cgfd);
-		return -1;
-	}
-	return cgfd;
+	setup_cgroup_map_extra();
 }
 
 static void print_header(void)
