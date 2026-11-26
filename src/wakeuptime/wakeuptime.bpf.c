@@ -52,34 +52,34 @@ static int offcpu_sched_switch(struct task_struct *prev)
 	offcpu_sched_switch_extra();
 }
 
+static void wakeup_extra(void)
+{
+		u32 pid = BPF_CORE_READ(p, tgid);
+		u32 tid = BPF_CORE_READ(p, pid);
+		u64 delta, *count_key, *tsp;
+		static const u64 zero;
+		struct key_t key = {};
+		if (target_pid && target_pid != pid)
+			return 0;
+		tsp = bpf_map_lookup_elem(&start, &tid);
+		if (!tsp)
+			return 0;
+		bpf_map_delete_elem(&start, &tid);
+		delta = bpf_ktime_get_ns() - *tsp;
+		if ((delta < min_block_ns) || (delta > max_block_ns))
+			return 0;
+		key.wake_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
+		BPF_CORE_READ_STR_INTO(&key.target, p, comm);
+		bpf_get_current_comm(&key.waker, sizeof(key.waker));
+		count_key = bpf_map_lookup_or_try_init(&counts, &key, &zero);
+		if (count_key)
+			__atomic_add_fetch(count_key, delta, __ATOMIC_RELAXED);
+		return 0;
+}
+
 static int wakeup(void *ctx, struct task_struct *p)
 {
-	u32 pid = BPF_CORE_READ(p, tgid);
-	u32 tid = BPF_CORE_READ(p, pid);
-	u64 delta, *count_key, *tsp;
-	static const u64 zero;
-	struct key_t key = {};
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	tsp = bpf_map_lookup_elem(&start, &tid);
-	if (!tsp)
-		return 0;
-	bpf_map_delete_elem(&start, &tid);
-	delta = bpf_ktime_get_ns() - *tsp;
-	if ((delta < min_block_ns) || (delta > max_block_ns))
-		return 0;
-
-	key.wake_stack_id = bpf_get_stackid(ctx, &stackmap, 0);
-	BPF_CORE_READ_STR_INTO(&key.target, p, comm);
-	bpf_get_current_comm(&key.waker, sizeof(key.waker));
-
-	count_key = bpf_map_lookup_or_try_init(&counts, &key, &zero);
-	if (count_key)
-		__atomic_add_fetch(count_key, delta, __ATOMIC_RELAXED);
-
-	return 0;
+	wakeup_extra();
 }
 
 SEC("tp_btf/sched_switch")
