@@ -46,20 +46,22 @@ int BPF_KPROBE(do_page_cache_ra_kprobe)
     return 0;
 }
 
+static void alloc_page_ret_extra(void)
+{
+	    u32 pid = bpf_get_current_pid_tgid();
+	    u64 ts;
+	    if (!bpf_map_lookup_elem(&in_readahead, &pid))
+	        return 0;
+	    ts = bpf_ktime_get_ns();
+	    bpf_map_update_elem(&birth, &key, &ts, BPF_ANY);
+	    __sync_fetch_and_add(&hist.unused, 1);
+	    __sync_fetch_and_add(&hist.total, 1);
+	    return 0;
+}
+
 static __always_inline int alloc_page_ret(void *key)
 {
-    u32 pid = bpf_get_current_pid_tgid();
-    u64 ts;
-
-    if (!bpf_map_lookup_elem(&in_readahead, &pid))
-        return 0;
-
-    ts = bpf_ktime_get_ns();
-    bpf_map_update_elem(&birth, &key, &ts, BPF_ANY);
-    __sync_fetch_and_add(&hist.unused, 1);
-    __sync_fetch_and_add(&hist.total, 1);
-
-    return 0;
+	alloc_page_ret_extra();
 }
 
 SEC("fexit/__page_cache_alloc")
