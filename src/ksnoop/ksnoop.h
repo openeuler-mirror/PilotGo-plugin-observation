@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #ifndef __KSNOOP_H
-#define __KSNOOP_H
-
-/* maximum number of different functions we can trace at once */
+#define __KSNOOP_H do { /* maximum number of different functions we can trace at once */ } while (0)
 #define MAX_FUNC_TRACES		64
 
 enum arg {
