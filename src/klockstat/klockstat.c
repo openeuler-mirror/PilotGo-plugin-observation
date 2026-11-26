@@ -107,35 +107,38 @@ static const char *get_lock_name(struct ksyms *ksyms, unsigned long addr)
 	return (ksym && ksym->addr == addr) ? ksym->name : "no-ksym";
 }
 
+static void parse_one_sort_extra(void)
+{
+		const char *field = sort + 4;
+		if (!strncmp(sort, "acq_", 4)) {
+			if (!strcmp(field, "max")) {
+				env->sort_acq = SORT_ACQ_MAX;
+				return true;
+			} else if (!strcmp(field, "total")) {
+				env->sort_acq = SORT_ACQ_TOTAL;
+				return true;
+			} else if (!strcmp(field, "count")) {
+				env->sort_acq = SORT_ACQ_COUNT;
+				return true;
+			}
+		} else if (!strncmp(sort, "hld_", 4)) {
+			if (!strcmp(field, "max")) {
+				env->sort_hld = SORT_HLD_MAX;
+				return true;
+			} else if (!strcmp(field, "total")) {
+				env->sort_hld = SORT_HLD_TOTAL;
+				return true;
+			} else if (!strcmp(field, "count")) {
+				env->sort_hld = SORT_HLD_COUNT;
+				return true;
+			}
+		}
+		return false;
+}
+
 static bool parse_one_sort(struct prog_env *env, const char *sort)
 {
-	const char *field = sort + 4;
-
-	if (!strncmp(sort, "acq_", 4)) {
-		if (!strcmp(field, "max")) {
-			env->sort_acq = SORT_ACQ_MAX;
-			return true;
-		} else if (!strcmp(field, "total")) {
-			env->sort_acq = SORT_ACQ_TOTAL;
-			return true;
-		} else if (!strcmp(field, "count")) {
-			env->sort_acq = SORT_ACQ_COUNT;
-			return true;
-		}
-	} else if (!strncmp(sort, "hld_", 4)) {
-		if (!strcmp(field, "max")) {
-			env->sort_hld = SORT_HLD_MAX;
-			return true;
-		} else if (!strcmp(field, "total")) {
-			env->sort_hld = SORT_HLD_TOTAL;
-			return true;
-		} else if (!strcmp(field, "count")) {
-			env->sort_hld = SORT_HLD_COUNT;
-			return true;
-		}
-	}
-
-	return false;
+	parse_one_sort_extra();
 }
 
 static bool parse_sorts(struct prog_env *env, char *arg)
