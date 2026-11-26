@@ -754,29 +754,31 @@ static bool show_trace_value(struct trace *trace, struct value *val,
 	return true;
 }
 
+static void trace_handler_extra(void)
+{
+		struct trace *trace = data;
+		int i, shown;
+		pr_debug("got trace, size %d", data_sz);
+		if (data_sz < (sizeof(*trace) - MAX_TRACE_BUF)) {
+			pr_err("\t/* trace buffer size '%u' < min %ld */",
+			       data_sz, sizeof(trace) - MAX_TRACE_BUF);
+			return;
+		}
+		printf("%16lld %4d %8u %s(\n", trace->time, trace->cpu, trace->pid,
+		       trace->func.name);
+		for (i = 0, shown = 0; i < trace->nr_traces; i++) {
+			struct value *val = &trace->traces[i];
+			struct trace_data *td = &trace->trace_data[i];
+			if (show_trace_value(trace, val, td, shown))
+				shown++;
+		}
+		printf("\n%31s);\n\n", "");
+		fflush(stdout);
+}
+
 static void trace_handler(void *ctx, int cpu, void *data, __u32 data_sz)
 {
-	struct trace *trace = data;
-	int i, shown;
-
-	pr_debug("got trace, size %d", data_sz);
-	if (data_sz < (sizeof(*trace) - MAX_TRACE_BUF)) {
-		pr_err("\t/* trace buffer size '%u' < min %ld */",
-		       data_sz, sizeof(trace) - MAX_TRACE_BUF);
-		return;
-	}
-	printf("%16lld %4d %8u %s(\n", trace->time, trace->cpu, trace->pid,
-	       trace->func.name);
-
-	for (i = 0, shown = 0; i < trace->nr_traces; i++) {
-		struct value *val = &trace->traces[i];
-		struct trace_data *td = &trace->trace_data[i];
-
-		if (show_trace_value(trace, val, td, shown))
-			shown++;
-	}
-	printf("\n%31s);\n\n", "");
-	fflush(stdout);
+	trace_handler_extra();
 }
 
 static void lost_handler(void *ctx, int cpu, __u64 cnt)
