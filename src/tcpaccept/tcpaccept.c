@@ -72,36 +72,40 @@ static void parse_ports(char *arg, struct argp_state *state)
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'T':
+			env.time = true;
+			break;
+		case 't':
+			env.timestamp = true;
+			break;
+		case 'p':
+			env.trace_pid = argp_parse_pid(key, arg, state);
+			env.pid = true;
+			break;
+		case 'P':
+			parse_ports(arg, state);
+			break;
+		case '4':
+			env.ipv4_only = true;
+			break;
+		case '6':
+			env.ipv6_only = true;
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'T':
-		env.time = true;
-		break;
-	case 't':
-		env.timestamp = true;
-		break;
-	case 'p':
-		env.trace_pid = argp_parse_pid(key, arg, state);
-		env.pid = true;
-		break;
-	case 'P':
-		parse_ports(arg, state);
-		break;
-	case '4':
-		env.ipv4_only = true;
-		break;
-	case '6':
-		env.ipv6_only = true;
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
