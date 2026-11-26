@@ -133,71 +133,75 @@ static const struct argp_option opts[] = {
     {NULL, 'h', NULL, OPTION_HIDDEN, "Show the full help"},
     {}};
 
+static void parse_arg_extra(void)
+{
+	    static int pos_args;
+	    switch (key)
+	    {
+	    case 'e':
+	        env.extended = true;
+	        break;
+	    case 'E':
+	        env.fuller_extended = true;
+	        break;
+	    case 'h':
+	        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+	        break;
+	    case 'T':
+	        env.timestamp = true;
+	        break;
+	    case 'U':
+	        env.print_uid = true;
+	        break;
+	    case 'v':
+	        env.verbose = true;
+	        break;
+	    case 'x':
+	        env.failed = true;
+	        break;
+	    case 'd':
+	        env.duration = argp_parse_long(key, arg, state);
+	        break;
+	    case 'n':
+	        env.name = arg;
+	        break;
+	    case 'p':
+	        env.pid = argp_parse_pid(key, arg, state);
+	        break;
+	    case 't':
+	        env.tid = argp_parse_pid(key, arg, state);
+	        break;
+	    case 'u':
+	        errno = 0;
+	        env.uid = strtol(arg, NULL, 10);
+	        if (errno || env.uid < 0 || env.uid >= INVALID_UID)
+	        {
+	            warning("Invalid UID %s\n", arg);
+	            argp_usage(state);
+	        }
+	        break;
+	#ifdef USE_BLAZESYM
+	    case 'c':
+	        env.callers = true;
+	        break;
+	#endif
+	    case ARGP_KEY_ARG:
+	        if (pos_args++)
+	        {
+	            warning("Unrecognized positional argument: %s\n", arg);
+	            argp_usage(state);
+	        }
+	        errno = 0;
+	        break;
+	    default:
+	        return ARGP_ERR_UNKNOWN;
+	    }
+	    return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-    static int pos_args;
-
-    switch (key)
-    {
-    case 'e':
-        env.extended = true;
-        break;
-    case 'E':
-        env.fuller_extended = true;
-        break;
-    case 'h':
-        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-        break;
-    case 'T':
-        env.timestamp = true;
-        break;
-    case 'U':
-        env.print_uid = true;
-        break;
-    case 'v':
-        env.verbose = true;
-        break;
-    case 'x':
-        env.failed = true;
-        break;
-    case 'd':
-        env.duration = argp_parse_long(key, arg, state);
-        break;
-    case 'n':
-        env.name = arg;
-        break;
-    case 'p':
-        env.pid = argp_parse_pid(key, arg, state);
-        break;
-    case 't':
-        env.tid = argp_parse_pid(key, arg, state);
-        break;
-    case 'u':
-        errno = 0;
-        env.uid = strtol(arg, NULL, 10);
-        if (errno || env.uid < 0 || env.uid >= INVALID_UID)
-        {
-            warning("Invalid UID %s\n", arg);
-            argp_usage(state);
-        }
-        break;
-#ifdef USE_BLAZESYM
-    case 'c':
-        env.callers = true;
-        break;
-#endif
-    case ARGP_KEY_ARG:
-        if (pos_args++)
-        {
-            warning("Unrecognized positional argument: %s\n", arg);
-            argp_usage(state);
-        }
-        errno = 0;
-        break;
-    default:
-        return ARGP_ERR_UNKNOWN;
-    }
-    return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
