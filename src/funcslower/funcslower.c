@@ -198,46 +198,43 @@ static void attach_kernel_prog(struct funcslower_bpf *obj, int i)
 				   env.functions[i]);
 }
 
+static void attach_user_prog_extra(void)
+{
+		char buf[128] = {};
+		const char *binary;
+		char *function;
+		char bin_path[PATH_MAX];
+		off_t func_off;
+		struct bpf_program *prog;
+		binary = strdup(env.functions[i]);
+		function = strchr(binary, ':');
+		if (!function) {
+			warning("Binary should have contained ':' (internal bug!)\n");
+			goto free_binary;
+		}
+		*function = '\0';
+		function++;
+		if (resolve_binary_path(binary, getpid(), bin_path, sizeof(bin_path)))
+			goto free_binary;
+		func_off = get_elf_func_offset(bin_path, function);
+		if (func_off < 0) {
+			warning("Could not find %s in %s\n", function, bin_path);
+			goto free_binary;
+		}
+		sprintf(buf, "trace_u%d", i);
+		prog = find_prog_by_name(obj, buf);
+		if (prog)
+			bpf_program__attach_uprobe(prog, false,
+						   env.pid ? env.pid : -1, bin_path, func_off);
+		bpf_program__attach_uprobe(obj->progs.trace_return_u, true,
+					   env.pid ? env.pid : -1, bin_path, func_off);
+	free_binary:
+		free((void *)binary);
+}
+
 static void attach_user_prog(struct funcslower_bpf *obj, int i)
 {
-	char buf[128] = {};
-	const char *binary;
-	char *function;
-	char bin_path[PATH_MAX];
-	off_t func_off;
-	struct bpf_program *prog;
-
-	binary = strdup(env.functions[i]);
-
-	function = strchr(binary, ':');
-	if (!function) {
-		warning("Binary should have contained ':' (internal bug!)\n");
-		goto free_binary;
-	}
-
-	*function = '\0';
-	function++;
-
-	if (resolve_binary_path(binary, getpid(), bin_path, sizeof(bin_path)))
-		goto free_binary;
-
-	func_off = get_elf_func_offset(bin_path, function);
-	if (func_off < 0) {
-		warning("Could not find %s in %s\n", function, bin_path);
-		goto free_binary;
-	}
-
-	sprintf(buf, "trace_u%d", i);
-	prog = find_prog_by_name(obj, buf);
-	if (prog)
-		bpf_program__attach_uprobe(prog, false,
-					   env.pid ? env.pid : -1, bin_path, func_off);
-
-	bpf_program__attach_uprobe(obj->progs.trace_return_u, true,
-				   env.pid ? env.pid : -1, bin_path, func_off);
-
-free_binary:
-	free((void *)binary);
+	attach_user_prog_extra();
 }
 
 static void attach_programs(struct funcslower_bpf *obj)
