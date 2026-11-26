@@ -47,22 +47,23 @@ static __always_inline void grab_args(struct pt_regs *ctx, struct entry_t *entry
 	entry->args[4] = PT_REGS_PARM5(ctx);
 }
 
+static void trace_entry_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		pid_t pid = pid_tgid >> 32;
+		if (target_pid && target_pid != pid)
+			return 0;
+		struct entry_t entry = {};
+		entry.start_ns = bpf_ktime_get_ns();
+		entry.id = id;
+		grab_args(ctx, &entry);
+		bpf_map_update_elem(&entryinfo, &pid_tgid, &entry, BPF_ANY);
+		return 0;
+}
+
 static __always_inline int trace_entry(struct pt_regs *ctx, int id)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	pid_t pid = pid_tgid >> 32;
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	struct entry_t entry = {};
-	entry.start_ns = bpf_ktime_get_ns();
-	entry.id = id;
-
-	grab_args(ctx, &entry);
-
-	bpf_map_update_elem(&entryinfo, &pid_tgid, &entry, BPF_ANY);
-	return 0;
+	trace_entry_extra();
 }
 
 static __always_inline void fill_event_stacks(struct pt_regs *ctx,
