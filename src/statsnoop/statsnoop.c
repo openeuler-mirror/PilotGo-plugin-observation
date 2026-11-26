@@ -77,24 +77,26 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		int fd, err;
+		if (e->ret >= 0) {
+			fd = e->ret;
+			err = 0;
+		} else {
+			fd = -1;
+			err = e->ret;
+		}
+		if (emit_timestamp)
+			printf("%-14.9f ", time_since_start());
+		printf("%-7d %-20s %4d %8s %-s\n", e->pid, e->comm, fd, strerrno(err), e->pathname);
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-	int fd, err;
-
-	if (e->ret >= 0) {
-		fd = e->ret;
-		err = 0;
-	} else {
-		fd = -1;
-		err = e->ret;
-	}
-
-	if (emit_timestamp)
-		printf("%-14.9f ", time_since_start());
-	printf("%-7d %-20s %4d %8s %-s\n", e->pid, e->comm, fd, strerrno(err), e->pathname);
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
