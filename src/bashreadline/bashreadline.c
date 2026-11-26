@@ -36,6 +36,7 @@ static const struct argp_option opts[] = {
 static struct env {
 	char *libreadline_path;
 	bool verbose;
+	int duration;
 } env = {};
 
 static void parse_arg_extra0(void)
@@ -47,6 +48,9 @@ static void parse_arg_extra0(void)
 		case 'h':
 			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 			break;
+			case 'd':
+				env.duration = atoi(arg);
+				break;
 		case 's':
 			if (!arg)
 				return ARGP_ERR_UNKNOWN;
