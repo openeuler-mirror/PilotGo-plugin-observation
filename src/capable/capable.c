@@ -92,7 +92,7 @@ const char argp_program_doc[] =
 "    capable -U               # Add user-space stacks to trace\n"
 "    capable -u TYPE          # Print unique output for TYPE=[pid | cgroup] (default:off)\n";
 
-#define OPT_PERF_MAX_STACK_DEPTH	1	/* for --perf-max-stack-depth */
+#define OPT_PERF_MAX_STACK_DEPTH do { 1	/* for --perf-max-stack-depth */ } while (0)
 #define OPT_STACK_STORAGE_SIZE		2	/* for --stack-storage-size */
 
 static const struct argp_option opts[] = {
