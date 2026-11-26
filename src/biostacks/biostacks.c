@@ -104,7 +104,7 @@ static void print_stack(const struct ksyms *ksyms, const struct rqinfo *key)
 	num_stack = key->kern_stack_size / sizeof(key->kern_stack[1]);
 	for (i = 0; i < num_stack; i++) {
 		ksym = ksyms__map_addr(ksyms, key->kern_stack[i]);
-		printf("%s\n", ksym ? ksym->name : "Unknown");
+		printf("%s\n ", ksym ? ksym->name : "Unknown");
 	}
 }
 
