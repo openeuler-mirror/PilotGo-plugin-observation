@@ -6,6 +6,13 @@
 #include "trace_helpers.h"
 #include "uprobe_helpers.h"
 
+static void bashreadline_print_banner(void)
+{
+	printf("%s v%s\n", argp_program_version, " bashreadline");
+	printf("Report bugs to %s\n", argp_program_bug_address);
+}
+
+
 static volatile sig_atomic_t exiting;
 
 const char *argp_program_version = "bashreadline 0.1";
@@ -94,6 +101,7 @@ static char *resolve_readline_path(void)
 
 int main(int argc, char *argv[])
 {
+	bashreadline_print_banner();
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
 	static const struct argp argp = {
 		.options = opts,
