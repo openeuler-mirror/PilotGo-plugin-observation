@@ -7,22 +7,24 @@
 #include "compat.bpf.h"
 
 SEC("kprobe/oom_kill_process")
+static void BPF_KPROBE_extra(void)
+{
+	    struct data_t *data;
+	    data = reserve_buf(sizeof(*data));
+	    if (!data)
+	        return 0;
+	    data->fpid = bpf_get_current_pid_tgid() >> 32;
+	    data->tpid = BPF_CORE_READ(oc, chosen, tgid);
+	    data->pages = BPF_CORE_READ(oc, totalpages);
+	    bpf_get_current_comm(&data->fcomm, sizeof(data->fcomm));
+	    BPF_CORE_READ_STR_INTO(&data->tcomm, oc, chosen, comm);
+	    submit_buf(ctx, data, sizeof(*data));
+	    return 0;
+}
+
 int BPF_KPROBE(oom_kill_process, struct oom_control *oc, const char *message)
 {
-    struct data_t *data;
-
-    data = reserve_buf(sizeof(*data));
-    if (!data)
-        return 0;
-
-    data->fpid = bpf_get_current_pid_tgid() >> 32;
-    data->tpid = BPF_CORE_READ(oc, chosen, tgid);
-    data->pages = BPF_CORE_READ(oc, totalpages);
-    bpf_get_current_comm(&data->fcomm, sizeof(data->fcomm));
-    BPF_CORE_READ_STR_INTO(&data->tcomm, oc, chosen, comm);
-
-    submit_buf(ctx, data, sizeof(*data));
-    return 0;
+	BPF_KPROBE_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
