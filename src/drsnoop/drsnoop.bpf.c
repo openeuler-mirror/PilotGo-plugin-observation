@@ -48,21 +48,23 @@ static __always_inline u64 read_nr_free_pages(void)
 	return nr_free_pages;
 }
 
+static void handle_direct_reclaim_begin_extra(void)
+{
+		u64 id = bpf_get_current_pid_tgid();
+		struct piddata piddata = {};
+		u32 tgid = id >> 32;
+		u32 pid = id;
+		if (task_filtered(tgid, pid))
+			return 0;
+		piddata.ts = bpf_ktime_get_ns();
+		piddata.nr_free_pages = read_nr_free_pages();
+		bpf_map_update_elem(&start, &pid, &piddata, BPF_ANY);
+		return 0;
+}
+
 static int handle_direct_reclaim_begin()
 {
-	u64 id = bpf_get_current_pid_tgid();
-	struct piddata piddata = {};
-	u32 tgid = id >> 32;
-	u32 pid = id;
-
-	if (task_filtered(tgid, pid))
-		return 0;
-
-	piddata.ts = bpf_ktime_get_ns();
-	piddata.nr_free_pages = read_nr_free_pages();
-
-	bpf_map_update_elem(&start, &pid, &piddata, BPF_ANY);
-	return 0;
+	handle_direct_reclaim_begin_extra();
 }
 
 static int handle_direct_reclaim_end(void *ctx, unsigned long nr_reclaimed)
