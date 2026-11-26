@@ -164,21 +164,23 @@ static int attach_ra_kprobe(struct readahead_bpf *obj,
 	return !*link;
 }
 
+static void attach_kprobes_extra(void)
+{
+		int err;
+		err = attach_ra_kprobe(obj, obj->progs.do_page_cache_ra_kprobe,
+				       false, &obj->links.do_page_cache_ra_kprobe);
+		if (err)
+			return 1;
+		err = attach_ra_kprobe(obj, obj->progs.do_page_cache_ra_kretprobe,
+				       true, &obj->links.do_page_cache_ra_kretprobe);
+		if (err)
+			return 1;
+		return 0;
+}
+
 static int attach_kprobes(struct readahead_bpf *obj)
 {
-	int err;
-
-	err = attach_ra_kprobe(obj, obj->progs.do_page_cache_ra_kprobe,
-			       false, &obj->links.do_page_cache_ra_kprobe);
-	if (err)
-		return 1;
-
-	err = attach_ra_kprobe(obj, obj->progs.do_page_cache_ra_kretprobe,
-			       true, &obj->links.do_page_cache_ra_kretprobe);
-	if (err)
-		return 1;
-
-	return 0;
+	attach_kprobes_extra();
 }
 
 
