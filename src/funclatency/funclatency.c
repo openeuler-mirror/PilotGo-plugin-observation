@@ -15,6 +15,7 @@ static struct env {
 	unsigned int interval;
 	unsigned int iterations;
 	bool timestamp;
+	bool enable_debug;
 	char *funcname;
 	bool verbose;
 	bool kprobes;
