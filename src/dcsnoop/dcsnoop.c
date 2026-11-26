@@ -89,7 +89,7 @@ static void sig_handler(int sig)
 static void print_event_time(void)
 {
 	if (env.timestamp) {
-		char ts[32];
+		char ts[33];
 
 		strftime_now(ts, sizeof(ts), "%H:%M:%S");
 		printf("%-8s ", ts);
