@@ -370,34 +370,31 @@ static int clear_counts(int fd)
 	clear_counts_extra();
 }
 
+static void print_stat_extra(void)
+{
+		static struct data_t datas[OUTPUT_ROWS_LIMIT];
+		int err, rows;
+		int fd = bpf_map__fd(obj->maps.counts);
+		print_loadavg();
+		printf("%-7s %-16s %1s %-3s %-3s %-8s %5s %7s %6s\n",
+		       "PID", "COMM", "D", "MAJ", "MIN", "DISK", "I/O", "Kbytes", "AVGms");
+		rows = fetch_counts(fd, datas);
+		if (rows < 0)
+			return -1;
+		qsort(datas, rows, sizeof(struct data_t), sort_column);
+		rows = rows < env.output_rows ? rows : env.output_rows;
+		for (int i = 0; i < rows; i++)
+			print_stat_row(&datas[i]);
+		printf("\n");
+		err = clear_counts(fd);
+		if (err)
+			return err;
+		return 0;
+}
+
 static int print_stat(struct biotop_bpf *obj)
 {
-	static struct data_t datas[OUTPUT_ROWS_LIMIT];
-	int err, rows;
-	int fd = bpf_map__fd(obj->maps.counts);
-
-	print_loadavg();
-
-	printf("%-7s %-16s %1s %-3s %-3s %-8s %5s %7s %6s\n",
-	       "PID", "COMM", "D", "MAJ", "MIN", "DISK", "I/O", "Kbytes", "AVGms");
-
-	rows = fetch_counts(fd, datas);
-	if (rows < 0)
-		return -1;
-
-	qsort(datas, rows, sizeof(struct data_t), sort_column);
-	rows = rows < env.output_rows ? rows : env.output_rows;
-
-	for (int i = 0; i < rows; i++)
-		print_stat_row(&datas[i]);
-
-	printf("\n");
-
-	err = clear_counts(fd);
-	if (err)
-		return err;
-
-	return 0;
+	print_stat_extra();
 }
 
 static int attach_io_probe(struct biotop_bpf *obj, struct bpf_program *prog,
