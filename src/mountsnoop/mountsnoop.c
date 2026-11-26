@@ -48,7 +48,7 @@ static const char *flag_names[] = {
 };
 
 const char *argp_program_version = "mountsnoop 0.1";
-const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char *argp_program_bug_address = "<maintainer@kylinos.cn>";
 const char argp_program_doc[] =
     "Trace mount and umount syscalls.\n"
     "\n"
