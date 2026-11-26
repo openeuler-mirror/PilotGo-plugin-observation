@@ -127,27 +127,29 @@ static void print_load_value(__u64 load)
 	       ((load & ((1 << 11) - 1)) * 1000) >> 11);
 }
 
+static void print_loads_extra(void)
+{
+		__u64 load1 = __atomic_load_n(&bss->loads[0], __ATOMIC_RELAXED);
+		__u64 load5 = __atomic_load_n(&bss->loads[1], __ATOMIC_RELAXED);
+		__u64 load15 = __atomic_load_n(&bss->loads[2], __ATOMIC_RELAXED);
+		if (env.timestamp)
+		{
+			char ts[32];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%s ", ts);
+		}
+		printf("load averages: ");
+		print_load_value(load1);
+		printf(" ");
+		print_load_value(load5);
+		printf(" ");
+		print_load_value(load15);
+		printf("\n");
+}
+
 static void print_loads(struct loads_bpf__bss *bss)
 {
-	__u64 load1 = __atomic_load_n(&bss->loads[0], __ATOMIC_RELAXED);
-	__u64 load5 = __atomic_load_n(&bss->loads[1], __ATOMIC_RELAXED);
-	__u64 load15 = __atomic_load_n(&bss->loads[2], __ATOMIC_RELAXED);
-
-	if (env.timestamp)
-	{
-		char ts[32];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		printf("%s ", ts);
-	}
-
-	printf("load averages: ");
-	print_load_value(load1);
-	printf(" ");
-	print_load_value(load5);
-	printf(" ");
-	print_load_value(load15);
-	printf("\n");
+	print_loads_extra();
 }
 
 static __u64 resolve_avenrun_addr(struct ksyms *ksyms)
