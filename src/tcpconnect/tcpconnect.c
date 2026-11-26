@@ -147,36 +147,38 @@ static void sig_handler(int sig)
         exiting = true;
 }
 
+static void print_count_ipv4_extra(void)
+{
+	        static struct ipv4_flow_key keys[MAX_ENTRIES];
+	        __u32 value_size = sizeof(__u64);
+	        __u32 key_size = sizeof(keys[0]);
+	        static struct ipv4_flow_key zero;
+	        static __u64 counts[MAX_ENTRIES];
+	        char s[INET_ADDRSTRLEN];
+	        char d[INET_ADDRSTRLEN];
+	        __u32 n = MAX_ENTRIES;
+	        struct in_addr src, dst;
+	        if (dump_hash(map_fd, keys, key_size, counts, value_size, &n, &zero)) {
+	                warning("Dump_hash: %s", strerror(errno));
+	                return;
+	        }
+	        for (int i = 0; i < n; i++) {
+	                src.s_addr = keys[i].saddr;
+	                dst.s_addr = keys[i].daddr;
+	                printf("%-25s %-25s",
+	                       inet_ntop(AF_INET, &src, s, sizeof(s)),
+	                       inet_ntop(AF_INET, &dst, d, sizeof(d)));
+	                if (env.source_port)
+	                        printf(" %-20d", keys[i].sport);
+	                printf(" %-20d", ntohs(keys[i].dport));
+	                printf(" %-10llu", counts[i]);
+	                printf("\n");
+	        }
+}
+
 static void print_count_ipv4(int map_fd)
 {
-        static struct ipv4_flow_key keys[MAX_ENTRIES];
-        __u32 value_size = sizeof(__u64);
-        __u32 key_size = sizeof(keys[0]);
-        static struct ipv4_flow_key zero;
-        static __u64 counts[MAX_ENTRIES];
-        char s[INET_ADDRSTRLEN];
-        char d[INET_ADDRSTRLEN];
-        __u32 n = MAX_ENTRIES;
-        struct in_addr src, dst;
-
-        if (dump_hash(map_fd, keys, key_size, counts, value_size, &n, &zero)) {
-                warning("Dump_hash: %s", strerror(errno));
-                return;
-        }
-
-        for (int i = 0; i < n; i++) {
-                src.s_addr = keys[i].saddr;
-                dst.s_addr = keys[i].daddr;
-
-                printf("%-25s %-25s",
-                       inet_ntop(AF_INET, &src, s, sizeof(s)),
-                       inet_ntop(AF_INET, &dst, d, sizeof(d)));
-                if (env.source_port)
-                        printf(" %-20d", keys[i].sport);
-                printf(" %-20d", ntohs(keys[i].dport));
-                printf(" %-10llu", counts[i]);
-                printf("\n");
-        }
+	print_count_ipv4_extra();
 }
 
 static void print_count_ipv6(int map_fd)
