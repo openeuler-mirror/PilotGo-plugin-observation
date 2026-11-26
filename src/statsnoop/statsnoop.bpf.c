@@ -20,20 +20,22 @@ struct {
 	__type(value, const char *);
 } values SEC(".maps");
 
+static void probe_entry_extra(void)
+{
+		__u64 id = bpf_get_current_pid_tgid();
+		__u32 pid = id >> 32;
+		__u32 tid = (__u32)id;
+		if (!pathname)
+			return 0;
+		if (target_pid && target_pid != pid)
+			return 0;
+		bpf_map_update_elem(&values, &tid, &pathname, BPF_ANY);
+		return 0;
+}
+
 static __always_inline int probe_entry(void *ctx, const char *pathname)
 {
-	__u64 id = bpf_get_current_pid_tgid();
-	__u32 pid = id >> 32;
-	__u32 tid = (__u32)id;
-
-	if (!pathname)
-		return 0;
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	bpf_map_update_elem(&values, &tid, &pathname, BPF_ANY);
-	return 0;
+	probe_entry_extra();
 }
 
 static __always_inline int probe_return(void *ctx, int ret)
