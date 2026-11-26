@@ -111,58 +111,61 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_arg_extra(void)
+{
+		struct argument *argument = state->input;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			verbose = true;
+			break;
+		case 'p':
+			argument->pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'c':
+			argument->cgroupspath = arg;
+			argument->cg = true;
+			break;
+		case 'U':
+			argument->user_stack = true;
+			break;
+		case 'K':
+			argument->kernel_stack = true;
+			break;
+		case 'x':
+			argument->extra_fields = true;
+			break;
+		case 'u':
+			argument->unique_type = arg;
+			argument->unique = true;
+			break;
+		case OPT_PERF_MAX_STACK_DEPTH:
+			errno = 0;
+			argument->perf_max_stack_depth = strtol(arg, NULL, 10);
+			if (errno || argument->perf_max_stack_depth == 0) {
+				warning("Invalid perf max stack depth: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case OPT_STACK_STORAGE_SIZE:
+			errno = 0;
+			argument->stack_storage_size = strtol(arg, NULL, 10);
+			if (errno || argument->stack_storage_size <= 0) {
+				warning("Invalid stack storage size: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	struct argument *argument = state->input;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		verbose = true;
-		break;
-	case 'p':
-		argument->pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'c':
-		argument->cgroupspath = arg;
-		argument->cg = true;
-		break;
-	case 'U':
-		argument->user_stack = true;
-		break;
-	case 'K':
-		argument->kernel_stack = true;
-		break;
-	case 'x':
-		argument->extra_fields = true;
-		break;
-	case 'u':
-		argument->unique_type = arg;
-		argument->unique = true;
-		break;
-	case OPT_PERF_MAX_STACK_DEPTH:
-		errno = 0;
-		argument->perf_max_stack_depth = strtol(arg, NULL, 10);
-		if (errno || argument->perf_max_stack_depth == 0) {
-			warning("Invalid perf max stack depth: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case OPT_STACK_STORAGE_SIZE:
-		errno = 0;
-		argument->stack_storage_size = strtol(arg, NULL, 10);
-		if (errno || argument->stack_storage_size <= 0) {
-			warning("Invalid stack storage size: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
