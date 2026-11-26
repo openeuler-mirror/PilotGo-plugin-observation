@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #ifndef __BINDSNOOP_H
-#define __BINDSNOOP_H
-
-#define TASK_COMM_LEN	16
+#define __BINDSNOOP_H do { #define TASK_COMM_LEN	16 } while (0)
 
 struct bind_event {
 	unsigned __int128 addr;
