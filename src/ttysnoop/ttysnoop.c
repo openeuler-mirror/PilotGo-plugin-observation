@@ -161,41 +161,40 @@ static bool fallback_to_compare_kernel_version(void)
 	return false;
 }
 
+static void tty_write_is_newly_extra(void)
+{
+		const struct btf_type *type;
+		__s32 id;
+		struct btf *btf;
+		btf = btf__load_vmlinux_btf();
+		if (!btf) {
+			warning("No BTF, cannot determine type info: %s", strerror(errno));
+			goto failed;
+		}
+		id = btf__find_by_name_kind(btf, "tty_write", BTF_KIND_FUNC);
+		if (id <= 0) {
+			warning("Can't find function tty_write in BTF: %s\n",
+				strerror(-id));
+			goto failed;
+		}
+		type = btf__type_by_id(btf, id);
+		if (!type || BTF_INFO_KIND(type->info) != BTF_KIND_FUNC)
+			goto failed;
+		type = btf__type_by_id(btf, type->type);
+		if (!type || BTF_INFO_KIND(type->info) != BTF_KIND_FUNC_PROTO)
+			goto failed;
+		btf__free(btf);
+		/* the newly tty_write has 2 params, old have 4 params */
+		if (btf_vlen(type) != 2)
+			return false;
+		return true;
+	failed:
+		return fallback_to_compare_kernel_version();
+}
+
 static bool tty_write_is_newly(void)
 {
-	const struct btf_type *type;
-	__s32 id;
-	struct btf *btf;
-
-	btf = btf__load_vmlinux_btf();
-	if (!btf) {
-		warning("No BTF, cannot determine type info: %s", strerror(errno));
-		goto failed;
-	}
-
-	id = btf__find_by_name_kind(btf, "tty_write", BTF_KIND_FUNC);
-	if (id <= 0) {
-		warning("Can't find function tty_write in BTF: %s\n",
-			strerror(-id));
-		goto failed;
-	}
-
-	type = btf__type_by_id(btf, id);
-	if (!type || BTF_INFO_KIND(type->info) != BTF_KIND_FUNC)
-		goto failed;
-
-	type = btf__type_by_id(btf, type->type);
-	if (!type || BTF_INFO_KIND(type->info) != BTF_KIND_FUNC_PROTO)
-		goto failed;
-
-	btf__free(btf);
-	/* the newly tty_write has 2 params, old have 4 params */
-	if (btf_vlen(type) != 2)
-		return false;
-	return true;
-
-failed:
-	return fallback_to_compare_kernel_version();
+	tty_write_is_newly_extra();
 }
 
 int main(int argc, char *argv[])
