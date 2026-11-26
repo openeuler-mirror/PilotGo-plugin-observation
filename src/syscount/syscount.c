@@ -365,132 +365,118 @@ static void main_section11_1(void)
 		}
 }
 
+static void main_extra(void)
+{
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		void (*print)(struct data_ext_t *, size_t);
+		int (*compare)(const void *, const void *);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct data_ext_t vals[MAX_ENTRIES];
+		struct syscount_bpf *obj;
+		int seconds = 0;
+		__u32 count;
+		int err;
+		int cgfd = -1;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		init_syscall_names();
+		if (env.list_syscalls) {
+			list_syscalls();
+			goto free_names;
+		}
+		libbpf_set_print(libbpf_print_fn);
+		err = ensure_core_btf(&open_opts);
+		if (err) {
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+			return 1;
+		}
+		main_section11_1();
+		if (env.pid)
+			obj->rodata->filter_pid = env.pid;
+		if (env.failures)
+			obj->rodata->filter_failed = true;
+		if (env.latency)
+			obj->rodata->measure_latency = true;
+		if (env.process)
+			obj->rodata->count_by_process = true;
+		if (env.filter_errno)
+			obj->rodata->filter_errno = env.filter_errno;
+		if (env.cg)
+			obj->rodata->filter_cg = env.cg;
+		err = syscount_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %s\n", strerror(-err));
+			goto cleanup_obj;
+		}
+		if (env.cg) {
+			int idx = 0;
+			int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+			cgfd = open(env.cgroupspath, O_RDONLY);
+			if (cgfd < 0) {
+				warning("Failed opening Cgroup path: %s", env.cgroupspath);
+				goto cleanup_obj;
+			}
+			if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
+				warning("Failed adding target cgroup to map");
+				goto cleanup_obj;
+			}
+		}
+		obj->links.sys_exit = bpf_program__attach(obj->progs.sys_exit);
+		if (!obj->links.sys_exit) {
+			err = -errno;
+			warning("Failed to attach sys_exit program: %s\n", strerror(-err));
+			goto cleanup_obj;
+		}
+		if (env.latency) {
+			obj->links.sys_enter = bpf_program__attach(obj->progs.sys_enter);
+			if (!obj->links.sys_enter) {
+				err = -errno;
+				warning("Failed to attach sys_enter programs: %s\n",
+					strerror(-err));
+				goto cleanup_obj;
+			}
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			goto cleanup_obj;
+		}
+		compare = env.latency ? compare_latency : compare_count;
+		print = env.latency ? print_latency : print_count;
+		printf("Tracing syscalls, printing top %d... Ctrl-C to quit.\n", env.top);
+		while (!exiting) {
+			sleep(env.interval ?: 1);
+			if (env.duration) {
+				seconds += env.interval ?: 1;
+				if (seconds >= env.duration)
+					break;
+			}
+			count = MAX_ENTRIES;
+			if (!read_vals(bpf_map__fd(obj->maps.data), vals, &count))
+				break;
+			if (!count)
+				continue;
+			qsort(vals, count, sizeof(vals[0]), compare);
+			print_timestamp();
+			print(vals, count);
+		}
+	cleanup_obj:
+		syscount_bpf__destroy(obj);
+	free_names:
+		free_syscall_names();
+		cleanup_core_btf(&open_opts);
+		if (cgfd > 0)
+			close(cgfd);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	void (*print)(struct data_ext_t *, size_t);
-	int (*compare)(const void *, const void *);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct data_ext_t vals[MAX_ENTRIES];
-	struct syscount_bpf *obj;
-	int seconds = 0;
-	__u32 count;
-	int err;
-	int cgfd = -1;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	init_syscall_names();
-
-	if (env.list_syscalls) {
-		list_syscalls();
-		goto free_names;
-	}
-
-	libbpf_set_print(libbpf_print_fn);
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-		return 1;
-	}
-	main_section11_1();
-
-	if (env.pid)
-		obj->rodata->filter_pid = env.pid;
-	if (env.failures)
-		obj->rodata->filter_failed = true;
-	if (env.latency)
-		obj->rodata->measure_latency = true;
-	if (env.process)
-		obj->rodata->count_by_process = true;
-	if (env.filter_errno)
-		obj->rodata->filter_errno = env.filter_errno;
-	if (env.cg)
-		obj->rodata->filter_cg = env.cg;
-
-	err = syscount_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %s\n", strerror(-err));
-		goto cleanup_obj;
-	}
-
-	if (env.cg) {
-		int idx = 0;
-		int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-		cgfd = open(env.cgroupspath, O_RDONLY);
-		if (cgfd < 0) {
-			warning("Failed opening Cgroup path: %s", env.cgroupspath);
-			goto cleanup_obj;
-		}
-		if (bpf_map_update_elem(cg_map_fd, &idx, &cgfd, BPF_ANY)) {
-			warning("Failed adding target cgroup to map");
-			goto cleanup_obj;
-		}
-	}
-
-	obj->links.sys_exit = bpf_program__attach(obj->progs.sys_exit);
-	if (!obj->links.sys_exit) {
-		err = -errno;
-		warning("Failed to attach sys_exit program: %s\n", strerror(-err));
-		goto cleanup_obj;
-	}
-	if (env.latency) {
-		obj->links.sys_enter = bpf_program__attach(obj->progs.sys_enter);
-		if (!obj->links.sys_enter) {
-			err = -errno;
-			warning("Failed to attach sys_enter programs: %s\n",
-				strerror(-err));
-			goto cleanup_obj;
-		}
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		goto cleanup_obj;
-	}
-
-	compare = env.latency ? compare_latency : compare_count;
-	print = env.latency ? print_latency : print_count;
-
-	printf("Tracing syscalls, printing top %d... Ctrl-C to quit.\n", env.top);
-
-	while (!exiting) {
-		sleep(env.interval ?: 1);
-		if (env.duration) {
-			seconds += env.interval ?: 1;
-			if (seconds >= env.duration)
-				break;
-		}
-
-		count = MAX_ENTRIES;
-		if (!read_vals(bpf_map__fd(obj->maps.data), vals, &count))
-			break;
-		if (!count)
-			continue;
-
-		qsort(vals, count, sizeof(vals[0]), compare);
-		print_timestamp();
-		print(vals, count);
-	}
-
-cleanup_obj:
-	syscount_bpf__destroy(obj);
-free_names:
-	free_syscall_names();
-	cleanup_core_btf(&open_opts);
-	if (cgfd > 0)
-		close(cgfd);
-
-	return err != 0;
+	main_extra();
 }
