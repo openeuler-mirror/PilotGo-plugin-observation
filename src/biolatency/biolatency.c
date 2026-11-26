@@ -44,7 +44,7 @@ const char argp_program_doc[] =
 
 static const struct argp_option opts[] = {
 	{ "timestamp", 'T', NULL, 0, "Include timestamp on output" },
-	{ "milliseonds", 'm', NULL, 0, "Millisecond histogram" },
+	{ "milliseconds", 'm', NULL, 0, "Millisecond histogram" },
 	{ "queued", 'Q', NULL, 0, "Include OS queued time in I/O time" },
 	{ "disk", 'D', NULL, 0, "Print a histogram per disk device" },
 	{ "flag", 'F', NULL, 0, "Print a histogram per set of I/O flags" },
