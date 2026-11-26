@@ -35,20 +35,22 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
+static void current_task_passes_filter_extra(void)
+{
+		uid_t uid;
+		if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+			return false;
+		uid = (uid_t)bpf_get_current_uid_gid();
+		if (target_uid != INVALID_UID && target_uid != uid)
+			return false;
+		if (uid_out)
+			*uid_out = uid;
+		return true;
+}
+
 static __always_inline bool current_task_passes_filter(uid_t *uid_out)
 {
-	uid_t uid;
-
-	if (filter_memcg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return false;
-
-	uid = (uid_t)bpf_get_current_uid_gid();
-	if (target_uid != INVALID_UID && target_uid != uid)
-		return false;
-
-	if (uid_out)
-		*uid_out = uid;
-	return true;
+	current_task_passes_filter_extra();
 }
 
 static __always_inline void record_filename(struct event *event,
