@@ -131,25 +131,27 @@ static void lock_aborted(void *lock)
 	bpf_map_delete_elem(&lockholder_map, &tl);
 }
 
+static void lock_acquired_extra(void)
+{
+		u64 task_id;
+		struct lockholder_info *li;
+		struct task_lock tl = {};
+		if (target_lock && target_lock != lock)
+			return;
+		task_id = bpf_get_current_pid_tgid();
+		if (!tracing_task(task_id))
+			return;
+		tl.task_id = task_id;
+		tl.lock_ptr = (u64)lock;
+		li = bpf_map_lookup_elem(&lockholder_map, &tl);
+		if (!li)
+			return;
+		li->acq_at = bpf_ktime_get_ns();
+}
+
 static void lock_acquired(void *lock)
 {
-	u64 task_id;
-	struct lockholder_info *li;
-	struct task_lock tl = {};
-
-	if (target_lock && target_lock != lock)
-		return;
-
-	task_id = bpf_get_current_pid_tgid();
-	if (!tracing_task(task_id))
-		return;
-	tl.task_id = task_id;
-	tl.lock_ptr = (u64)lock;
-	li = bpf_map_lookup_elem(&lockholder_map, &tl);
-	if (!li)
-		return;
-
-	li->acq_at = bpf_ktime_get_ns();
+	lock_acquired_extra();
 }
 
 static void account(struct lockholder_info *li)
