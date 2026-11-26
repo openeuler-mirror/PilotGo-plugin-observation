@@ -98,51 +98,55 @@ static int parse_max_args_arg(const char *arg, struct argp_state *state)
 	return (int)max_args;
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'T':
+			env.time = true;
+			break;
+		case 't':
+			env.timestamp = true;
+			break;
+		case 'x':
+			env.fails = true;
+			break;
+		case 'c':
+			env.cgroupspath = arg;
+			env.cg = true;
+			break;
+		case 'u':
+			env.uid = parse_uid_arg(arg, state);
+			break;
+		case 'q':
+			env.quote = true;
+			break;
+		case 'n':
+			env.name = arg;
+			break;
+		case 'l':
+			env.line = arg;
+			break;
+		case 'U':
+			env.print_uid = true;
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case MAX_ARGS_KEY:
+			env.max_args = parse_max_args_arg(arg, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'T':
-		env.time = true;
-		break;
-	case 't':
-		env.timestamp = true;
-		break;
-	case 'x':
-		env.fails = true;
-		break;
-	case 'c':
-		env.cgroupspath = arg;
-		env.cg = true;
-		break;
-	case 'u':
-		env.uid = parse_uid_arg(arg, state);
-		break;
-	case 'q':
-		env.quote = true;
-		break;
-	case 'n':
-		env.name = arg;
-		break;
-	case 'l':
-		env.line = arg;
-		break;
-	case 'U':
-		env.print_uid = true;
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case MAX_ARGS_KEY:
-		env.max_args = parse_max_args_arg(arg, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
