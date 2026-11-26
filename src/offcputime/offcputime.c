@@ -304,6 +304,18 @@ cleanup:
     free(ip);
 }
 
+static void main_section3_2(void)
+{
+	    /* Init global data (filtering options) */
+	    bpf_obj->rodata->target_tgid = env.pid;
+	    bpf_obj->rodata->target_pid = env.tid;
+	    bpf_obj->rodata->user_threads_only = env.user_threads_only;
+	    bpf_obj->rodata->kernel_threads_only = env.kernel_threads_only;
+	    bpf_obj->rodata->state = env.state;
+	    bpf_obj->rodata->min_block_ns = env.min_block_time;
+	    bpf_obj->rodata->max_block_ns = env.max_block_time;
+}
+
 int main(int argc, char *argv[])
 {
     static const struct argp argp = {
@@ -344,15 +356,7 @@ int main(int argc, char *argv[])
         warning("Failed to open BPF object\n");
         return 1;
     }
-
-    /* Init global data (filtering options) */
-    bpf_obj->rodata->target_tgid = env.pid;
-    bpf_obj->rodata->target_pid = env.tid;
-    bpf_obj->rodata->user_threads_only = env.user_threads_only;
-    bpf_obj->rodata->kernel_threads_only = env.kernel_threads_only;
-    bpf_obj->rodata->state = env.state;
-    bpf_obj->rodata->min_block_ns = env.min_block_time;
-    bpf_obj->rodata->max_block_ns = env.max_block_time;
+	main_section3_2();
 
     bpf_map__set_value_size(bpf_obj->maps.stackmap,
                             env.perf_max_stack_depth * sizeof(unsigned long));
