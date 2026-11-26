@@ -5,6 +5,7 @@
 
 struct argument {
 	time_t	interval;
+	/* times field */
 	int	times;
 	bool	timestamp;
 };
