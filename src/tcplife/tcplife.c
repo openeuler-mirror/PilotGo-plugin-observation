@@ -143,33 +143,34 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
         warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void print_events_extra(void)
+{
+	        int err;
+	        err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+	        if (err) {
+	                warning("Failed to open ring/perf buffer\n");
+	                return err;
+	        }
+	        if (env.emit_timestamp)
+	                printf("%-8s ", "TIME(s)");
+	        printf("%-7s %-16s %-*s %-5s %-*s %-5s %-6s %-6s %-s\n",
+	               "PID", "COMM", env.column_width, "LADDR", "LPORT",
+	               env.column_width, "RADDR", "RPORT", "TX_KB", "RX_KB", "MS");
+	        while (!exiting) {
+	                err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+	                if (err < 0 && err != -EINTR) {
+	                        warning("Error polling ring/perf buffer: %s\n", strerror(-err));
+	                        break;
+	                }
+	                /* reset err to return 0 if exiting */
+	                err = 0;
+	        }
+	        return err;
+}
+
 static int print_events(struct bpf_buffer *buf)
 {
-        int err;
-
-        err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
-        if (err) {
-                warning("Failed to open ring/perf buffer\n");
-                return err;
-        }
-
-        if (env.emit_timestamp)
-                printf("%-8s ", "TIME(s)");
-        printf("%-7s %-16s %-*s %-5s %-*s %-5s %-6s %-6s %-s\n",
-               "PID", "COMM", env.column_width, "LADDR", "LPORT",
-               env.column_width, "RADDR", "RPORT", "TX_KB", "RX_KB", "MS");
-
-        while (!exiting) {
-                err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-                if (err < 0 && err != -EINTR) {
-                        warning("Error polling ring/perf buffer: %s\n", strerror(-err));
-                        break;
-                }
-                /* reset err to return 0 if exiting */
-                err = 0;
-        }
-
-        return err;
+	print_events_extra();
 }
 
 int main(int argc, char *argv[])
