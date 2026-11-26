@@ -111,26 +111,27 @@ static __always_inline void fill_unlink_event(struct event *event,
  *		  struct dentry *dentry, struct inode **delegated_inode);
  */
 SEC("kprobe/vfs_unlink")
+static void BPF_KPROBE_extra(void)
+{
+		bool has_mnt_userns = renamedata_has_old_mnt_userns_field();
+		struct dentry *dentry = unlink_dentry(arg1, arg2, has_mnt_userns);
+		struct event event = {};
+		u64 *tsp, delta_ns;
+		tsp = bpf_map_lookup_elem(&start, &dentry);
+		if (!tsp)
+			return 0;
+		delta_ns = bpf_ktime_get_ns() - *tsp;
+		bpf_map_delete_elem(&start, &dentry);
+		fill_unlink_event(&event, dentry, delta_ns);
+		/* output */
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
+				      &event, sizeof(event));
+		return 0;
+}
+
 int BPF_KPROBE(vfs_unlink, void *arg0, void *arg1, void *arg2)
 {
-	bool has_mnt_userns = renamedata_has_old_mnt_userns_field();
-	struct dentry *dentry = unlink_dentry(arg1, arg2, has_mnt_userns);
-	struct event event = {};
-	u64 *tsp, delta_ns;
-
-	tsp = bpf_map_lookup_elem(&start, &dentry);
-	if (!tsp)
-		return 0;
-
-	delta_ns = bpf_ktime_get_ns() - *tsp;
-	bpf_map_delete_elem(&start, &dentry);
-
-	fill_unlink_event(&event, dentry, delta_ns);
-
-	/* output */
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
-			      &event, sizeof(event));
-	return 0;
+	BPF_KPROBE_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
