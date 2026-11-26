@@ -32,6 +32,7 @@ const char argp_program_doc[] =
 "    biosnoop 10           # trace for 10 seconds only\n"
 "    biosnoop -d sdc       # trace sdc only\n"
 "    biosnoop -c CG        # Trace process under cgroupsPath CG\n";
+"    biosnoop --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "queued", 'Q', NULL, 0, "Include OS queued time in I/O time" },
