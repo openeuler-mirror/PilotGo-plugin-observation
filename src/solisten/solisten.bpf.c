@@ -45,21 +45,24 @@ static void fill_event(struct event *event, struct socket *sock)
 }
 
 SEC("kprobe/inet_listen")
+static void BPF_KPROBE_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		__u32 tid = (__u32)pid_tgid;
+		struct event event = {};
+		if (target_pid && target_pid != pid)
+			return 0;
+		fill_event(&event, sock);
+		event.pid = pid;
+		event.backlog = backlog;
+		bpf_map_update_elem(&values, &tid, &event, BPF_ANY);
+		return 0;
+}
+
 int BPF_KPROBE(inet_listen_entry, struct socket *sock, int backlog)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	__u32 tid = (__u32)pid_tgid;
-	struct event event = {};
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	fill_event(&event, sock);
-	event.pid = pid;
-	event.backlog = backlog;
-	bpf_map_update_elem(&values, &tid, &event, BPF_ANY);
-	return 0;
+	BPF_KPROBE_extra();
 }
 
 SEC("kretprobe/inet_listen")
