@@ -51,42 +51,42 @@ static __always_inline void copy_user_str(char *dst, __u32 dst_sz,
 		dst[0] = '\0';
 }
 
+static void probe_exit_extra(void)
+{
+	    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	    __u32 pid = pid_tgid >> 32;
+	    __u32 tid = (__u32)pid_tgid;
+	    struct task_struct *task;
+	    struct event *eventp;
+	    struct arg *argp;
+	    argp = bpf_map_lookup_elem(&args, &tid);
+	    if (!argp)
+	        return 0;
+	    eventp = reserve_buf(sizeof(*eventp));
+	    if (!eventp)
+	        goto cleanup;
+	    task = (struct task_struct *)bpf_get_current_task();
+	    eventp->delta = bpf_ktime_get_ns() - argp->ts;
+	    eventp->flags = argp->flags;
+	    eventp->pid = pid;
+	    eventp->tid = tid;
+	    eventp->mnt_ns = BPF_CORE_READ(task, nsproxy, mnt_ns, ns.inum);
+	    eventp->ret = ret;
+	    eventp->op = argp->op;
+	    bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+	    copy_user_str(eventp->src, sizeof(eventp->src), argp->src);
+	    copy_user_str(eventp->dest, sizeof(eventp->dest), argp->dest);
+	    copy_user_str(eventp->fs, sizeof(eventp->fs), argp->fs);
+	    copy_user_str(eventp->data, sizeof(eventp->data), argp->data);
+	    submit_buf(ctx, eventp, sizeof(*eventp));
+	cleanup:
+	    bpf_map_delete_elem(&args, &tid);
+	    return 0;
+}
+
 static __always_inline int probe_exit(void *ctx, int ret)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-    __u32 tid = (__u32)pid_tgid;
-    struct task_struct *task;
-    struct event *eventp;
-    struct arg *argp;
-
-    argp = bpf_map_lookup_elem(&args, &tid);
-    if (!argp)
-        return 0;
-
-    eventp = reserve_buf(sizeof(*eventp));
-    if (!eventp)
-        goto cleanup;
-
-    task = (struct task_struct *)bpf_get_current_task();
-    eventp->delta = bpf_ktime_get_ns() - argp->ts;
-    eventp->flags = argp->flags;
-    eventp->pid = pid;
-    eventp->tid = tid;
-    eventp->mnt_ns = BPF_CORE_READ(task, nsproxy, mnt_ns, ns.inum);
-    eventp->ret = ret;
-    eventp->op = argp->op;
-    bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
-    copy_user_str(eventp->src, sizeof(eventp->src), argp->src);
-    copy_user_str(eventp->dest, sizeof(eventp->dest), argp->dest);
-    copy_user_str(eventp->fs, sizeof(eventp->fs), argp->fs);
-    copy_user_str(eventp->data, sizeof(eventp->data), argp->data);
-
-    submit_buf(ctx, eventp, sizeof(*eventp));
-
-cleanup:
-    bpf_map_delete_elem(&args, &tid);
-    return 0;
+	probe_exit_extra();
 }
 
 SEC("tracepoint/syscalls/sys_enter_mount")
