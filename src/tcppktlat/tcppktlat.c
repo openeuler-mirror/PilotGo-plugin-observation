@@ -117,26 +117,26 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		char saddr[48], daddr[48];
+		if (env.timestamp) {
+			char ts[32];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s ", ts);
+		}
+		inet_ntop(e->family, &e->saddr, saddr, sizeof(saddr));
+		inet_ntop(e->family, &e->daddr, daddr, sizeof(daddr));
+		printf("%-7d %-7d %-16s %-*s %-5d %-*s %-5d %-.2f\n",
+		       e->pid, e->tid, e->comm, env.column_width, saddr, e->sport,
+		       env.column_width, daddr, e->dport, e->delta_us / 1e3);
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-	char saddr[48], daddr[48];
-
-	if (env.timestamp) {
-		char ts[32];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		printf("%-8s ", ts);
-	}
-
-	inet_ntop(e->family, &e->saddr, saddr, sizeof(saddr));
-	inet_ntop(e->family, &e->daddr, daddr, sizeof(daddr));
-
-	printf("%-7d %-7d %-16s %-*s %-5d %-*s %-5d %-.2f\n",
-	       e->pid, e->tid, e->comm, env.column_width, saddr, e->sport,
-	       env.column_width, daddr, e->dport, e->delta_us / 1e3);
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
