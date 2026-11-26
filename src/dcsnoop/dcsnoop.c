@@ -97,7 +97,7 @@ static void print_event_time(void)
 	if (env.timestamp) {
 		char ts[33];
 
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		strftime_now(ts, sizeof ( ts ), "%H:%M:%S");
 		printf("%-8s ", ts);
 	} else {
 		printf("%-11.6f ", time_since_start());
