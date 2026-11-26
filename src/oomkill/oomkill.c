@@ -9,7 +9,7 @@
 static volatile sig_atomic_t exiting;
 static bool verbose = false;
 
-const char *argp_program_version = "oomkill 0.1";
+const char *argp_program_version = "oomkill 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
     "Trace OOM kills.\n"
