@@ -182,108 +182,97 @@ static int attach_kprobes(struct stacksnoop_bpf *obj)
 	return 0;
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct bpf_buffer *buf = NULL;
+		struct stacksnoop_bpf *obj;
+		int err;
+		bool support_fentry;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = stacksnoop_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		/* alloc space for storing a stack trace */
+		stacks = calloc(env.perf_max_stack_depth, sizeof(*stacks));
+		if (!stacks) {
+			warning("Failed to allocate stack array\n");
+			err = -ENOMEM;
+			goto cleanup;
+		}
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			warning("Failed to create ring/perf buffer\n");
+			err = 1;
+			goto cleanup;
+		}
+		bpf_map__set_value_size(obj->maps.stack_traces,
+					env.perf_max_stack_depth * sizeof(unsigned long));
+		bpf_map__set_max_entries(obj->maps.stack_traces, env.stack_map_max_entries);
+		support_fentry = check_fentry();
+		if (support_fentry) {
+			err = fentry_set_attach_target(obj);
+			if (err) {
+				warning("Failed to set fentry attach: %d\n", err);
+				goto cleanup;
+			}
+			bpf_program__set_autoload(obj->progs.kprobe_function, false);
+		} else {
+			bpf_program__set_autoload(obj->progs.fentry_function, false);
+		}
+		err = stacksnoop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = support_fentry ? stacksnoop_bpf__attach(obj) : attach_kprobes(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("Failed to load ksyms\n");
+			err = -ENOMEM;
+			goto cleanup;
+		}
+		int fd = bpf_map__fd(obj->maps.stack_traces);
+		err = bpf_buffer__open(buf, handle_event, handle_lost_events, &fd);
+		while (!exiting) {
+			err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+			if (err < 0 && err != -EINTR) {
+				warning("Error polling ring/perf buffer: %d\n", err);
+				goto cleanup;
+			}
+			/* reset err to 0 when exiting */
+			err = 0;
+		}
+	cleanup:
+		bpf_buffer__free(buf);
+		stacksnoop_bpf__destroy(obj);
+		ksyms__free(ksyms);
+		free(stacks);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct bpf_buffer *buf = NULL;
-	struct stacksnoop_bpf *obj;
-	int err;
-	bool support_fentry;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = stacksnoop_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	/* alloc space for storing a stack trace */
-	stacks = calloc(env.perf_max_stack_depth, sizeof(*stacks));
-	if (!stacks) {
-		warning("Failed to allocate stack array\n");
-		err = -ENOMEM;
-		goto cleanup;
-	}
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		warning("Failed to create ring/perf buffer\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	bpf_map__set_value_size(obj->maps.stack_traces,
-				env.perf_max_stack_depth * sizeof(unsigned long));
-	bpf_map__set_max_entries(obj->maps.stack_traces, env.stack_map_max_entries);
-
-	support_fentry = check_fentry();
-	if (support_fentry) {
-		err = fentry_set_attach_target(obj);
-		if (err) {
-			warning("Failed to set fentry attach: %d\n", err);
-			goto cleanup;
-		}
-		bpf_program__set_autoload(obj->progs.kprobe_function, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.fentry_function, false);
-	}
-
-	err = stacksnoop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = support_fentry ? stacksnoop_bpf__attach(obj) : attach_kprobes(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("Failed to load ksyms\n");
-		err = -ENOMEM;
-		goto cleanup;
-	}
-
-	int fd = bpf_map__fd(obj->maps.stack_traces);
-	err = bpf_buffer__open(buf, handle_event, handle_lost_events, &fd);
-
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling ring/perf buffer: %d\n", err);
-			goto cleanup;
-		}
-		/* reset err to 0 when exiting */
-		err = 0;
-	}
-
-cleanup:
-	bpf_buffer__free(buf);
-	stacksnoop_bpf__destroy(obj);
-	ksyms__free(ksyms);
-	free(stacks);
-
-	return err != 0;
+	main_extra();
 }
 
