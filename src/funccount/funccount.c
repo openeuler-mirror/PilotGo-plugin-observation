@@ -264,26 +264,31 @@ static int split_pattern(const char *raw_pattern, enum TRACE_TYPE *type,
 	return 0;
 }
 
+static void set_prog_autoload_extra(void)
+{
+		switch (type) {
+		case USDT:
+		case UPROBE:
+			bpf_program__set_autoload(obj->progs.function_entry, false);
+			bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
+			warning("Not implement uprobe\n");
+			return -1;
+		case KPROBE:
+			bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
+			break;
+		case TRACEPOINT:
+			bpf_program__set_autoload(obj->progs.function_entry, false);
+			break;
+		default:
+			warning("Wrong trace type, exiting.\n");
+			return -1;
+		}
+		return 0;
+}
+
 static int set_prog_autoload(struct funccount_bpf *obj, enum TRACE_TYPE type)
 {
-	switch (type) {
-	case USDT:
-	case UPROBE:
-		bpf_program__set_autoload(obj->progs.function_entry, false);
-		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
-		warning("Not implement uprobe\n");
-		return -1;
-	case KPROBE:
-		bpf_program__set_autoload(obj->progs.tracepoint_entry, false);
-		break;
-	case TRACEPOINT:
-		bpf_program__set_autoload(obj->progs.function_entry, false);
-		break;
-	default:
-		warning("Wrong trace type, exiting.\n");
-		return -1;
-	}
-	return 0;
+	set_prog_autoload_extra();
 }
 
 static int attach_prog(struct funccount_bpf *obj, enum TRACE_TYPE type,
