@@ -472,21 +472,24 @@ static void print_stack_frames_by_blazesym()
 struct syms_cache *syms_cache;
 struct ksyms *ksyms;
 
+static void print_stack_frames_by_ksyms_extra(void)
+{
+	    for (size_t i = 0; i < env.perf_max_stack_depth; i++)
+	    {
+	        const uint64_t addr = stack[i];
+	        if (!addr)
+	            break;
+	        const struct ksym *ksym = ksyms__map_addr(ksyms, addr);
+	        if (ksym)
+	            printf("\t%zu [<%016lx>] %s+0x%lx\n", i, addr, ksym->name, addr - ksym->addr);
+	        else
+	            printf("\t%zu [<%016lx>] <%s>\n", i, addr, "null sym");
+	    }
+}
+
 static void print_stack_frames_by_ksyms()
 {
-    for (size_t i = 0; i < env.perf_max_stack_depth; i++)
-    {
-        const uint64_t addr = stack[i];
-
-        if (!addr)
-            break;
-
-        const struct ksym *ksym = ksyms__map_addr(ksyms, addr);
-        if (ksym)
-            printf("\t%zu [<%016lx>] %s+0x%lx\n", i, addr, ksym->name, addr - ksym->addr);
-        else
-            printf("\t%zu [<%016lx>] <%s>\n", i, addr, "null sym");
-    }
+	print_stack_frames_by_ksyms_extra();
 }
 
 static void print_stack_frames_by_syms_cache_extra(void)
