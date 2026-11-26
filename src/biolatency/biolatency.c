@@ -297,95 +297,80 @@ static bool setup_disk_filter(struct biolatency_bpf *obj,
 	return true;
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct biolatency_bpf *obj;
+		int cgfd = -1;
+		struct partitions *partitions = NULL;
+		int err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = biolatency_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		partitions = partitions__load();
+		if (!partitions) {
+			warning("Failed to load partitions info\n");
+			goto cleanup;
+		}
+		if (!setup_disk_filter(obj, partitions))
+			goto cleanup;
+		obj->rodata->target_per_disk = env.per_disk;
+		obj->rodata->target_per_flag = env.per_flag;
+		obj->rodata->target_ms = env.milliseconds;
+		obj->rodata->target_queued = env.queued;
+		obj->rodata->filter_memcg = env.cg;
+		set_probe_autoload(obj);
+		err = biolatency_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		if (env.cg) {
+			cgfd = setup_cgroup_map(obj);
+			if (cgfd < 0)
+				goto cleanup;
+		}
+		err = biolatency_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF object: %d\n", err);
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		printf("Tracing block device I/O... Hit Ctrl-C to end.\n");
+		while (1) {
+			sleep(env.interval);
+			printf("\n");
+			if (env.timestamp) {
+				char ts[32] = {};
+				strftime_now(ts, sizeof(ts), "%H:%M:%S");
+				printf("%-8s\n", ts);
+			}
+			err = print_log2_hists(obj->maps.hists, partitions);
+			if (err)
+				break;
+			if (exiting || --env.times == 0)
+				break;
+		}
+	cleanup:
+		biolatency_bpf__destroy(obj);
+		partitions__free(partitions);
+		if (cgfd > 0)
+			close(cgfd);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct biolatency_bpf *obj;
-	int cgfd = -1;
-	struct partitions *partitions = NULL;
-
-	int err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = biolatency_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	partitions = partitions__load();
-	if (!partitions) {
-		warning("Failed to load partitions info\n");
-		goto cleanup;
-	}
-
-	if (!setup_disk_filter(obj, partitions))
-		goto cleanup;
-
-	obj->rodata->target_per_disk = env.per_disk;
-	obj->rodata->target_per_flag = env.per_flag;
-	obj->rodata->target_ms = env.milliseconds;
-	obj->rodata->target_queued = env.queued;
-	obj->rodata->filter_memcg = env.cg;
-
-	set_probe_autoload(obj);
-
-	err = biolatency_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	if (env.cg) {
-		cgfd = setup_cgroup_map(obj);
-		if (cgfd < 0)
-			goto cleanup;
-	}
-
-	err = biolatency_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	printf("Tracing block device I/O... Hit Ctrl-C to end.\n");
-
-	while (1) {
-		sleep(env.interval);
-		printf("\n");
-
-		if (env.timestamp) {
-			char ts[32] = {};
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
-
-		err = print_log2_hists(obj->maps.hists, partitions);
-		if (err)
-			break;
-
-		if (exiting || --env.times == 0)
-			break;
-	}
-
-cleanup:
-	biolatency_bpf__destroy(obj);
-	partitions__free(partitions);
-	if (cgfd > 0)
-		close(cgfd);
-
-	return err != 0;
+	main_extra();
 }
