@@ -58,38 +58,42 @@ static void parse_positional_arg(const char *arg, int pos,
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		static int pos_args;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'Q':
+			env.queued = true;
+			break;
+		case 'c':
+			env.cg = true;
+			env.cgroupspath = arg;
+			break;
+		case 'd':
+			if (strlen(arg) + 1 > DISK_NAME_LEN) {
+				warning("Invalid disk name %s: too long\n", arg);
+				argp_usage(state);
+			}
+			env.disk = arg;
+			break;
+		case ARGP_KEY_ARG:
+			parse_positional_arg(arg, pos_args++, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	static int pos_args;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'Q':
-		env.queued = true;
-		break;
-	case 'c':
-		env.cg = true;
-		env.cgroupspath = arg;
-		break;
-	case 'd':
-		if (strlen(arg) + 1 > DISK_NAME_LEN) {
-			warning("Invalid disk name %s: too long\n", arg);
-			argp_usage(state);
-		}
-		env.disk = arg;
-		break;
-	case ARGP_KEY_ARG:
-		parse_positional_arg(arg, pos_args++, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
