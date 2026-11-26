@@ -156,52 +156,52 @@ static void lock_acquired(void *lock)
 	lock_acquired_extra();
 }
 
+static void account_extra(void)
+{
+		struct lock_stat *ls;
+		u64 delta;
+		u32 key = li->stack_id;
+		if (per_thread)
+			key = li->task_id;
+		ls = bpf_map_lookup_elem(&stat_map, &key);
+		if (!ls) {
+			struct lock_stat fresh = {};
+			bpf_map_update_elem(&stat_map, &key, &fresh, BPF_ANY);
+			ls = bpf_map_lookup_elem(&stat_map, &key);
+			if (!ls)
+				return;
+			if (per_thread)
+				bpf_get_current_comm(ls->acq_max_comm, TASK_COMM_LEN);
+		}
+		delta = li->acq_at - li->try_at;
+		__sync_fetch_and_add(&ls->acq_count, 1);
+		__sync_fetch_and_add(&ls->acq_total_time, delta);
+		if (delta > READ_ONCE(ls->acq_max_time)) {
+			WRITE_ONCE(ls->acq_max_time, delta);
+			WRITE_ONCE(ls->acq_max_id, li->task_id);
+			WRITE_ONCE(ls->acq_max_lock_ptr, li->lock_ptr);
+			/*
+			 * Potentially racy, if multiple threads think they are the max,
+			 * so you may get a clobbered write.
+			 */
+			if (!per_thread)
+				bpf_get_current_comm(ls->acq_max_comm, TASK_COMM_LEN);
+		}
+		delta = li->rel_at - li->acq_at;
+		__sync_fetch_and_add(&ls->hld_count, 1);
+		__sync_fetch_and_add(&ls->hld_total_time, delta);
+		if (delta > READ_ONCE(ls->hld_max_time)) {
+			WRITE_ONCE(ls->hld_max_time, delta);
+			WRITE_ONCE(ls->hld_max_id, li->task_id);
+			WRITE_ONCE(ls->hld_max_lock_ptr, li->lock_ptr);
+			if (!per_thread)
+				bpf_get_current_comm(ls->hld_max_comm, TASK_COMM_LEN);
+		}
+}
+
 static void account(struct lockholder_info *li)
 {
-	struct lock_stat *ls;
-	u64 delta;
-	u32 key = li->stack_id;
-
-	if (per_thread)
-		key = li->task_id;
-
-	ls = bpf_map_lookup_elem(&stat_map, &key);
-	if (!ls) {
-		struct lock_stat fresh = {};
-
-		bpf_map_update_elem(&stat_map, &key, &fresh, BPF_ANY);
-		ls = bpf_map_lookup_elem(&stat_map, &key);
-		if (!ls)
-			return;
-		if (per_thread)
-			bpf_get_current_comm(ls->acq_max_comm, TASK_COMM_LEN);
-	}
-
-	delta = li->acq_at - li->try_at;
-	__sync_fetch_and_add(&ls->acq_count, 1);
-	__sync_fetch_and_add(&ls->acq_total_time, delta);
-	if (delta > READ_ONCE(ls->acq_max_time)) {
-		WRITE_ONCE(ls->acq_max_time, delta);
-		WRITE_ONCE(ls->acq_max_id, li->task_id);
-		WRITE_ONCE(ls->acq_max_lock_ptr, li->lock_ptr);
-		/*
-		 * Potentially racy, if multiple threads think they are the max,
-		 * so you may get a clobbered write.
-		 */
-		if (!per_thread)
-			bpf_get_current_comm(ls->acq_max_comm, TASK_COMM_LEN);
-	}
-
-	delta = li->rel_at - li->acq_at;
-	__sync_fetch_and_add(&ls->hld_count, 1);
-	__sync_fetch_and_add(&ls->hld_total_time, delta);
-	if (delta > READ_ONCE(ls->hld_max_time)) {
-		WRITE_ONCE(ls->hld_max_time, delta);
-		WRITE_ONCE(ls->hld_max_id, li->task_id);
-		WRITE_ONCE(ls->hld_max_lock_ptr, li->lock_ptr);
-		if (!per_thread)
-			bpf_get_current_comm(ls->hld_max_comm, TASK_COMM_LEN);
-	}
+	account_extra();
 }
 
 static void lock_released_extra(void)
