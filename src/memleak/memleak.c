@@ -298,29 +298,31 @@ static int event_init(int *fd)
 	event_init_extra();
 }
 
+static void event_wait_extra(void)
+{
+	    uint64_t event = 0;
+	    const ssize_t bytes = read(fd, &event, sizeof(event));
+	    if (bytes < 0)
+	    {
+	        perror("Failed to read from fd");
+	        return -errno;
+	    }
+	    else if (bytes != sizeof(event))
+	    {
+	        warning("Read unexpected size\n");
+	        return 1;
+	    }
+	    if (event != expected_event)
+	    {
+	        warning("Read event %lu, expected %lu\n", event, expected_event);
+	        return 1;
+	    }
+	    return 0;
+}
+
 static int event_wait(int fd, uint64_t expected_event)
 {
-    uint64_t event = 0;
-    const ssize_t bytes = read(fd, &event, sizeof(event));
-
-    if (bytes < 0)
-    {
-        perror("Failed to read from fd");
-        return -errno;
-    }
-    else if (bytes != sizeof(event))
-    {
-        warning("Read unexpected size\n");
-        return 1;
-    }
-
-    if (event != expected_event)
-    {
-        warning("Read event %lu, expected %lu\n", event, expected_event);
-        return 1;
-    }
-
-    return 0;
+	event_wait_extra();
 }
 
 static void event_notify_extra(void)
