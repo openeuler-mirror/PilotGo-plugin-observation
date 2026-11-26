@@ -111,7 +111,7 @@ struct trace {
 	struct trace_data trace_data[MAX_TRACES];
 	__u16 buf_len;
 	char buf[MAX_TRACE_BUF];
-	char buf_end[0];
+	char buf_end[1];
 	struct bpf_link *links[2];
 };
 
