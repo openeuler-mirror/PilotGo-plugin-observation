@@ -186,90 +186,77 @@ static int print_hist(struct softirqs_bpf__bss *bss)
 	return 0;
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct softirqs_bpf *bpf_obj;
+		char ts[32];
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		bpf_obj = softirqs_bpf__open();
+		if (!bpf_obj) {
+			warning("failed to open BPF object\n");
+			return 1;
+		}
+		if (probe_tp_btf("softirq_entry")) {
+			bpf_program__set_autoload(bpf_obj->progs.softirq_entry_raw, false);
+			bpf_program__set_autoload(bpf_obj->progs.softirq_exit_raw, false);
+		} else {
+			bpf_program__set_autoload(bpf_obj->progs.softirq_entry_btf, false);
+			bpf_program__set_autoload(bpf_obj->progs.softirq_exit_btf, false);
+		}
+		/* initialize global data (filtering options) */
+		bpf_obj->rodata->target_dist = env.distributed;
+		bpf_obj->rodata->target_ns = env.nanoseconds;
+		err = softirqs_bpf__load(bpf_obj);
+		if (err) {
+			warning("failed to load BPF objects: %d\n", err);
+			goto cleanup;
+		}
+		if (!bpf_obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		err = softirqs_bpf__attach(bpf_obj);
+		if (err) {
+			warning("failed to attach BPF programs\n");
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		printf("Tracing softirq event time... Hit Ctrl-C to end.\n");
+		for (;;) {
+			sleep(env.interval);
+			printf("\n");
+			if (env.timestamp) {
+				strftime_now(ts, sizeof(ts), "%H:%M:%S");
+				printf("%-8s\n", ts);
+			}
+			if (!env.distributed)
+				err = print_count(bpf_obj->bss);
+			else
+				err = print_hist(bpf_obj->bss);
+			if (err)
+				break;
+			if (exiting || --env.times == 0)
+				break;
+		}
+	cleanup:
+		softirqs_bpf__destroy(bpf_obj);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-
-	struct softirqs_bpf *bpf_obj;
-	char ts[32];
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	bpf_obj = softirqs_bpf__open();
-	if (!bpf_obj) {
-		warning("failed to open BPF object\n");
-		return 1;
-	}
-
-	if (probe_tp_btf("softirq_entry")) {
-		bpf_program__set_autoload(bpf_obj->progs.softirq_entry_raw, false);
-		bpf_program__set_autoload(bpf_obj->progs.softirq_exit_raw, false);
-	} else {
-		bpf_program__set_autoload(bpf_obj->progs.softirq_entry_btf, false);
-		bpf_program__set_autoload(bpf_obj->progs.softirq_exit_btf, false);
-	}
-
-	/* initialize global data (filtering options) */
-	bpf_obj->rodata->target_dist = env.distributed;
-	bpf_obj->rodata->target_ns = env.nanoseconds;
-
-	err = softirqs_bpf__load(bpf_obj);
-	if (err) {
-		warning("failed to load BPF objects: %d\n", err);
-		goto cleanup;
-	}
-
-	if (!bpf_obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	err = softirqs_bpf__attach(bpf_obj);
-	if (err) {
-		warning("failed to attach BPF programs\n");
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	printf("Tracing softirq event time... Hit Ctrl-C to end.\n");
-
-	for (;;) {
-		sleep(env.interval);
-		printf("\n");
-
-		if (env.timestamp) {
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
-		}
-
-		if (!env.distributed)
-			err = print_count(bpf_obj->bss);
-		else
-			err = print_hist(bpf_obj->bss);
-		if (err)
-			break;
-
-		if (exiting || --env.times == 0)
-			break;
-	}
-
-cleanup:
-	softirqs_bpf__destroy(bpf_obj);
-
-	return err != 0;
+	main_extra();
 }
 
 
