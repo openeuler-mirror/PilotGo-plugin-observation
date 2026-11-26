@@ -102,27 +102,30 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void print_stack_extra(void)
+{
+		bpf_map_lookup_elem(fd, &stack_id, stacks);
+		for (size_t i = 0; i < env.perf_max_stack_depth; i++) {
+			if (!stacks[i])
+				break;
+			const struct ksym *ksym = ksyms__map_addr(ksyms, stacks[i]);
+			if (ksym) {
+				printf("\t%zu [<%016llx>] %s", i, stacks[i], ksym->name);
+				if (env.print_offset) {
+					printf("+0x%llx", stacks[i] - ksym->addr);
+					if (ksym->module)
+						printf(" [%s]", ksym->module);
+				}
+				printf("\n");
+			} else {
+				printf("\t%zu [<%016llx>] <%s>\n", i, stacks[i], "null sym");
+			}
+		}
+}
+
 static void print_stack(int fd, int stack_id)
 {
-	bpf_map_lookup_elem(fd, &stack_id, stacks);
-	for (size_t i = 0; i < env.perf_max_stack_depth; i++) {
-		if (!stacks[i])
-			break;
-
-		const struct ksym *ksym = ksyms__map_addr(ksyms, stacks[i]);
-		if (ksym) {
-			printf("\t%zu [<%016llx>] %s", i, stacks[i], ksym->name);
-			if (env.print_offset) {
-				printf("+0x%llx", stacks[i] - ksym->addr);
-				if (ksym->module)
-					printf(" [%s]", ksym->module);
-			}
-
-			printf("\n");
-		} else {
-			printf("\t%zu [<%016llx>] <%s>\n", i, stacks[i], "null sym");
-		}
-	}
+	print_stack_extra();
 }
 
 static void handle_event_extra(void)
