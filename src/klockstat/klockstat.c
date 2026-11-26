@@ -278,25 +278,28 @@ static int larger_first(uint64_t x, uint64_t y)
 	return 1;
 }
 
+static void sort_by_acq_extra(void)
+{
+		struct stack_stat *ss_x = *(struct stack_stat **)x;
+		struct stack_stat *ss_y = *(struct stack_stat **)y;
+		switch (env.sort_acq) {
+		case SORT_ACQ_MAX:
+			return larger_first(ss_x->ls.acq_max_time,
+					    ss_y->ls.acq_max_time);
+		case SORT_ACQ_COUNT:
+			return larger_first(ss_x->ls.acq_count,
+					    ss_y->ls.acq_count);
+		case SORT_ACQ_TOTAL:
+			return larger_first(ss_x->ls.acq_total_time,
+					    ss_y->ls.acq_total_time);
+		}
+		warning("Bad sort_acq %d\n", env.sort_acq);
+		return -1;
+}
+
 static int sort_by_acq(const void *x, const void *y)
 {
-	struct stack_stat *ss_x = *(struct stack_stat **)x;
-	struct stack_stat *ss_y = *(struct stack_stat **)y;
-
-	switch (env.sort_acq) {
-	case SORT_ACQ_MAX:
-		return larger_first(ss_x->ls.acq_max_time,
-				    ss_y->ls.acq_max_time);
-	case SORT_ACQ_COUNT:
-		return larger_first(ss_x->ls.acq_count,
-				    ss_y->ls.acq_count);
-	case SORT_ACQ_TOTAL:
-		return larger_first(ss_x->ls.acq_total_time,
-				    ss_y->ls.acq_total_time);
-	}
-
-	warning("Bad sort_acq %d\n", env.sort_acq);
-	return -1;
+	sort_by_acq_extra();
 }
 
 static int sort_by_hld(const void *x, const void *y)
