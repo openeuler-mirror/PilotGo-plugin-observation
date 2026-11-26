@@ -52,36 +52,39 @@ static void parse_duration_arg(char *arg, int pos_args,
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		static int pos_args;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 't':
+			env.per_thread = true;
+			break;
+		case 'c':
+			errno = 0;
+			env.sample_period = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid sample period");
+				argp_usage(state);
+			}
+			break;
+		case ARGP_KEY_ARG:
+			parse_duration_arg(arg, pos_args++, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	static int pos_args;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 't':
-		env.per_thread = true;
-		break;
-	case 'c':
-		errno = 0;
-		env.sample_period = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid sample period");
-			argp_usage(state);
-		}
-		break;
-	case ARGP_KEY_ARG:
-		parse_duration_arg(arg, pos_args++, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int nr_cpus;
