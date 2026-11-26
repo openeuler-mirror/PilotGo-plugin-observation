@@ -48,55 +48,57 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'C':
+			env.clear_screen = false;
+			break;
+		case 'c':
+			env.count = argp_parse_long(key, arg, state);
+			break;
+		case 'r':
+			env.record = true;
+			env.record_filename = arg;
+			break;
+		case ARGP_KEY_ARG:
+			if (state->arg_num != 0) {
+				warning("Unrecognized positional arguments: %s\n", arg);
+				argp_usage(state);
+			}
+			char path[4096] = {};
+			struct stat st;
+			if (arg[0] != '/') {
+				strcpy(path, "/dev/pts/");
+				strcat(path, arg);
+			} else {
+				strcpy(path, arg);
+			}
+			if (stat(path, &st)) {
+				warning("Failed to stat console file: %s\n", arg);
+				argp_usage(state);
+			}
+			env.pts_inode = st.st_ino;
+			break;
+		case ARGP_KEY_END:
+			if (env.pts_inode == -1)
+				argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'C':
-		env.clear_screen = false;
-		break;
-	case 'c':
-		env.count = argp_parse_long(key, arg, state);
-		break;
-	case 'r':
-		env.record = true;
-		env.record_filename = arg;
-		break;
-	case ARGP_KEY_ARG:
-		if (state->arg_num != 0) {
-			warning("Unrecognized positional arguments: %s\n", arg);
-			argp_usage(state);
-		}
-
-		char path[4096] = {};
-		struct stat st;
-
-		if (arg[0] != '/') {
-			strcpy(path, "/dev/pts/");
-			strcat(path, arg);
-		} else {
-			strcpy(path, arg);
-		}
-
-		if (stat(path, &st)) {
-			warning("Failed to stat console file: %s\n", arg);
-			argp_usage(state);
-		}
-		env.pts_inode = st.st_ino;
-		break;
-	case ARGP_KEY_END:
-		if (env.pts_inode == -1)
-			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
