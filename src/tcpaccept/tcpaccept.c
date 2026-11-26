@@ -146,6 +146,30 @@ static void fill_addrs(const struct data_t *event, union ip_addr *s, union ip_ad
 	}
 }
 
+static void handle_event_extra0(void)
+{
+		fill_addrs(event, &s, &d);
+	
+		if (env.time) {
+			strftime_now(time_now, sizeof(time_now), "%H:%M:%S");
+			printf("%-8s ", time_now);
+		}
+	
+		if (env.timestamp)
+			printf("%-8.3f ", time_since_start());
+	
+		printf("%-7d %-12.12s %-2lld %-16s %-5d %-16s %-5d\n",
+		       event->pid,
+		       event->task,
+		       event->ip,
+		       inet_ntop(event->af, &d, dst, sizeof(dst)),
+		       ntohs(event->dport),
+		       inet_ntop(event->af, &s, src, sizeof(src)),
+		       event->lport);
+	
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
 	char time_now[16];
@@ -159,26 +183,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 	if (env.ipv6_only && event->af == AF_INET)
 		return 0;
 
-	fill_addrs(event, &s, &d);
-
-	if (env.time) {
-		strftime_now(time_now, sizeof(time_now), "%H:%M:%S");
-		printf("%-8s ", time_now);
-	}
-
-	if (env.timestamp)
-		printf("%-8.3f ", time_since_start());
-
-	printf("%-7d %-12.12s %-2lld %-16s %-5d %-16s %-5d\n",
-	       event->pid,
-	       event->task,
-	       event->ip,
-	       inet_ntop(event->af, &d, dst, sizeof(dst)),
-	       ntohs(event->dport),
-	       inet_ntop(event->af, &s, src, sizeof(src)),
-	       event->lport);
-
-	return 0;
+	handle_event_extra0();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
