@@ -8,6 +8,13 @@
 #include <dirent.h>
 #include <regex.h>
 
+static void bpflist_print_banner(void)
+{
+	printf("%s v%s\n", argp_program_version, " bpflist");
+	printf("Report bugs to %s\n", argp_program_bug_address);
+}
+
+
 static int verbose = 0;
 
 const char *argp_program_version = "bpflist 0.1";
@@ -149,6 +156,7 @@ static void find_bpf_fds(const char *pid)
 
 int main(int argc, char *argv[])
 {
+	bpflist_print_banner();
 	static const struct argp argp = {
 		.options = opts,
 		.parser = parse_arg,
