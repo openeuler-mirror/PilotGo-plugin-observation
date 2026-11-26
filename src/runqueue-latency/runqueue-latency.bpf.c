@@ -66,22 +66,25 @@ static int trace_enqueue(u32 tgid, u32 pid)
 	trace_enqueue_extra();
 }
 
+static void pid_namespace_extra(void)
+{
+		struct pid *pid;
+		unsigned int level;
+		struct upid upid;
+		unsigned int inum;
+		/* get the pid namespace by following task_active_pid_ns(),
+		 * pid->numbers[pid->level].ns
+		 */
+		pid = BPF_CORE_READ(task, thread_pid);
+		level = BPF_CORE_READ(pid, level);
+		bpf_core_read(&upid, sizeof(upid), &pid->numbers[level]);
+		inum = BPF_CORE_READ(upid.ns, ns.inum);
+		return inum;
+}
+
 static unsigned int pid_namespace(struct task_struct *task)
 {
-	struct pid *pid;
-	unsigned int level;
-	struct upid upid;
-	unsigned int inum;
-
-	/* get the pid namespace by following task_active_pid_ns(),
-	 * pid->numbers[pid->level].ns
-	 */
-	pid = BPF_CORE_READ(task, thread_pid);
-	level = BPF_CORE_READ(pid, level);
-	bpf_core_read(&upid, sizeof(upid), &pid->numbers[level]);
-	inum = BPF_CORE_READ(upid.ns, ns.inum);
-
-	return inum;
+	pid_namespace_extra();
 }
 
 static void handle_switch_section3_0(void)
