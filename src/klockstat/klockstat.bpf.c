@@ -201,28 +201,29 @@ static void account(struct lockholder_info *li)
 	}
 }
 
+static void lock_released_extra(void)
+{
+		u64 task_id;
+		struct lockholder_info *li;
+		struct task_lock tl = {};
+		if (target_lock && target_lock != lock)
+			return;
+		task_id = bpf_get_current_pid_tgid();
+		if (!tracing_task(task_id))
+			return;
+		tl.task_id = task_id;
+		tl.lock_ptr = (u64)lock;
+		li = bpf_map_lookup_elem(&lockholder_map, &tl);
+		if (!li)
+			return;
+		li->rel_at = bpf_ktime_get_ns();
+		account(li);
+		bpf_map_delete_elem(&lockholder_map, &tl);
+}
+
 static void lock_released(void *lock)
 {
-	u64 task_id;
-	struct lockholder_info *li;
-	struct task_lock tl = {};
-
-	if (target_lock && target_lock != lock)
-		return;
-
-	task_id = bpf_get_current_pid_tgid();
-	if (!tracing_task(task_id))
-		return;
-	tl.task_id = task_id;
-	tl.lock_ptr = (u64)lock;
-	li = bpf_map_lookup_elem(&lockholder_map, &tl);
-	if (!li)
-		return;
-
-	li->rel_at = bpf_ktime_get_ns();
-	account(li);
-
-	bpf_map_delete_elem(&lockholder_map, &tl);
+	lock_released_extra();
 }
 
 SEC("fentry/mutex_lock")
