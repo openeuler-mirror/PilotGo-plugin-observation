@@ -113,28 +113,29 @@ static __always_inline u32 rq_disk_dev(struct request *rq)
 		     BPF_CORE_READ(disk, first_minor));
 }
 
+static void trace_rq_start_extra(void)
+{
+		struct stage *stagep, stage = {};
+		u64 ts = bpf_ktime_get_ns();
+		stagep = bpf_map_lookup_elem(&start, &rq);
+		if (!stagep) {
+			stage.dev = rq_disk_dev(rq);
+			if (filter_dev && target_dev != stage.dev)
+				return 0;
+			stagep = &stage;
+		}
+		if (insert)
+			stagep->insert = ts;
+		else
+			stagep->issue = ts;
+		if (stagep == &stage)
+			bpf_map_update_elem(&start, &rq, stagep, BPF_ANY);
+		return 0;
+}
+
 static __always_inline int trace_rq_start(struct request *rq, bool insert)
 {
-	struct stage *stagep, stage = {};
-	u64 ts = bpf_ktime_get_ns();
-
-	stagep = bpf_map_lookup_elem(&start, &rq);
-	if (!stagep) {
-		stage.dev = rq_disk_dev(rq);
-		if (filter_dev && target_dev != stage.dev)
-			return 0;
-
-		stagep = &stage;
-	}
-
-	if (insert)
-		stagep->insert = ts;
-	else
-		stagep->issue = ts;
-
-	if (stagep == &stage)
-		bpf_map_update_elem(&start, &rq, stagep, BPF_ANY);
-	return 0;
+	trace_rq_start_extra();
 }
 
 static __always_inline int handle_rq_insert(__u64 *ctx)
