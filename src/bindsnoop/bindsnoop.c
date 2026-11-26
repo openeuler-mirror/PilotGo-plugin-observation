@@ -10,6 +10,7 @@
 
 static struct env {
 	char	*cgroupspath;
+	/* cg field */
 	bool	cg;
 	bool	emit_timestamp;
 	pid_t	target_pid;
