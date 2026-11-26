@@ -151,44 +151,42 @@ static void find_bpf_fds(const char *pid)
 	regfree(&regex);
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		int err;
+		DIR *dir;
+		struct dirent *entry;
+		regex_t regex;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		if (regcomp(&regex, "^[0-9]+$", REG_EXTENDED | REG_NOSUB) != 0) {
+			warning("Failed to compile regex\n");
+			return 1;
+		}
+		dir = opendir("/proc");
+		if (!dir) {
+			warning("Failed to open /proc directory\n");
+			return 1;
+		}
+		printf("%-6s %-16s %-8s %s\n", "PID", "COMM", "TYPE", "COUNT");
+		while ((entry = readdir(dir)) != NULL) {
+			if (regexec(&regex, entry->d_name, 0, NULL, 0) == 0)
+				find_bpf_fds(entry->d_name);
+		}
+		closedir(dir);
+		regfree(&regex);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	int err;
-	DIR *dir;
-	struct dirent *entry;
-	regex_t regex;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	if (regcomp(&regex, "^[0-9]+$", REG_EXTENDED | REG_NOSUB) != 0) {
-		warning("Failed to compile regex\n");
-		return 1;
-	}
-
-	dir = opendir("/proc");
-	if (!dir) {
-		warning("Failed to open /proc directory\n");
-		return 1;
-	}
-
-	printf("%-6s %-16s %-8s %s\n", "PID", "COMM", "TYPE", "COUNT");
-	while ((entry = readdir(dir)) != NULL) {
-		if (regexec(&regex, entry->d_name, 0, NULL, 0) == 0)
-			find_bpf_fds(entry->d_name);
-	}
-
-	closedir(dir);
-	regfree(&regex);
-
-	return err != 0;
+	main_extra();
 }
