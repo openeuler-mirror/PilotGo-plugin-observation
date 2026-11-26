@@ -182,21 +182,26 @@ static void main_extra0(void)
 		return err != 0;
 }
 
+static void main_extra1(void)
+{
+		bashreadline_print_banner();
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+	
+		struct bashreadline_bpf *obj;
+		struct perf_buffer *pb = NULL;
+		char *readline_so_path;
+		off_t func_off;
+		int err;
+	
+		main_extra0();
+}
+
 int main(int argc, char *argv[])
 {
-	bashreadline_print_banner();
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-
-	struct bashreadline_bpf *obj;
-	struct perf_buffer *pb = NULL;
-	char *readline_so_path;
-	off_t func_off;
-	int err;
-
-	main_extra0();
+	main_extra1();
 }
