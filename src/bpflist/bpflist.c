@@ -31,20 +31,24 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'v':
+			verbose++;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'v':
-		verbose++;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 #define MAX_PATH_LEN	256
