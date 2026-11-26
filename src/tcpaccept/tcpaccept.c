@@ -51,25 +51,29 @@ static struct env {
 	bool ipv6_only;
 } env;
 
-static void parse_ports(char *arg, struct argp_state *state)
+static void parse_ports_extra(void)
 {
-	char *port;
-
-	env.port = true;
-	if (!arg) {
-		warning("No ports specified\n");
-		argp_usage(state);
-	}
-	env.target_ports = strdup(arg);
-	port = strtok(arg, ",");
-	while (port) {
-		int port_num = strtol(port, NULL, 10);
-		if (errno || port_num <= 0 || port_num > 65536) {
-			warning("Invalid ports: %s\n", arg);
+		char *port;
+		env.port = true;
+		if (!arg) {
+			warning("No ports specified\n");
 			argp_usage(state);
 		}
-		port = strtok(NULL, ",");
-	}
+		env.target_ports = strdup(arg);
+		port = strtok(arg, ",");
+		while (port) {
+			int port_num = strtol(port, NULL, 10);
+			if (errno || port_num <= 0 || port_num > 65536) {
+				warning("Invalid ports: %s\n", arg);
+				argp_usage(state);
+			}
+			port = strtok(NULL, ",");
+		}
+}
+
+static void parse_ports(char *arg, struct argp_state *state)
+{
+	parse_ports_extra();
 }
 
 static void parse_arg_extra(void)
