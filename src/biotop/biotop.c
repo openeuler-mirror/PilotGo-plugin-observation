@@ -276,25 +276,26 @@ static char *search_disk_name(int major, int minor)
 	return "";
 }
 
+static void print_loadavg_extra(void)
+{
+		FILE *fp;
+		fp = fopen("/proc/loadavg", "r");
+		if (!fp)
+			return;
+		{
+			char ts[16], buf[256] = {};
+			int n;
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			n = fread(buf, 1, sizeof(buf), fp);
+			if (n)
+				printf("%8s loadavg: %s\n", ts, buf);
+		}
+		fclose(fp);
+}
+
 static void print_loadavg(void)
 {
-	FILE *fp;
-
-	fp = fopen("/proc/loadavg", "r");
-	if (!fp)
-		return;
-
-	{
-		char ts[16], buf[256] = {};
-		int n;
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
-		n = fread(buf, 1, sizeof(buf), fp);
-		if (n)
-			printf("%8s loadavg: %s\n", ts, buf);
-	}
-	fclose(fp);
+	print_loadavg_extra();
 }
 
 static void print_stat_row_extra(void)
