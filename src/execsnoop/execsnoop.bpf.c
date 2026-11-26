@@ -131,31 +131,30 @@ static __always_inline int syscall_enter_execve(const char *filename,
 	return record_argv(event, argv);
 }
 
+static void syscall_exit_execve_extra(void)
+{
+		struct event *event;
+		pid_t pid;
+		if (!current_task_passes_filter(NULL))
+			return 0;
+		pid = (pid_t)bpf_get_current_pid_tgid();
+		event = bpf_map_lookup_and_delete_elem(&execs, &pid);
+		if (!event)
+			return 0;
+		if (ignore_failed && ret < 0)
+			return 0;
+		event->retval = ret;
+		bpf_get_current_comm(&event->comm, sizeof(event->comm));
+		/* actual len is smaller than sizeof(struct event) */
+		if (EVENT_SIZE(event) <= sizeof(struct event))
+			bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, event,
+					      EVENT_SIZE(event));
+		return 0;
+}
+
 static __always_inline int syscall_exit_execve(void *ctx, int ret)
 {
-	struct event *event;
-	pid_t pid;
-
-	if (!current_task_passes_filter(NULL))
-		return 0;
-
-	pid = (pid_t)bpf_get_current_pid_tgid();
-	event = bpf_map_lookup_and_delete_elem(&execs, &pid);
-	if (!event)
-		return 0;
-
-	if (ignore_failed && ret < 0)
-		return 0;
-
-	event->retval = ret;
-	bpf_get_current_comm(&event->comm, sizeof(event->comm));
-
-	/* actual len is smaller than sizeof(struct event) */
-	if (EVENT_SIZE(event) <= sizeof(struct event))
-		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, event,
-				      EVENT_SIZE(event));
-
-	return 0;
+	syscall_exit_execve_extra();
 }
 
 SEC("tracepoint/syscalls/sys_enter_execve")
