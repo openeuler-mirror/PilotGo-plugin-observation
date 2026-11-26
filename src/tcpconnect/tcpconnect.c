@@ -185,36 +185,38 @@ static void print_count_ipv4(int map_fd)
 	print_count_ipv4_extra();
 }
 
+static void print_count_ipv6_extra(void)
+{
+	        static struct ipv6_flow_key keys[MAX_ENTRIES];
+	        __u32 value_size = sizeof(__u64);
+	        __u32 key_size = sizeof(keys[0]);
+	        static struct ipv6_flow_key zero;
+	        static __u64 counts[MAX_ENTRIES];
+	        char s[INET6_ADDRSTRLEN];
+	        char d[INET6_ADDRSTRLEN];
+	        struct in6_addr src, dst;
+	        __u32 n = MAX_ENTRIES;
+	        if (dump_hash(map_fd, keys, key_size, counts, value_size, &n, &zero)) {
+	                warning("dump_hash: %s\n", strerror(errno));
+	                return;
+	        }
+	        for (int i = 0; i < n; i++) {
+	                memcpy(src.s6_addr, keys[i].saddr, sizeof(src.s6_addr));
+	                memcpy(dst.s6_addr, keys[i].daddr, sizeof(dst.s6_addr));
+	                printf("%-25s %-25s",
+	                       inet_ntop(AF_INET6, &src, s, sizeof(s)),
+	                       inet_ntop(AF_INET6, &dst, d, sizeof(d)));
+	                if (env.source_port)
+	                        printf(" %-20d", keys[i].sport);
+	                printf(" %-20d", ntohs(keys[i].dport));
+	                printf(" %-10llu", counts[i]);
+	                printf("\n");
+	        }
+}
+
 static void print_count_ipv6(int map_fd)
 {
-        static struct ipv6_flow_key keys[MAX_ENTRIES];
-        __u32 value_size = sizeof(__u64);
-        __u32 key_size = sizeof(keys[0]);
-        static struct ipv6_flow_key zero;
-        static __u64 counts[MAX_ENTRIES];
-        char s[INET6_ADDRSTRLEN];
-        char d[INET6_ADDRSTRLEN];
-        struct in6_addr src, dst;
-        __u32 n = MAX_ENTRIES;
-
-        if (dump_hash(map_fd, keys, key_size, counts, value_size, &n, &zero)) {
-                warning("dump_hash: %s\n", strerror(errno));
-                return;
-        }
-
-        for (int i = 0; i < n; i++) {
-                memcpy(src.s6_addr, keys[i].saddr, sizeof(src.s6_addr));
-                memcpy(dst.s6_addr, keys[i].daddr, sizeof(dst.s6_addr));
-
-                printf("%-25s %-25s",
-                       inet_ntop(AF_INET6, &src, s, sizeof(s)),
-                       inet_ntop(AF_INET6, &dst, d, sizeof(d)));
-                if (env.source_port)
-                        printf(" %-20d", keys[i].sport);
-                printf(" %-20d", ntohs(keys[i].dport));
-                printf(" %-10llu", counts[i]);
-                printf("\n");
-        }
+	print_count_ipv6_extra();
 }
 
 static void print_count_header(void)
