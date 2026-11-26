@@ -320,93 +320,84 @@ static int print_events(struct bpf_buffer *buf)
 	print_events_extra();
 }
 
+static void main_extra(void)
+{
+	        LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	        static const struct argp argp = {
+	                .options = opts,
+	                .parser = parse_arg,
+	                .doc = argp_program_doc,
+	        };
+	        struct tcpconnect_bpf *obj;
+	        struct bpf_buffer *buf = NULL;
+	        int err;
+	        err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	        if (err)
+	                return err;
+	        if (!bpf_is_root())
+	                return 1;
+	        libbpf_set_print(libbpf_print_fn);
+	        err = ensure_core_btf(&open_opts);
+	        if (err) {
+	                warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+	                return 1;
+	        }
+	        obj = tcpconnect_bpf__open_opts(&open_opts);
+	        if (!obj) {
+	                warning("Failed to open BPF objects\n");
+	                err = 1;
+	                goto cleanup;
+	        }
+	        buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	        if (!buf) {
+	                warning("Failed to create ring/perf buffer\n");
+	                err = -errno;
+	                goto cleanup;
+	        }
+	        if (env.count)
+	                obj->rodata->do_count = true;
+	        if (env.pid)
+	                obj->rodata->filter_pid = env.pid;
+	        if (env.uid != (uid_t)-1)
+	                obj->rodata->filter_uid = env.uid;
+	        if (env.nports > 0) {
+	                obj->rodata->filter_ports_len = env.nports;
+	                for (int i = 0; i < env.nports; i++)
+	                        obj->rodata->filter_ports[i] = htons(env.ports[i]);
+	        }
+	        if (env.source_port)
+	                obj->rodata->source_port = true;
+	        configure_probes(obj);
+	        clock_gettime(CLOCK_MONOTONIC, &start_time);
+	        err = tcpconnect_bpf__load(obj);
+	        if (err) {
+	                warning("failed to load BPF object: %d\n", err);
+	                goto cleanup;
+	        }
+	        err = tcpconnect_bpf__attach(obj);
+	        if (err) {
+	                warning("Failed to attach BPF programs: %s\n", strerror(-err));
+	                goto cleanup;
+	        }
+	        if (signal(SIGINT, sig_handler) == SIG_ERR) {
+	                warning("Can't set signal handler: %s\n", strerror(errno));
+	                err = 1;
+	                goto cleanup;
+	        }
+	        if (env.count) {
+	                print_count(bpf_map__fd(obj->maps.ipv4_count),
+	                            bpf_map__fd(obj->maps.ipv6_count));
+	        } else {
+	                err = print_events(buf);
+	        }
+	cleanup:
+	        tcpconnect_bpf__destroy(obj);
+	        cleanup_core_btf(&open_opts);
+	        return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-        LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-        static const struct argp argp = {
-                .options = opts,
-                .parser = parse_arg,
-                .doc = argp_program_doc,
-        };
-        struct tcpconnect_bpf *obj;
-        struct bpf_buffer *buf = NULL;
-        int err;
-
-        err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-        if (err)
-                return err;
-
-        if (!bpf_is_root())
-                return 1;
-
-        libbpf_set_print(libbpf_print_fn);
-
-        err = ensure_core_btf(&open_opts);
-        if (err) {
-                warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-                return 1;
-        }
-
-        obj = tcpconnect_bpf__open_opts(&open_opts);
-        if (!obj) {
-                warning("Failed to open BPF objects\n");
-                err = 1;
-                goto cleanup;
-        }
-
-        buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-        if (!buf) {
-                warning("Failed to create ring/perf buffer\n");
-                err = -errno;
-                goto cleanup;
-        }
-
-        if (env.count)
-                obj->rodata->do_count = true;
-        if (env.pid)
-                obj->rodata->filter_pid = env.pid;
-        if (env.uid != (uid_t)-1)
-                obj->rodata->filter_uid = env.uid;
-        if (env.nports > 0) {
-                obj->rodata->filter_ports_len = env.nports;
-                for (int i = 0; i < env.nports; i++)
-                        obj->rodata->filter_ports[i] = htons(env.ports[i]);
-        }
-        if (env.source_port)
-                obj->rodata->source_port = true;
-
-        configure_probes(obj);
-
-        clock_gettime(CLOCK_MONOTONIC, &start_time);
-        err = tcpconnect_bpf__load(obj);
-        if (err) {
-                warning("failed to load BPF object: %d\n", err);
-                goto cleanup;
-        }
-
-        err = tcpconnect_bpf__attach(obj);
-        if (err) {
-                warning("Failed to attach BPF programs: %s\n", strerror(-err));
-                goto cleanup;
-        }
-
-        if (signal(SIGINT, sig_handler) == SIG_ERR) {
-                warning("Can't set signal handler: %s\n", strerror(errno));
-                err = 1;
-                goto cleanup;
-        }
-
-        if (env.count) {
-                print_count(bpf_map__fd(obj->maps.ipv4_count),
-                            bpf_map__fd(obj->maps.ipv6_count));
-        } else {
-                err = print_events(buf);
-        }
-
-cleanup:
-        tcpconnect_bpf__destroy(obj);
-        cleanup_core_btf(&open_opts);
-
-        return err != 0;
+	main_extra();
 }
 
