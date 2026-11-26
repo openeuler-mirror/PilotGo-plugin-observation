@@ -83,7 +83,8 @@ struct func {
 struct trace_data {
 	__u64 raw_value;
 	__u32 err_type_id;	/* type id we can't dereference */
-	int err;
+	/* err field */
+	int	err;
 	__u32 buf_offset;
 	__u16 buf_len;
 };
