@@ -94,6 +94,15 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu event on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void main_section4_1(void)
+{
+		err = setuids_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+}
+
 int main(int argc, char *argv[])
 {
 	const struct argp argp = {
@@ -126,12 +135,7 @@ int main(int argc, char *argv[])
 		err = 1;
 		goto cleanup;
 	}
-
-	err = setuids_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
+	main_section4_1();
 
 	err = setuids_bpf__attach(obj);
 	if (err) {
