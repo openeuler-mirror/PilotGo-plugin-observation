@@ -46,20 +46,22 @@ static __always_inline bool exit_filtered(void)
 	return false;
 }
 
+static void entry_extra(void)
+{
+		u64 id = bpf_get_current_pid_tgid();
+		u32 tgid = id >> 32;
+		u32 pid = (pid_t)id;
+		u64 nsec;
+		if (trace_filtered(tgid))
+			return 0;
+		nsec = bpf_ktime_get_ns();
+		bpf_map_update_elem(&starts, &pid, &nsec, BPF_ANY);
+		return 0;
+}
+
 static int entry(void)
 {
-	u64 id = bpf_get_current_pid_tgid();
-	u32 tgid = id >> 32;
-	u32 pid = (pid_t)id;
-	u64 nsec;
-
-	if (trace_filtered(tgid))
-		return 0;
-
-	nsec = bpf_ktime_get_ns();
-	bpf_map_update_elem(&starts, &pid, &nsec, BPF_ANY);
-
-	return 0;
+	entry_extra();
 }
 
 SEC("fentry/dummy_fentry")
