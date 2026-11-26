@@ -48,55 +48,58 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_arg_extra(void)
+{
+		static int pos_args;
+		switch (key) {
+		case 'p':
+			target_pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'C':
+			clear_screen = false;
+			break;
+		case 's':
+			if (!strcmp(arg, "name")) {
+				sort_by = SORT_BY_CACHE_NAME;
+			} else if (!strcmp(arg, "count")) {
+				sort_by = SORT_BY_CACHE_COUNT;
+			} else if (!strcmp(arg, "size")) {
+				sort_by = SORT_BY_CACHE_SIZE;
+			} else {
+				warning("Invalid sort method: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case 'r':
+			output_rows = MIN(OUTPUT_ROWS_LIMIT, argp_parse_long(key, arg, state));
+			break;
+		case 'v':
+			verbose = true;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case ARGP_KEY_ARG:
+			errno = 0;
+			if (pos_args == 0) {
+				interval = argp_parse_long(key, arg, state);
+			} else if (pos_args == 1) {
+				count = argp_parse_long(key, arg, state);
+			} else {
+				warning("Unrecognized positional argument: %s\n", arg);
+				argp_usage(state);
+			}
+			pos_args++;
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	static int pos_args;
-
-	switch (key) {
-	case 'p':
-		target_pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'C':
-		clear_screen = false;
-		break;
-	case 's':
-		if (!strcmp(arg, "name")) {
-			sort_by = SORT_BY_CACHE_NAME;
-		} else if (!strcmp(arg, "count")) {
-			sort_by = SORT_BY_CACHE_COUNT;
-		} else if (!strcmp(arg, "size")) {
-			sort_by = SORT_BY_CACHE_SIZE;
-		} else {
-			warning("Invalid sort method: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case 'r':
-		output_rows = MIN(OUTPUT_ROWS_LIMIT, argp_parse_long(key, arg, state));
-		break;
-	case 'v':
-		verbose = true;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			interval = argp_parse_long(key, arg, state);
-		} else if (pos_args == 1) {
-			count = argp_parse_long(key, arg, state);
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
-		}
-		pos_args++;
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
