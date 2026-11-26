@@ -180,72 +180,62 @@ static void set_probe_autoload(struct biostacks_bpf *obj,
 					  false);
 }
 
+static void main_extra(void)
+{
+		struct partitions *partitions = NULL;
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct ksyms *ksyms = NULL;
+		struct biostacks_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		libbpf_set_print(libbpf_print_fn);
+		obj = biostacks_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		partitions = partitions__load();
+		if (!partitions) {
+			warning("Failed to load partitions info\n");
+			goto cleanup;
+		}
+		if (!setup_disk_filter(obj, partitions))
+			goto cleanup;
+		obj->rodata->target_ms = env.milliseconds;
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("Failed to load kallsyms\n");
+			goto cleanup;
+		}
+		set_probe_autoload(obj, ksyms);
+		err = biostacks_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = biostacks_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		printf("Tracing block I/O with init stacks. Hit Ctrl-C to end.\n");
+		sleep(env.duration);
+		print_map(ksyms, partitions, bpf_map__fd(obj->maps.hists));
+	cleanup:
+		biostacks_bpf__destroy(obj);
+		ksyms__free(ksyms);
+		partitions__free(partitions);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	struct partitions *partitions = NULL;
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-
-	struct ksyms *ksyms = NULL;
-	struct biostacks_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = biostacks_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	partitions = partitions__load();
-	if (!partitions) {
-		warning("Failed to load partitions info\n");
-		goto cleanup;
-	}
-
-	if (!setup_disk_filter(obj, partitions))
-		goto cleanup;
-
-	obj->rodata->target_ms = env.milliseconds;
-
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("Failed to load kallsyms\n");
-		goto cleanup;
-	}
-
-	set_probe_autoload(obj, ksyms);
-
-	err = biostacks_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = biostacks_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	printf("Tracing block I/O with init stacks. Hit Ctrl-C to end.\n");
-	sleep(env.duration);
-	print_map(ksyms, partitions, bpf_map__fd(obj->maps.hists));
-
-cleanup:
-	biostacks_bpf__destroy(obj);
-	ksyms__free(ksyms);
-	partitions__free(partitions);
-
-	return err != 0;
+	main_extra();
 }
