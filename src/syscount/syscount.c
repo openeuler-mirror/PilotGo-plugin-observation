@@ -299,53 +299,58 @@ static int parse_errno_arg(const char *arg, struct argp_state *state)
 	parse_errno_arg_extra();
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'x':
+			env.failures = true;
+			break;
+		case 'L':
+			env.latency = true;
+			break;
+		case 'm':
+			env.milliseconds = true;
+			break;
+		case 'P':
+			env.process = true;
+			break;
+		case 'p':
+			env.pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'i':
+			env.interval = argp_parse_long_range(key, arg, state, 0, INT_MAX);
+			break;
+		case 'd':
+			env.duration = argp_parse_long_range(key, arg, state, 1, INT_MAX);
+			break;
+		case 'T':
+			env.top = argp_parse_long_range(key, arg, state, 1, INT_MAX);
+			break;
+		case 'c':
+			env.cgroupspath = arg;
+			env.cg = true;
+			break;
+		case 'e':
+			env.filter_errno = parse_errno_arg(arg, state);
+			break;
+		case 'l':
+			env.list_syscalls = true;
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'x':
-		env.failures = true;
-		break;
-	case 'L':
-		env.latency = true;
-		break;
-	case 'm':
-		env.milliseconds = true;
-		break;
-	case 'P':
-		env.process = true;
-		break;
-	case 'p':
-		env.pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'i':
-		env.interval = argp_parse_long_range(key, arg, state, 0, INT_MAX);
-		break;
-	case 'd':
-		env.duration = argp_parse_long_range(key, arg, state, 1, INT_MAX);
-		break;
-	case 'T':
-		env.top = argp_parse_long_range(key, arg, state, 1, INT_MAX);
-		break;
-	case 'c':
-		env.cgroupspath = arg;
-		env.cg = true;
-		break;
-	case 'e':
-		env.filter_errno = parse_errno_arg(arg, state);
-		break;
-	case 'l':
-		env.list_syscalls = true;
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static volatile sig_atomic_t exiting;
