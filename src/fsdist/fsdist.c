@@ -207,21 +207,24 @@ static void print_timestamp(void)
 	printf("%-8s\n", ts);
 }
 
+static void print_hists_extra(void)
+{
+		const char *units = timestamp_in_ms ? "msecs" : "usecs";
+		for (enum fs_file_op op = F_READ; op < F_MAX_OP; op++) {
+			struct hist hist = bss->hists[op];
+			bss->hists[op] = zero;
+			if (!memcmp(&zero, &hist, sizeof(hist)))
+				continue;
+			printf("operation = '%s'\n", file_op_names[op]);
+			print_log2_hist(hist.slots, MAX_SLOTS, units);
+			printf("\n");
+		}
+		return 0;
+}
+
 static int print_hists(struct fsdist_bpf__bss *bss)
 {
-	const char *units = timestamp_in_ms ? "msecs" : "usecs";
-
-	for (enum fs_file_op op = F_READ; op < F_MAX_OP; op++) {
-		struct hist hist = bss->hists[op];
-
-		bss->hists[op] = zero;
-		if (!memcmp(&zero, &hist, sizeof(hist)))
-			continue;
-		printf("operation = '%s'\n", file_op_names[op]);
-		print_log2_hist(hist.slots, MAX_SLOTS, units);
-		printf("\n");
-	}
-	return 0;
+	print_hists_extra();
 }
 
 static int attach_kprobe_pair(struct bpf_program *entry_prog,
