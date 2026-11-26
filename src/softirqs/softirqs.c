@@ -147,30 +147,31 @@ static char *softirq_vec_names[] = {
 	[RCU_SOFTIRQ] = "rcu"
 };
 
+static void print_count_extra(void)
+{
+		const char *units = env.nanoseconds ? "nsecs" : "usecs";
+		__u64 count, time;
+		__u32 vec;
+		printf("%-16s %-6s%-5s  %-11s\n", "SOFTIRQ", "TOTAL_",
+				units, env.count ? "TOTAL_count" : "");
+		for (vec = 0; vec < NR_SOFTIRQS; vec++) {
+			time = __atomic_exchange_n(&bss->time[vec], 0,
+						   __ATOMIC_RELAXED);
+			count = __atomic_exchange_n(&bss->counts[vec], 0,
+						    __ATOMIC_RELAXED);
+			if (count > 0) {
+				printf("%-16s %11llu", softirq_vec_names[vec], time);
+				if (env.count)
+					printf("  %11llu", count);
+				printf("\n");
+			}
+		}
+		return 0;
+}
+
 static int print_count(struct softirqs_bpf__bss *bss)
 {
-	const char *units = env.nanoseconds ? "nsecs" : "usecs";
-	__u64 count, time;
-	__u32 vec;
-
-	printf("%-16s %-6s%-5s  %-11s\n", "SOFTIRQ", "TOTAL_",
-			units, env.count ? "TOTAL_count" : "");
-
-	for (vec = 0; vec < NR_SOFTIRQS; vec++) {
-		time = __atomic_exchange_n(&bss->time[vec], 0,
-					   __ATOMIC_RELAXED);
-		count = __atomic_exchange_n(&bss->counts[vec], 0,
-					    __ATOMIC_RELAXED);
-
-		if (count > 0) {
-			printf("%-16s %11llu", softirq_vec_names[vec], time);
-			if (env.count)
-				printf("  %11llu", count);
-			printf("\n");
-		}
-	}
-
-	return 0;
+	print_count_extra();
 }
 
 static struct hist zero;
