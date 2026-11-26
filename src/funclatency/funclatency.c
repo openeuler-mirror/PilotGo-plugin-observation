@@ -449,18 +449,22 @@ static void main_helper2(void)
 		return err != 0;
 }
 
+static void main_extra(void)
+{
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.parser = parse_arg,
+			.options = opts,
+			.args_doc = args_doc,
+			.doc = argp_program_doc,
+		};
+		struct funclatency_bpf *obj;
+		int err, cgfd;
+		bool used_fentry = false;
+		main_helper2();
+}
+
 int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.parser = parse_arg,
-		.options = opts,
-		.args_doc = args_doc,
-		.doc = argp_program_doc,
-	};
-	struct funclatency_bpf *obj;
-	int err, cgfd;
-	bool used_fentry = false;
-
-	main_helper2();
+	main_extra();
 }
