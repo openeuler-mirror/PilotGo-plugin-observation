@@ -243,37 +243,34 @@ static int clear_values(int fd)
 	clear_values_extra();
 }
 
+static void print_stat_extra(void)
+{
+		int err = 0;
+		static struct file_stat values[OUTPUT_ROWS_LIMIT];
+		int fd = bpf_map__fd(obj->maps.entries);
+		int rows;
+		print_loadavg();
+		printf("%-7s %-16s %-6s %-6s %-7s %-7s %1s %s\n",
+		       "TID", "COMM", "READS", "WRITES", "R_Kb", "W_Kb", "T", "FILE");
+		rows = collect_values(fd, values);
+		if (rows < 0)
+			return rows;
+		qsort(values, rows, sizeof(struct file_stat), sort_column);
+		rows = min(rows, argument->output_rows);
+		for (int i = 0; i < rows; i++) {
+			printf("%-7d %-16s %-6lld %-6lld %-7lld %-7lld %c %s\n",
+			       values[i].tid, values[i].comm, values[i].reads, values[i].writes,
+			       values[i].read_bytes / 1024, values[i].write_bytes / 1024,
+			       values[i].type, values[i].filename);
+		}
+		printf("\n");
+		err = clear_values(fd);
+		return err;
+}
+
 static int print_stat(struct filetop_bpf *obj, struct argument *argument)
 {
-	int err = 0;
-	static struct file_stat values[OUTPUT_ROWS_LIMIT];
-	int fd = bpf_map__fd(obj->maps.entries);
-	int rows;
-
-	print_loadavg();
-
-	printf("%-7s %-16s %-6s %-6s %-7s %-7s %1s %s\n",
-	       "TID", "COMM", "READS", "WRITES", "R_Kb", "W_Kb", "T", "FILE");
-
-	rows = collect_values(fd, values);
-	if (rows < 0)
-		return rows;
-
-	qsort(values, rows, sizeof(struct file_stat), sort_column);
-	rows = min(rows, argument->output_rows);
-
-	for (int i = 0; i < rows; i++) {
-		printf("%-7d %-16s %-6lld %-6lld %-7lld %-7lld %c %s\n",
-		       values[i].tid, values[i].comm, values[i].reads, values[i].writes,
-		       values[i].read_bytes / 1024, values[i].write_bytes / 1024,
-		       values[i].type, values[i].filename);
-	}
-
-	printf("\n");
-
-	err = clear_values(fd);
-
-	return err;
+	print_stat_extra();
 }
 
 static void main_extra6(void)
