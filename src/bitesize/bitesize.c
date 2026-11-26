@@ -61,41 +61,44 @@ static void parse_positional_arg(struct argument *argument, const char *arg,
 		argument->times = value;
 }
 
+static void parse_arg_extra(void)
+{
+		static int pos_args;
+		struct argument *argument = state->input;
+		size_t len = TASK_COMM_LEN;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			verbose = true;
+			break;
+		case 'c':
+			argument->comm = arg;
+			argument->comm_len = min(strlen(arg) + 1, len);
+			break;
+		case 'd':
+			if (strlen(arg) + 1 > DISK_NAME_LEN) {
+				warning("Invalid disk name: too long\n");
+				argp_usage(state);
+			}
+			argument->disk = arg;
+			break;
+		case 'T':
+			argument->timestamp = true;
+			break;
+		case ARGP_KEY_ARG:
+			parse_positional_arg(argument, arg, pos_args++, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	static int pos_args;
-	struct argument *argument = state->input;
-	size_t len = TASK_COMM_LEN;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		verbose = true;
-		break;
-	case 'c':
-		argument->comm = arg;
-		argument->comm_len = min(strlen(arg) + 1, len);
-		break;
-	case 'd':
-		if (strlen(arg) + 1 > DISK_NAME_LEN) {
-			warning("Invalid disk name: too long\n");
-			argp_usage(state);
-		}
-		argument->disk = arg;
-		break;
-	case 'T':
-		argument->timestamp = true;
-		break;
-	case ARGP_KEY_ARG:
-		parse_positional_arg(argument, arg, pos_args++, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
