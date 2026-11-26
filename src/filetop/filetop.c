@@ -190,22 +190,25 @@ static void print_loadavg(void)
 	}
 }
 
+static void collect_values_extra3(void)
+{
+		struct file_id key, *prev_key = NULL;
+		int rows = 0;
+		int err;
+		while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+			err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
+			if (err) {
+				warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+				return err;
+			}
+			prev_key = &key;
+		}
+		return rows;
+}
+
 static int collect_values(int fd, struct file_stat *values)
 {
-	struct file_id key, *prev_key = NULL;
-	int rows = 0;
-	int err;
-
-	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
-		err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
-		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &key;
-	}
-
-	return rows;
+	collect_values_extra3();
 }
 
 static int clear_values(int fd)
