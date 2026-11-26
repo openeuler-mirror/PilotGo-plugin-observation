@@ -150,25 +150,28 @@ static void sig_handler(int sig)
         exiting = 1;
 }
 
+static void sort_column_extra(void)
+{
+	        struct info_t *i1 = (struct info_t *)obj1;
+	        struct info_t *i2 = (struct info_t *)obj2;
+	        if (i1->key.family != i2->key.family) {
+	                /*
+	                 * i1 - i2 because we want to sort by increasing order (first
+	                 * AF_INET then AF_INET6).
+	                 */
+	                return i1->key.family - i2->key.family;
+	        }
+	        if (env.sort_by == SENT)
+	                return i2->value.sent - i1->value.sent;
+	        else if (env.sort_by == RECEIVED)
+	                return i2->value.received - i1->value.received;
+	        else
+	                return (i2->value.sent + i2->value.received) - (i1->value.sent + i1->value.received);
+}
+
 static int sort_column(const void *obj1, const void *obj2)
 {
-        struct info_t *i1 = (struct info_t *)obj1;
-        struct info_t *i2 = (struct info_t *)obj2;
-
-        if (i1->key.family != i2->key.family) {
-                /*
-                 * i1 - i2 because we want to sort by increasing order (first
-                 * AF_INET then AF_INET6).
-                 */
-                return i1->key.family - i2->key.family;
-        }
-
-        if (env.sort_by == SENT)
-                return i2->value.sent - i1->value.sent;
-        else if (env.sort_by == RECEIVED)
-                return i2->value.received - i1->value.received;
-        else
-                return (i2->value.sent + i2->value.received) - (i1->value.sent + i1->value.received);
+	sort_column_extra();
 }
 
 static void print_stat_section4_1(void)
