@@ -143,23 +143,26 @@ static void print_info(const irq_key_t *key, const info_t *info)
 	}
 }
 
+static void print_entries_extra(void)
+{
+		irq_key_t lookup_key = {}, next_key;
+		info_t info;
+		int err;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_lookup_elem(fd, &next_key, &info);
+			if (err < 0) {
+				warning("failed to lookup infos: %d\n", err);
+				return -1;
+			}
+			print_info(&next_key, &info);
+			lookup_key = next_key;
+		}
+		return 0;
+}
+
 static int print_entries(int fd)
 {
-	irq_key_t lookup_key = {}, next_key;
-	info_t info;
-	int err;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_lookup_elem(fd, &next_key, &info);
-		if (err < 0) {
-			warning("failed to lookup infos: %d\n", err);
-			return -1;
-		}
-		print_info(&next_key, &info);
-		lookup_key = next_key;
-	}
-
-	return 0;
+	print_entries_extra();
 }
 
 static void clear_entries_extra(void)
