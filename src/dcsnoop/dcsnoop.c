@@ -179,69 +179,60 @@ static void set_probes_autoload(struct dcsnoop_bpf *obj)
 	}
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.parser = parse_arg,
+			.options = opts,
+			.doc = argp_program_doc,
+		};
+		struct bpf_buffer *buf = NULL;
+		struct dcsnoop_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = dcsnoop_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			err = 1;
+			warning("Failed to create ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		obj->rodata->target_pid = env.pid;
+		obj->rodata->target_tid = env.tid;
+		set_probes_autoload(obj);
+		err = dcsnoop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = dcsnoop_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF object: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		if (env.duration)
+			time_end = get_ktime_ns() + env.duration * NSEC_PER_SEC;
+		err = print_events(buf);
+	cleanup:
+		dcsnoop_bpf__destroy(obj);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.parser = parse_arg,
-		.options = opts,
-		.doc = argp_program_doc,
-	};
-	struct bpf_buffer *buf = NULL;
-	struct dcsnoop_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = dcsnoop_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		err = 1;
-		warning("Failed to create ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	obj->rodata->target_pid = env.pid;
-	obj->rodata->target_tid = env.tid;
-
-	set_probes_autoload(obj);
-
-	err = dcsnoop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = dcsnoop_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	if (env.duration)
-		time_end = get_ktime_ns() + env.duration * NSEC_PER_SEC;
-
-	err = print_events(buf);
-
-cleanup:
-	dcsnoop_bpf__destroy(obj);
-
-	return err != 0;
+	main_extra();
 }
