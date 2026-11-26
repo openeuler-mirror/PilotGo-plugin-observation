@@ -173,39 +173,41 @@ static void print_timestamp(void)
 
 static bool batch_map_ops = true; /* hope for the best */
 
+static void read_vals_batch_extra0(void)
+{
+		struct data_t orig_vals[*count];
+		void *in = NULL, *out;
+		__u32 i, n, n_read = 0;
+		__u32 keys[*count];
+		int err = 0;
+		while (n_read < *count && !err) {
+			n = *count - n_read;
+			err = bpf_map_lookup_and_delete_batch(fd, &in, &out,
+					keys + n_read, orig_vals + n_read, &n, NULL);
+			if (err && errno != ENOENT) {
+				/* we want to propagate EINVAL upper, so that
+				 * the batch_map_ops flag is set to false */
+				if (errno != EINVAL)
+					warning("bpf_map_lookup_and_delete_batch: %s\n",
+						strerror(-err));
+				return false;
+			}
+			n_read += n;
+			in = out;
+		}
+		for (i = 0; i < n_read; i++) {
+			vals[i].count = orig_vals[i].count;
+			vals[i].total_ns = orig_vals[i].total_ns;
+			vals[i].key = keys[i];
+			strncpy(vals[i].comm, orig_vals[i].comm, TASK_COMM_LEN);
+		}
+		*count = n_read;
+		return true;
+}
+
 static bool read_vals_batch(int fd, struct data_ext_t *vals, __u32 *count)
 {
-	struct data_t orig_vals[*count];
-	void *in = NULL, *out;
-	__u32 i, n, n_read = 0;
-	__u32 keys[*count];
-	int err = 0;
-
-	while (n_read < *count && !err) {
-		n = *count - n_read;
-		err = bpf_map_lookup_and_delete_batch(fd, &in, &out,
-				keys + n_read, orig_vals + n_read, &n, NULL);
-		if (err && errno != ENOENT) {
-			/* we want to propagate EINVAL upper, so that
-			 * the batch_map_ops flag is set to false */
-			if (errno != EINVAL)
-				warning("bpf_map_lookup_and_delete_batch: %s\n",
-					strerror(-err));
-			return false;
-		}
-		n_read += n;
-		in = out;
-	}
-
-	for (i = 0; i < n_read; i++) {
-		vals[i].count = orig_vals[i].count;
-		vals[i].total_ns = orig_vals[i].total_ns;
-		vals[i].key = keys[i];
-		strncpy(vals[i].comm, orig_vals[i].comm, TASK_COMM_LEN);
-	}
-
-	*count = n_read;
-	return true;
+	read_vals_batch_extra0();
 }
 
 static void read_vals_fallback_extra4(void)
