@@ -128,23 +128,26 @@ static int sort_column(const void *o1, const void *o2)
 
 struct ksyms *ksyms;
 
+static void collect_values_extra(void)
+{
+		__u64 *prev_key = NULL;
+		int err, rows = 0;
+		while (!bpf_map_get_next_key(fd, prev_key, &values[rows].ip)) {
+			err = bpf_map_lookup_elem(fd, &values[rows].ip, &values[rows].count);
+			if (err) {
+				warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+				return err;
+			}
+			prev_key = &values[rows++].ip;
+			if (rows >= MAX_ROWS)
+				break;
+		}
+		return rows;
+}
+
 static int collect_values(int fd, struct value *values)
 {
-	__u64 *prev_key = NULL;
-	int err, rows = 0;
-
-	while (!bpf_map_get_next_key(fd, prev_key, &values[rows].ip)) {
-		err = bpf_map_lookup_elem(fd, &values[rows].ip, &values[rows].count);
-		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &values[rows++].ip;
-		if (rows >= MAX_ROWS)
-			break;
-	}
-
-	return rows;
+	collect_values_extra();
 }
 
 static void print_values_extra(void)
