@@ -30,6 +30,7 @@ const char argp_program_doc[] =
 "    biopattern 1 10         # print 1 second summaries, 10 times\n"
 "    biopattern -T 1         # 1s summaries with timestamps\n"
 "    biopattern -d sdc       # trace sdc only\n";
+"    biopattern --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "timestamp", 'T', NULL, 0, "Include timestamp on output" },
