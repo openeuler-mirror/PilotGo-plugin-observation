@@ -79,36 +79,35 @@ static __always_inline void fill_info_who(struct info_t *info,
 }
 
 SEC("kprobe")
+static void BPF_KPROBE_extra(void)
+{
+		struct val_t *valp, zero = {};
+		struct info_t info = {};
+		struct start_req_t *startp;
+		u64 delta_us;
+		/* fetch timestamp and calculate delta */
+		startp = bpf_map_lookup_elem(&start, &req);
+		if (!startp)
+			return 0;	/* missed tracing issue */
+		delta_us = (bpf_ktime_get_ns() - startp->ts) / 1000;
+		/* setup info_t key */
+		fill_info_key(&info, req);
+		fill_info_who(&info, req);
+		valp = bpf_map_lookup_or_try_init(&counts, &info, &zero);
+		if (valp) {
+			/* save stats */
+			valp->us += delta_us;
+			valp->bytes += startp->data_len;
+			valp->io++;
+		}
+		bpf_map_delete_elem(&start, &req);
+		bpf_map_delete_elem(&whobyreq, &req);
+		return 0;
+}
+
 int BPF_KPROBE(blk_account_io_done, struct request *req, u64 now)
 {
-	struct val_t *valp, zero = {};
-	struct info_t info = {};
-	struct start_req_t *startp;
-	u64 delta_us;
-
-	/* fetch timestamp and calculate delta */
-	startp = bpf_map_lookup_elem(&start, &req);
-	if (!startp)
-		return 0;	/* missed tracing issue */
-
-	delta_us = (bpf_ktime_get_ns() - startp->ts) / 1000;
-
-	/* setup info_t key */
-	fill_info_key(&info, req);
-	fill_info_who(&info, req);
-
-	valp = bpf_map_lookup_or_try_init(&counts, &info, &zero);
-	if (valp) {
-		/* save stats */
-		valp->us += delta_us;
-		valp->bytes += startp->data_len;
-		valp->io++;
-	}
-
-	bpf_map_delete_elem(&start, &req);
-	bpf_map_delete_elem(&whobyreq, &req);
-
-	return 0;
+	BPF_KPROBE_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
