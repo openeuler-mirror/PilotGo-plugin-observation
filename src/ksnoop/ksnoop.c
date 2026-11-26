@@ -624,33 +624,35 @@ static int parse_trace(char *str, struct trace *trace)
 	parse_trace_extra();
 }
 
+static void parse_traces_extra(void)
+{
+		__u8 i;
+		if (argc == 0)
+			usage();
+		if (argc > MAX_FUNC_TRACES) {
+			pr_err("A maximum of %d traces are supported", MAX_FUNC_TRACES);
+			return -EINVAL;
+		}
+		*traces = calloc(argc, sizeof(struct trace));
+		if (!*traces) {
+			pr_err("Could not allocate %d traces", argc);
+			return -ENOMEM;
+		}
+		for (i = 0; i < argc; i++) {
+			if (parse_trace(argv[i], &((*traces)[i])))
+				return -EINVAL;
+			if (!stack_mode || i == 0)
+				continue;
+			/* tell stack mode trace which function to expect next */
+			(*traces)[i].prev_ip = (*traces)[i-1].func.ip;
+			(*traces)[i-1].next_ip = (*traces)[i].func.ip;
+		}
+		return i;
+}
+
 static int parse_traces(int argc, char *argv[], struct trace **traces)
 {
-	__u8 i;
-
-	if (argc == 0)
-		usage();
-
-	if (argc > MAX_FUNC_TRACES) {
-		pr_err("A maximum of %d traces are supported", MAX_FUNC_TRACES);
-		return -EINVAL;
-	}
-	*traces = calloc(argc, sizeof(struct trace));
-	if (!*traces) {
-		pr_err("Could not allocate %d traces", argc);
-		return -ENOMEM;
-	}
-
-	for (i = 0; i < argc; i++) {
-		if (parse_trace(argv[i], &((*traces)[i])))
-			return -EINVAL;
-		if (!stack_mode || i == 0)
-			continue;
-		/* tell stack mode trace which function to expect next */
-		(*traces)[i].prev_ip = (*traces)[i-1].func.ip;
-		(*traces)[i-1].next_ip = (*traces)[i].func.ip;
-	}
-	return i;
+	parse_traces_extra();
 }
 
 static void cmd_info_extra(void)
