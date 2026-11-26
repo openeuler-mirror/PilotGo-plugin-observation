@@ -24,7 +24,8 @@ static struct env
     pid_t pid;
     pid_t tid;
     uid_t uid;
-    int duration;
+	/* duration field */
+    int	duration;
     bool verbose;
     bool timestamp;
     bool print_uid;
