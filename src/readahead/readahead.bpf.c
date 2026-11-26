@@ -107,28 +107,29 @@ int BPF_KRETPROBE(do_page_cache_ra_kretprobe)
     return 0;
 }
 
+static void page_accessed_entry_extra(void)
+{
+	    u64 *tsp, slot, ts = bpf_ktime_get_ns();
+	    s64 delta;
+	    tsp = bpf_map_lookup_elem(&birth, &key);
+	    if (!tsp)
+	        return 0;
+	    delta = (s64)(ts - *tsp);
+	    if (delta < 0)
+	        goto update_and_cleanup;
+	    slot = log2l(delta / 1000000U);
+	    if (slot >= MAX_SLOTS)
+	        slot = MAX_SLOTS - 1;
+	    __sync_fetch_and_add(&hist.slots[slot], 1);
+	update_and_cleanup:
+	    __sync_fetch_and_add(&hist.unused, -1);
+	    bpf_map_delete_elem(&birth, &key);
+	    return 0;
+}
+
 static __always_inline int page_accessed_entry(void *key)
 {
-    u64 *tsp, slot, ts = bpf_ktime_get_ns();
-    s64 delta;
-
-    tsp = bpf_map_lookup_elem(&birth, &key);
-    if (!tsp)
-        return 0;
-
-    delta = (s64)(ts - *tsp);
-    if (delta < 0)
-        goto update_and_cleanup;
-    slot = log2l(delta / 1000000U);
-    if (slot >= MAX_SLOTS)
-        slot = MAX_SLOTS - 1;
-    __sync_fetch_and_add(&hist.slots[slot], 1);
-
-update_and_cleanup:
-    __sync_fetch_and_add(&hist.unused, -1);
-    bpf_map_delete_elem(&birth, &key);
-
-    return 0;
+	page_accessed_entry_extra();
 }
 
 SEC("fentry/mark_page_accessed")
