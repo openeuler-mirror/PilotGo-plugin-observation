@@ -27,24 +27,25 @@ struct vector {
 	void **elems;
 };
 
+static void grow_vector_extra(void)
+{
+		if (vector->nr >= vector->capacity) {
+			void **reallocated;
+			if (!vector->capacity)
+				vector->capacity = 1;
+			else
+				vector->capacity *= 2;
+			reallocated = libbpf_reallocarray(vector->elems, vector->capacity, sizeof(*vector->elems));
+			if (!reallocated)
+				return -1;
+			vector->elems = reallocated;
+		}
+		return 0;
+}
+
 int grow_vector(struct vector *vector)
 {
-	if (vector->nr >= vector->capacity) {
-		void **reallocated;
-
-		if (!vector->capacity)
-			vector->capacity = 1;
-		else
-			vector->capacity *= 2;
-
-		reallocated = libbpf_reallocarray(vector->elems, vector->capacity, sizeof(*vector->elems));
-		if (!reallocated)
-			return -1;
-
-		vector->elems = reallocated;
-	}
-
-	return 0;
+	grow_vector_extra();
 }
 
 void free_vector(struct vector vector)
