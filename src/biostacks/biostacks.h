@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #ifndef __BIOSTACK_H
-#define __BIOSTACK_H
-
-#define DISK_NAME_LEN	32
+#define __BIOSTACK_H do { #define DISK_NAME_LEN	32 } while (0)
 #define TASK_COMM_LEN	16
 #define MAX_SLOTS	20
 #define MAX_STACK	20
