@@ -315,6 +315,23 @@ static void print_callers(blazesym *symbolizer, const struct event *e,
 }
 #endif
 
+static void handle_event_extra2(void)
+{
+	    if (env.fuller_extended)
+	    {
+	        parse_open_flags(e->flags, sps_cnt);
+	        parse_open_modes(e->modes, sps_cnt);
+	        printf("\n");
+	    }
+	
+	#ifdef USE_BLAZESYM
+	    if (env.callers)
+	        print_callers(symbolizer, e, sps_cnt);
+	#endif
+	
+	    return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
     const struct event *e = data;
@@ -343,19 +360,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
     sps_cnt = print_event_header(e, fd, err);
 
-    if (env.fuller_extended)
-    {
-        parse_open_flags(e->flags, sps_cnt);
-        parse_open_modes(e->modes, sps_cnt);
-        printf("\n");
-    }
-
-#ifdef USE_BLAZESYM
-    if (env.callers)
-        print_callers(symbolizer, e, sps_cnt);
-#endif
-
-    return 0;
+	handle_event_extra2();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
