@@ -41,6 +41,7 @@ const char argp_program_doc[] =
 "    biolatency -F           # show I/O flags separately\n"
 "    biolatency -d sdc       # Trace sdc only\n"
 "    biolatency -c CG        # Trace process under cgroupsPath CG\n";
+"    biolatency --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "timestamp", 'T', NULL, 0, "Include timestamp on output" },
