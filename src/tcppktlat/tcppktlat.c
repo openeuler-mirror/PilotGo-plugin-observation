@@ -155,76 +155,67 @@ static void select_probes(struct tcppktlat_bpf *obj)
 		bpf_program__set_autoload(obj->progs.tcp_rcv_space_adjust_btf, false);
 	}
 }
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct bpf_buffer *buf = NULL;
+		struct tcppktlat_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		libbpf_set_print(libbpf_print_fn);
+		obj = tcppktlat_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->target_pid = env.pid;
+		obj->rodata->target_tid = env.tid;
+		obj->rodata->target_sport = env.lport;
+		obj->rodata->target_dport = env.rport;
+		obj->rodata->target_min_us = env.min_us;
+		obj->rodata->target_family = env.target_family;
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			err = -errno;
+			warning("Failed to create ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		select_probes(obj);
+		err = tcppktlat_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = tcppktlat_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+		if (err) {
+			warning("Failed to open ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		print_header();
+		err = poll_events(buf);
+	cleanup:
+		bpf_buffer__free(buf);
+		tcppktlat_bpf__destroy(obj);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct bpf_buffer *buf = NULL;
-	struct tcppktlat_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = tcppktlat_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->target_pid = env.pid;
-	obj->rodata->target_tid = env.tid;
-	obj->rodata->target_sport = env.lport;
-	obj->rodata->target_dport = env.rport;
-	obj->rodata->target_min_us = env.min_us;
-	obj->rodata->target_family = env.target_family;
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		err = -errno;
-		warning("Failed to create ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	select_probes(obj);
-
-	err = tcppktlat_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = tcppktlat_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
-	if (err) {
-		warning("Failed to open ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	print_header();
-
-	err = poll_events(buf);
-
-cleanup:
-	bpf_buffer__free(buf);
-	tcppktlat_bpf__destroy(obj);
-
-	return err != 0;
+	main_extra();
 }
