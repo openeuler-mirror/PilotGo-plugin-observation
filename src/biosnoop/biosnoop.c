@@ -15,6 +15,7 @@ static struct env {
 	bool verbose;
 	char *cgroupspath;
 	bool cg;
+	int count;
 } env;
 
 static volatile __u64 start_ts;
@@ -66,6 +67,9 @@ static void parse_arg_extra(void)
 		case 'h':
 			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 			break;
+			case 'n':
+				env.count = atoi(arg);
+				break;
 		case 'v':
 			env.verbose = true;
 			break;
