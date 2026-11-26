@@ -754,7 +754,7 @@ static void disable_prog(struct bpf_program *prog)
 	bpf_program__set_autoload(prog, false);
 }
 
-void disable_kernel_node_tracepoints(struct memleak_bpf *skel)
+static void disable_kernel_node_tracepoints(struct memleak_bpf *skel)
 {
 	disable_prog(skel->progs.memleak__kmalloc_node);
 	disable_prog(skel->progs.memleak__kmem_cache_alloc_node);
