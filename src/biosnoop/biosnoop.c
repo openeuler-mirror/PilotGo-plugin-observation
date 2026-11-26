@@ -105,46 +105,47 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void blk_fill_rwbs_extra(void)
+{
+		int i = 0;
+		if (op & REQ_PREFLUSH)
+			rwbs[i++] = 'F';
+		switch (op & REQ_OP_MASK) {
+		case REQ_OP_WRITE:
+		case REQ_OP_WRITE_SAME:
+			rwbs[i++] = 'W';
+			break;
+		case REQ_OP_DISCARD:
+			rwbs[i++] = 'D';
+			break;
+		case REQ_OP_SECURE_ERASE:
+			rwbs[i++] = 'D';
+			rwbs[i++] = 'E';
+			break;
+		case REQ_OP_FLUSH:
+			rwbs[i++] = 'F';
+			break;
+		case REQ_OP_READ:
+			rwbs[i++] = 'R';
+			break;
+		default:
+			rwbs[i++] = 'N';
+			break;
+		}
+		if (op & REQ_FUA)
+			rwbs[i++] = 'F';
+		if (op & REQ_RAHEAD)
+			rwbs[i++] = 'A';
+		if (op & REQ_SYNC)
+			rwbs[i++] = 'S';
+		if (op & REQ_META)
+			rwbs[i++] = 'M';
+		rwbs[i] = '\0';
+}
+
 static void blk_fill_rwbs(char *rwbs, unsigned int op)
 {
-	int i = 0;
-
-	if (op & REQ_PREFLUSH)
-		rwbs[i++] = 'F';
-
-	switch (op & REQ_OP_MASK) {
-	case REQ_OP_WRITE:
-	case REQ_OP_WRITE_SAME:
-		rwbs[i++] = 'W';
-		break;
-	case REQ_OP_DISCARD:
-		rwbs[i++] = 'D';
-		break;
-	case REQ_OP_SECURE_ERASE:
-		rwbs[i++] = 'D';
-		rwbs[i++] = 'E';
-		break;
-	case REQ_OP_FLUSH:
-		rwbs[i++] = 'F';
-		break;
-	case REQ_OP_READ:
-		rwbs[i++] = 'R';
-		break;
-	default:
-		rwbs[i++] = 'N';
-		break;
-	}
-
-	if (op & REQ_FUA)
-		rwbs[i++] = 'F';
-	if (op & REQ_RAHEAD)
-		rwbs[i++] = 'A';
-	if (op & REQ_SYNC)
-		rwbs[i++] = 'S';
-	if (op & REQ_META)
-		rwbs[i++] = 'M';
-
-	rwbs[i] = '\0';
+	blk_fill_rwbs_extra();
 }
 
 static struct partitions *partitions;
