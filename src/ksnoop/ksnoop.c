@@ -438,50 +438,52 @@ static char *value_to_str(struct btf *btf, struct value *val, char *str)
 }
 
 /* based heavily on bpf_object__read_kallsyms_file() in libbpf.c */
-static int get_func_ip_mod(struct func *func)
+static void get_func_ip_mod_extra(void)
 {
-	char sym_type, sym_name[MAX_STR], mod_info[MAX_STR];
-	unsigned long long sym_addr;
-	int ret, err = 0;
-	FILE *f;
-
-	f = fopen("/proc/kallsyms", "r");
-	if (!f) {
-		err = errno;
-		pr_err("Failed to open /proc/kallsyms: %s", strerror(err));
-		return err;
-	}
-
-	while (true) {
-		ret = fscanf(f, "%llx %c %128s%[^\n]\n",
-			     &sym_addr, &sym_type, sym_name, mod_info);
-		if (ret == EOF && feof(f))
-			break;
-		if (ret < 3) {
-			pr_err("Failed to read kallsyms entry: %d", ret);
-			err = -EINVAL;
-			goto out;
+		char sym_type, sym_name[MAX_STR], mod_info[MAX_STR];
+		unsigned long long sym_addr;
+		int ret, err = 0;
+		FILE *f;
+		f = fopen("/proc/kallsyms", "r");
+		if (!f) {
+			err = errno;
+			pr_err("Failed to open /proc/kallsyms: %s", strerror(err));
+			return err;
 		}
-		if (strcmp(func->name, sym_name) != 0)
-			continue;
-		func->ip = sym_addr;
-		func->mod[0] = '\0';
-		/* get module name from [modname] */
-		if (ret == 4) {
-			if (sscanf(mod_info, "%*[\t ][%[^]]", func->mod) < 1) {
-				pr_err("Failed to read module name");
+		while (true) {
+			ret = fscanf(f, "%llx %c %128s%[^\n]\n",
+				     &sym_addr, &sym_type, sym_name, mod_info);
+			if (ret == EOF && feof(f))
+				break;
+			if (ret < 3) {
+				pr_err("Failed to read kallsyms entry: %d", ret);
 				err = -EINVAL;
 				goto out;
 			}
+			if (strcmp(func->name, sym_name) != 0)
+				continue;
+			func->ip = sym_addr;
+			func->mod[0] = '\0';
+			/* get module name from [modname] */
+			if (ret == 4) {
+				if (sscanf(mod_info, "%*[\t ][%[^]]", func->mod) < 1) {
+					pr_err("Failed to read module name");
+					err = -EINVAL;
+					goto out;
+				}
+			}
+			pr_debug("%s = <ip %llx, mod %s>", func->name, func->ip,
+				 strlen(func->mod) > 0 ? func->mod : "vmlinux");
+			break;
 		}
-		pr_debug("%s = <ip %llx, mod %s>", func->name, func->ip,
-			 strlen(func->mod) > 0 ? func->mod : "vmlinux");
-		break;
-	}
+	out:
+		fclose(f);
+		return err;
+}
 
-out:
-	fclose(f);
-	return err;
+static int get_func_ip_mod(struct func *func)
+{
+	get_func_ip_mod_extra();
 }
 
 static void trace_printf(void *ctx, const char *fmt, va_list args)
