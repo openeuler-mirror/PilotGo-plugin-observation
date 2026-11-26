@@ -75,30 +75,30 @@ kprobe__d_lookup(void *ctx, const struct dentry *parent,
 	return 0;
 }
 
+static void kretprobe__d_lookup_extra(void)
+{
+		u64 pid_tgid = bpf_get_current_pid_tgid();
+		u32 pid = pid_tgid >> 32;
+		u32 tid = pid_tgid;
+		struct entry_t *ep;
+		struct event *event;
+		if (ret != NULL)	/* lookup didn't fail */
+			return 0;
+		ep = bpf_map_lookup_and_delete_elem(&entrys, &tid);
+		if (!ep)
+			return 0;
+		event = reserve_buf(sizeof(*event));
+		if (!event)
+			return 0;
+		fill_event(event, pid, tid, LOOKUP_MISS);
+		BPF_PROBE_READ_STR_INTO(&event->filename, ep, name);
+		submit_buf(ctx, event, sizeof(*event));
+		return 0;
+}
+
 static __always_inline int kretprobe__d_lookup(void *ctx, struct dentry *ret)
 {
-	u64 pid_tgid = bpf_get_current_pid_tgid();
-	u32 pid = pid_tgid >> 32;
-	u32 tid = pid_tgid;
-	struct entry_t *ep;
-	struct event *event;
-
-	if (ret != NULL)	/* lookup didn't fail */
-		return 0;
-
-	ep = bpf_map_lookup_and_delete_elem(&entrys, &tid);
-	if (!ep)
-		return 0;
-
-	event = reserve_buf(sizeof(*event));
-	if (!event)
-		return 0;
-
-	fill_event(event, pid, tid, LOOKUP_MISS);
-	BPF_PROBE_READ_STR_INTO(&event->filename, ep, name);
-
-	submit_buf(ctx, event, sizeof(*event));
-	return 0;
+	kretprobe__d_lookup_extra();
 }
 
 static __always_inline int
