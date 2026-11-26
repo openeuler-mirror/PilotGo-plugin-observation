@@ -115,7 +115,7 @@ static void sig_handler(int signo)
     exiting = 1;
 }
 
-const char *argp_program_version = "memleak 0.1";
+const char *argp_program_version = "memleak 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
     "Trace outstanding memory allocations\n"
