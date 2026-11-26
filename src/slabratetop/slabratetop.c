@@ -203,71 +203,62 @@ static int print_stat(struct slabratetop_bpf *obj)
 	print_stat_extra();
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct slabratetop_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = slabratetop_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->target_pid = target_pid;
-
-	err = slabratetop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = slabratetop_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	while (1) {
-		sleep(interval);
-
-		if (clear_screen) {
-			err = system("clear");
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct slabratetop_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = slabratetop_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->target_pid = target_pid;
+		err = slabratetop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = slabratetop_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		while (1) {
+			sleep(interval);
+			if (clear_screen) {
+				err = system("clear");
+				if (err)
+					break;
+			}
+			err = print_stat(obj);
 			if (err)
 				break;
+			if (exiting || --count == 0)
+				break;
 		}
+	cleanup:
+		slabratetop_bpf__destroy(obj);
+		return err != 0;
+}
 
-		err = print_stat(obj);
-		if (err)
-			break;
-
-		if (exiting || --count == 0)
-			break;
-	}
-
-cleanup:
-	slabratetop_bpf__destroy(obj);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
 
