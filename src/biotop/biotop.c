@@ -294,21 +294,24 @@ static void print_loadavg(void)
 	fclose(fp);
 }
 
+static void print_stat_row_extra(void)
+{
+		const struct info_t *key = &data->key;
+		const struct val_t *value = &data->value;
+		float avg_ms = 0;
+		/* To avoid floating point exception. */
+		if (value->io)
+			avg_ms = ((float)value->us) / 1000 / value->io;
+		printf("%-7d %-16s %1s %-3d %-3d %-8s %5d %7lld %6.2f\n",
+		       key->pid, key->name, key->rwflag ? "W" : "R",
+		       key->major, key->minor,
+		       search_disk_name(key->major, key->minor),
+		       value->io, value->bytes / 1024, avg_ms);
+}
+
 static void print_stat_row(const struct data_t *data)
 {
-	const struct info_t *key = &data->key;
-	const struct val_t *value = &data->value;
-	float avg_ms = 0;
-
-	/* To avoid floating point exception. */
-	if (value->io)
-		avg_ms = ((float)value->us) / 1000 / value->io;
-
-	printf("%-7d %-16s %1s %-3d %-3d %-8s %5d %7lld %6.2f\n",
-	       key->pid, key->name, key->rwflag ? "W" : "R",
-	       key->major, key->minor,
-	       search_disk_name(key->major, key->minor),
-	       value->io, value->bytes / 1024, avg_ms);
+	print_stat_row_extra();
 }
 
 static int fetch_counts(int fd, struct data_t *datas)
