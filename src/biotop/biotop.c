@@ -73,7 +73,7 @@ static struct env {
 	.clear_screen	= true,
 	.output_rows	= 20,
 	.sort_by	= ALL,
-	.interval	= 1,
+	.interval	= 2,
 	.count		= 99999999,
 	.verbose	= false,
 };
