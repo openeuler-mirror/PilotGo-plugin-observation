@@ -204,22 +204,23 @@ static int set_fentry_attach_target(struct bpf_program *prog, const char *funcna
 	return err;
 }
 
+static void try_fentry_helper0_extra(void)
+{
+			if (set_fentry_attach_target(obj->progs.dummy_fexit, env.funcname,
+						     "fexit"))
+				goto out_no_fentry;
+			bpf_program__set_autoload(obj->progs.dummy_kprobe, false);
+			bpf_program__set_autoload(obj->progs.dummy_kretprobe, false);
+			return true;
+		out_no_fentry:
+			bpf_program__set_autoload(obj->progs.dummy_fentry, false);
+			bpf_program__set_autoload(obj->progs.dummy_fexit, false);
+			return false;
+}
+
 static void try_fentry_helper0(void)
 {
-		if (set_fentry_attach_target(obj->progs.dummy_fexit, env.funcname,
-					     "fexit"))
-			goto out_no_fentry;
-	
-		bpf_program__set_autoload(obj->progs.dummy_kprobe, false);
-		bpf_program__set_autoload(obj->progs.dummy_kretprobe, false);
-	
-		return true;
-	
-	out_no_fentry:
-		bpf_program__set_autoload(obj->progs.dummy_fentry, false);
-		bpf_program__set_autoload(obj->progs.dummy_fexit, false);
-	
-		return false;
+	try_fentry_helper0_extra();
 }
 
 static bool try_fentry(struct funclatency_bpf *obj)
