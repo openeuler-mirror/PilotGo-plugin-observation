@@ -406,22 +406,25 @@ int memleak__kmem_cache_alloc_node(void *ctx)
 }
 
 SEC("tracepoint/kmem/kmem_cache_free")
+static void memleak__kmem_cache_free_extra(void)
+{
+	    const void *ptr;
+	    if (has_kmem_cache_free())
+	    {
+	        struct trace_event_raw_kmem_cache_free___x *args = ctx;
+	        ptr = BPF_CORE_READ(args, ptr);
+	    }
+	    else
+	    {
+	        struct trace_event_raw_kmem_free___x *args = ctx;
+	        ptr = BPF_CORE_READ(args, ptr);
+	    }
+	    return gen_free_enter(ptr);
+}
+
 int memleak__kmem_cache_free(void *ctx)
 {
-    const void *ptr;
-
-    if (has_kmem_cache_free())
-    {
-        struct trace_event_raw_kmem_cache_free___x *args = ctx;
-        ptr = BPF_CORE_READ(args, ptr);
-    }
-    else
-    {
-        struct trace_event_raw_kmem_free___x *args = ctx;
-        ptr = BPF_CORE_READ(args, ptr);
-    }
-
-    return gen_free_enter(ptr);
+	memleak__kmem_cache_free_extra();
 }
 
 SEC("tracepoint/kmem/mm_page_alloc")
