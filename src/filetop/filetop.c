@@ -258,86 +258,91 @@ static int print_stat(struct filetop_bpf *obj, struct argument *argument)
 	return err;
 }
 
-int main(int argc, char *argv[])
+static void main_extra6(void)
 {
-	struct argument argument = {
-		.clear_screen = true,
-		.regular_file_only = true,
-		.output_rows = 45,
-		.interval = 1,
-		.count = 99999999,
-	};
-	static struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	struct filetop_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-		return 1;
-	}
-
-	obj = filetop_bpf__open_opts(&open_opts);
-	if (!obj) {
-		warning("Failed to open BPF objects\n");
-		return 1;
-	}
-
-	obj->rodata->target_pid = argument.target_pid;
-	obj->rodata->regular_file_only = argument.regular_file_only;
-
-	err = filetop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = filetop_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	while (1) {
-		sleep(argument.interval);
-
-		if (argument.clear_screen){
-			err = system("clear");
+		struct argument argument = {
+			.clear_screen = true,
+			.regular_file_only = true,
+			.output_rows = 45,
+			.interval = 1,
+			.count = 99999999,
+		};
+		static struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		struct filetop_bpf *obj;
+		int err;
+	
+		err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+		if (err)
+			return err;
+	
+		if (!bpf_is_root())
+			return 1;
+	
+		libbpf_set_print(libbpf_print_fn);
+	
+		err = ensure_core_btf(&open_opts);
+		if (err) {
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+			return 1;
+		}
+	
+		obj = filetop_bpf__open_opts(&open_opts);
+		if (!obj) {
+			warning("Failed to open BPF objects\n");
+			return 1;
+		}
+	
+		obj->rodata->target_pid = argument.target_pid;
+		obj->rodata->regular_file_only = argument.regular_file_only;
+	
+		err = filetop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+	
+		err = filetop_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+	
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+	
+		while (1) {
+			sleep(argument.interval);
+	
+			if (argument.clear_screen){
+				err = system("clear");
+				if (err)
+					goto cleanup;
+			}
+	
+			err = print_stat(obj, &argument);
 			if (err)
 				goto cleanup;
+	
+			if (exiting || !argument.count--)
+				break;
 		}
+	
+	cleanup:
+		filetop_bpf__destroy(obj);
+		cleanup_core_btf(&open_opts);
+	
+		return err != 0;
+}
 
-		err = print_stat(obj, &argument);
-		if (err)
-			goto cleanup;
-
-		if (exiting || !argument.count--)
-			break;
-	}
-
-cleanup:
-	filetop_bpf__destroy(obj);
-	cleanup_core_btf(&open_opts);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra6();
 }
