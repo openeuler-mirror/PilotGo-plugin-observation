@@ -161,95 +161,84 @@ static void print_header(struct argument *argument)
 	printf("\n");
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct argument argument = {};
-	struct perf_buffer *pb = NULL;
-	struct drsnoop_bpf *obj;
-	__u64 time_end = 0;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = drsnoop_bpf__open();
-	if (!obj) {
-		warning("Faild to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->target_tgid = argument.pid;
-	obj->rodata->target_pid = argument.tid;
-
-	if (argument.extended && resolve_vm_zone_stat(obj))
-		goto cleanup;
-
-	set_probe_autoload(obj);
-
-	err = drsnoop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = drsnoop_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs\n");
-		goto cleanup;
-	}
-
-	printf("Tracing direct reclaim events");
-	if (argument.duration)
-		printf(" for %ld secs.\n", argument.duration);
-	else
-		printf("... Hit Ctrl-C to end.\n");
-
-	pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
-			      handle_event, handle_lost_events, &argument, NULL);
-	if (!pb) {
-		err = -errno;
-		warning("Failed to open perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	/* setup duration */
-	if (argument.duration)
-		time_end = get_ktime_ns() + argument.duration * NSEC_PER_SEC;
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	print_header(&argument);
-
-	/* main poll */
-	while (!exiting) {
-		err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling perf buffer: %s\n", strerror(-err));
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct argument argument = {};
+		struct perf_buffer *pb = NULL;
+		struct drsnoop_bpf *obj;
+		__u64 time_end = 0;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = drsnoop_bpf__open();
+		if (!obj) {
+			warning("Faild to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->target_tgid = argument.pid;
+		obj->rodata->target_pid = argument.tid;
+		if (argument.extended && resolve_vm_zone_stat(obj))
+			goto cleanup;
+		set_probe_autoload(obj);
+		err = drsnoop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
 			goto cleanup;
 		}
-		if (argument.duration && get_ktime_ns() > time_end)
+		err = drsnoop_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs\n");
 			goto cleanup;
-		/* reset err to return 0 if exiting */
-		err = 0;
-	}
+		}
+		printf("Tracing direct reclaim events");
+		if (argument.duration)
+			printf(" for %ld secs.\n", argument.duration);
+		else
+			printf("... Hit Ctrl-C to end.\n");
+		pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+				      handle_event, handle_lost_events, &argument, NULL);
+		if (!pb) {
+			err = -errno;
+			warning("Failed to open perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		/* setup duration */
+		if (argument.duration)
+			time_end = get_ktime_ns() + argument.duration * NSEC_PER_SEC;
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		print_header(&argument);
+		/* main poll */
+		while (!exiting) {
+			err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+			if (err < 0 && err != -EINTR) {
+				warning("Error polling perf buffer: %s\n", strerror(-err));
+				goto cleanup;
+			}
+			if (argument.duration && get_ktime_ns() > time_end)
+				goto cleanup;
+			/* reset err to return 0 if exiting */
+			err = 0;
+		}
+	cleanup:
+		perf_buffer__free(pb);
+		drsnoop_bpf__destroy(obj);
+		return err != 0;
+}
 
-cleanup:
-	perf_buffer__free(pb);
-	drsnoop_bpf__destroy(obj);
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
