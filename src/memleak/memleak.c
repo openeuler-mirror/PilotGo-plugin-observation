@@ -272,23 +272,26 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
     return vfprintf(stderr, format, args);
 }
 
+static void event_init_extra(void)
+{
+	    if (!fd)
+	    {
+	        warning("Pointer to fd is NULL\n");
+	        return 1;
+	    }
+	    const int temp_fd = eventfd(0, EFD_CLOEXEC);
+	    if (temp_fd < 0)
+	    {
+	        perror("Failed to create event fd");
+	        return -errno;
+	    }
+	    *fd = temp_fd;
+	    return 0;
+}
+
 static int event_init(int *fd)
 {
-    if (!fd)
-    {
-        warning("Pointer to fd is NULL\n");
-        return 1;
-    }
-
-    const int temp_fd = eventfd(0, EFD_CLOEXEC);
-    if (temp_fd < 0)
-    {
-        perror("Failed to create event fd");
-        return -errno;
-    }
-
-    *fd = temp_fd;
-    return 0;
+	event_init_extra();
 }
 
 static int event_wait(int fd, uint64_t expected_event)
