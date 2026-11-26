@@ -106,29 +106,33 @@ static void print_stack(const struct ksyms *ksyms, const struct rqinfo *key)
 	}
 }
 
+static void print_map_extra(void)
+{
+		const char *units = env.milliseconds ? "msecs" : "usecs";
+		struct rqinfo lookup_key = {}, next_key;
+		const struct partition *partition;
+		int err;
+		struct hist hist;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_lookup_elem(fd, &next_key, &hist);
+			if (err < 0) {
+				warning("Failed to lookup hist: %d\n", err);
+				return;
+			}
+			partition = partitions__get_by_dev(partitions, next_key.dev);
+			printf("%-14.14s %-6d %-7s\n",
+				next_key.comm, next_key.pid,
+				partition ? partition->name : "Unknown");
+			print_stack(ksyms, &next_key);
+			print_log2_hist(hist.slots, MAX_SLOTS, units);
+			printf("\n");
+			lookup_key = next_key;
+		}
+}
+
 static void print_map(struct ksyms *ksyms, struct partitions *partitions, int fd)
 {
-	const char *units = env.milliseconds ? "msecs" : "usecs";
-	struct rqinfo lookup_key = {}, next_key;
-	const struct partition *partition;
-	int err;
-	struct hist hist;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_lookup_elem(fd, &next_key, &hist);
-		if (err < 0) {
-			warning("Failed to lookup hist: %d\n", err);
-			return;
-		}
-		partition = partitions__get_by_dev(partitions, next_key.dev);
-		printf("%-14.14s %-6d %-7s\n",
-			next_key.comm, next_key.pid,
-			partition ? partition->name : "Unknown");
-		print_stack(ksyms, &next_key);
-		print_log2_hist(hist.slots, MAX_SLOTS, units);
-		printf("\n");
-		lookup_key = next_key;
-	}
+	print_map_extra();
 }
 
 static bool setup_disk_filter(struct biostacks_bpf *obj,
