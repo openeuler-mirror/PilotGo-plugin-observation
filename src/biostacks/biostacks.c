@@ -24,6 +24,7 @@ const char argp_program_doc[] =
 "    biostacks              # trace block I/O with init stacks.\n"
 "    biostacks 1            # trace for 1 seconds only\n"
 "    biostacks -d sdc       # trace sdc only\n";
+"    biostacks --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "disk", 'd', "DISK", 0, "Trace this disk only" },
