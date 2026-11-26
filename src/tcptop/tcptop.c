@@ -264,6 +264,16 @@ static int print_stat(struct tcptop_bpf *obj)
         return err;
 }
 
+static void main_section13_3(void)
+{
+	
+	                if (bpf_map_update_elem(cg_map_fd, &zero, &cgfd, BPF_ANY)) {
+	                        warning("Failed adding target cgroup to map\n");
+	                        goto cleanup;
+	                }
+	        }
+}
+
 int main(int argc, char *argv[])
 {
         static const struct argp argp = {
@@ -315,12 +325,7 @@ int main(int argc, char *argv[])
                         warning("Failed opening Cgroup path: %s\n", env.cgroup_path);
                         goto cleanup;
                 }
-
-                if (bpf_map_update_elem(cg_map_fd, &zero, &cgfd, BPF_ANY)) {
-                        warning("Failed adding target cgroup to map\n");
-                        goto cleanup;
-                }
-        }
+	main_section13_3();
 
         err = tcptop_bpf__attach(obj);
         if (err) {
