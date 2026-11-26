@@ -140,20 +140,24 @@ static void print_loadavg(void)
 	}
 }
 
+static void collect_stats_extra(void)
+{
+		char *key, **prev_key = NULL;
+		int err, rows = 0;
+		while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+			err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
+			if (err) {
+				warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+				return err;
+			}
+			prev_key = &key;
+		}
+		return rows;
+}
+
 static int collect_stats(int fd, struct slabrate_info *values)
 {
-	char *key, **prev_key = NULL;
-	int err, rows = 0;
-
-	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
-		err = bpf_map_lookup_elem(fd, &key, &values[rows++]);
-		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &key;
-	}
-	return rows;
+	collect_stats_extra();
 }
 
 static int clear_stats(int fd)
