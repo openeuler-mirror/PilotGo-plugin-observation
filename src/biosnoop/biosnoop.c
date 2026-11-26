@@ -239,21 +239,25 @@ static void set_probe_autoload(struct biosnoop_bpf *obj,
 	}
 }
 
+static void setup_cgroup_map_extra(void)
+{
+		int idx = 0;
+		*cgfd = open(env.cgroupspath, O_RDONLY);
+		if (*cgfd < 0) {
+			warning("Failed to opening cgroup path: %s\n", env.cgroupspath);
+			return false;
+		}
+		if (bpf_map_update_elem(bpf_map__fd(obj->maps.cgroup_map),
+					&idx, cgfd, BPF_ANY)) {
+			warning("Failed to adding target cgroup to map\n");
+			return false;
+		}
+		return true;
+}
+
 static bool setup_cgroup_map(struct biosnoop_bpf *obj, int *cgfd)
 {
-	int idx = 0;
-
-	*cgfd = open(env.cgroupspath, O_RDONLY);
-	if (*cgfd < 0) {
-		warning("Failed to opening cgroup path: %s\n", env.cgroupspath);
-		return false;
-	}
-	if (bpf_map_update_elem(bpf_map__fd(obj->maps.cgroup_map),
-				&idx, cgfd, BPF_ANY)) {
-		warning("Failed to adding target cgroup to map\n");
-		return false;
-	}
-	return true;
+	setup_cgroup_map_extra();
 }
 
 static void print_header(void)
