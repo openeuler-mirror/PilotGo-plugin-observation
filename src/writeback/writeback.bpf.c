@@ -45,24 +45,24 @@ static int fill_event(struct event *event,
 }
 
 SEC("tracepoint/writeback/writeback_written")
+static void tracepoint_writeback_written_extra(void)
+{
+		struct event *event;
+		dev_t sb_dev = ctx->sb_dev;
+		__u64 *start = bpf_map_lookup_and_delete_elem(&birth, &sb_dev);
+		if (!start)
+			return 0;
+		event = reserve_buf(sizeof(*event));
+		if (!event)
+			return 0;
+		fill_event(event, ctx, *start);
+		submit_buf(ctx, event, sizeof(*event));
+		return 0;
+}
+
 int tracepoint_writeback_written(struct trace_event_raw_writeback_work_class *ctx)
 {
-	struct event *event;
-
-	dev_t sb_dev = ctx->sb_dev;
-
-	__u64 *start = bpf_map_lookup_and_delete_elem(&birth, &sb_dev);
-	if (!start)
-		return 0;
-
-	event = reserve_buf(sizeof(*event));
-	if (!event)
-		return 0;
-
-	fill_event(event, ctx, *start);
-	submit_buf(ctx, event, sizeof(*event));
-
-	return 0;
+	tracepoint_writeback_written_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
