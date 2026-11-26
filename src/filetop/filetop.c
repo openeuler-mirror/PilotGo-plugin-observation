@@ -105,42 +105,45 @@ static void parse_positional_arg(const char *arg, struct argument *argument,
 	}
 }
 
+static void parse_arg_extra1(void)
+{
+		struct argument *argument = state->input;
+		static int pos_args;
+		switch (key) {
+		case 'p':
+			argument->target_pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'C':
+			argument->clear_screen = false;
+			break;
+		case 'a':
+			argument->regular_file_only = false;
+			break;
+		case 's':
+			parse_sort_arg(arg, state);
+			break;
+		case 'r':
+			parse_rows_arg(arg, argument, state);
+			break;
+		case 'v':
+			verbose = true;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case ARGP_KEY_ARG:
+			parse_positional_arg(arg, argument, state, pos_args);
+			pos_args++;
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	struct argument *argument = state->input;
-	static int pos_args;
-
-	switch (key) {
-	case 'p':
-		argument->target_pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'C':
-		argument->clear_screen = false;
-		break;
-	case 'a':
-		argument->regular_file_only = false;
-		break;
-	case 's':
-		parse_sort_arg(arg, state);
-		break;
-	case 'r':
-		parse_rows_arg(arg, argument, state);
-		break;
-	case 'v':
-		verbose = true;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case ARGP_KEY_ARG:
-		parse_positional_arg(arg, argument, state, pos_args);
-		pos_args++;
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra1();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
