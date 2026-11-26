@@ -81,24 +81,26 @@ static void print_header(void)
            "TIME", "PID", "COMM", "DEVICE");
 }
 
+static void poll_events_extra1(void)
+{
+	    int err = 0;
+	    while (!exiting)
+	    {
+	        err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
+	        if (err < 0 && err != -EINTR)
+	        {
+	            warning("Error polling perf buffer: %s\n", strerror(-err));
+	            break;
+	        }
+	        /* reset err to return 0 if exiting */
+	        err = 0;
+	    }
+	    return err;
+}
+
 static int poll_events(struct perf_buffer *pb)
 {
-    int err = 0;
-
-    while (!exiting)
-    {
-        err = perf_buffer__poll(pb, PERF_POLL_TIMEOUT_MS);
-        if (err < 0 && err != -EINTR)
-        {
-            warning("Error polling perf buffer: %s\n", strerror(-err));
-            break;
-        }
-
-        /* reset err to return 0 if exiting */
-        err = 0;
-    }
-
-    return err;
+	poll_events_extra1();
 }
 
 int main(int argc, char *argv[])
