@@ -88,27 +88,26 @@ int BPF_PROG(cpu_frequency_raw, unsigned int state, unsigned int cpu_id)
 }
 
 SEC("perf_event")
+static void do_sample_extra(void)
+{
+		u32 freq_mhz, pid = bpf_get_current_pid_tgid();
+		u64 slot, cpu = bpf_get_smp_processor_id();
+		if (memcg_filtered())
+			return 0;
+		if (cpu >= MAX_CPU_NR)
+			return 0;
+		freq_mhz = freqs_mhz[cpu];
+		if (!freq_mhz)
+			return 0;
+		slot = freq_slot(freq_mhz);
+		__sync_fetch_and_add(&syswide.slots[slot], 1);
+		account_process_freq(pid, slot);
+		return 0;
+}
+
 int do_sample(struct bpf_perf_event_data *ctx)
 {
-	u32 freq_mhz, pid = bpf_get_current_pid_tgid();
-	u64 slot, cpu = bpf_get_smp_processor_id();
-
-	if (memcg_filtered())
-		return 0;
-
-	if (cpu >= MAX_CPU_NR)
-		return 0;
-
-	freq_mhz = freqs_mhz[cpu];
-	if (!freq_mhz)
-		return 0;
-
-	slot = freq_slot(freq_mhz);
-	__sync_fetch_and_add(&syswide.slots[slot], 1);
-
-	account_process_freq(pid, slot);
-
-	return 0;
+	do_sample_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
