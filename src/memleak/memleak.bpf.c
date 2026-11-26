@@ -341,22 +341,25 @@ int memleak__kmalloc_node(void *ctx)
 }
 
 SEC("tracepoint/kmem/kfree")
+static void memleak__kfree_extra(void)
+{
+	    const void *ptr;
+	    if (has_kfree())
+	    {
+	        struct trace_event_raw_kfree___x *args = ctx;
+	        ptr = BPF_CORE_READ(args, ptr);
+	    }
+	    else
+	    {
+	        struct trace_event_raw_kmem_free___x *args = ctx;
+	        ptr = BPF_CORE_READ(args, ptr);
+	    }
+	    return gen_free_enter(ptr);
+}
+
 int memleak__kfree(void *ctx)
 {
-    const void *ptr;
-
-    if (has_kfree())
-    {
-        struct trace_event_raw_kfree___x *args = ctx;
-        ptr = BPF_CORE_READ(args, ptr);
-    }
-    else
-    {
-        struct trace_event_raw_kmem_free___x *args = ctx;
-        ptr = BPF_CORE_READ(args, ptr);
-    }
-
-    return gen_free_enter(ptr);
+	memleak__kfree_extra();
 }
 
 SEC("tracepoint/kmem/kmem_cache_alloc")
