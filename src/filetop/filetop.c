@@ -214,21 +214,24 @@ static int collect_values(int fd, struct file_stat *values)
 	collect_values_extra3();
 }
 
+static void clear_values_extra(void)
+{
+		struct file_id key, *prev_key = NULL;
+		int err = 0;
+		while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+			err = bpf_map_delete_elem(fd, &key);
+			if (err) {
+				warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+				return err;
+			}
+			prev_key = &key;
+		}
+		return err;
+}
+
 static int clear_values(int fd)
 {
-	struct file_id key, *prev_key = NULL;
-	int err = 0;
-
-	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
-		err = bpf_map_delete_elem(fd, &key);
-		if (err) {
-			warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &key;
-	}
-
-	return err;
+	clear_values_extra();
 }
 
 static int print_stat(struct filetop_bpf *obj, struct argument *argument)
