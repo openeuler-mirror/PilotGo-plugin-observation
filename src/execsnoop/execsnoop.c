@@ -158,25 +158,30 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void quoted_symbol_extra(void)
+{
+		switch (c) {
+		case '"':
+			putchar('\\');
+			putchar('"');
+			break;
+		case '\t':
+			putchar('\\');
+			putchar('t');
+			break;
+		case '\n':
+			putchar('\\');
+			putchar('n');
+			break;
+		default:
+			putchar(c);
+			break;
+		}
+}
+
 static void inline quoted_symbol(char c)
 {
-	switch (c) {
-	case '"':
-		putchar('\\');
-		putchar('"');
-		break;
-	case '\t':
-		putchar('\\');
-		putchar('t');
-		break;
-	case '\n':
-		putchar('\\');
-		putchar('n');
-		break;
-	default:
-		putchar(c);
-		break;
-	}
+	quoted_symbol_extra();
 }
 
 static void print_quoted_args(const struct event *e)
