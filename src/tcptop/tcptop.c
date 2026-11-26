@@ -276,93 +276,81 @@ static void main_section13_3(void)
 	        }
 }
 
+static void main_extra(void)
+{
+	        static const struct argp argp = {
+	                .options = opts,
+	                .parser = parse_arg,
+	                .doc = argp_program_doc,
+	        };
+	        struct tcptop_bpf *obj;
+	        int cgfd = -1;
+	        int err;
+	        int family = -1;
+	        err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	        if (err)
+	                return err;
+	        if (!bpf_is_root())
+	                return 1;
+	        libbpf_set_print(libbpf_print_fn);
+	        if (env.ipv4_only)
+	                family = AF_INET;
+	        if (env.ipv6_only)
+	                family = AF_INET6;
+	        obj = tcptop_bpf__open();
+	        if (!obj) {
+	                warning("Failed to open BPF object\n");
+	                return 1;
+	        }
+	        obj->rodata->target_pid = env.target_pid;
+	        obj->rodata->target_family = family;
+	        obj->rodata->filter_cg = env.cgroup_filtering;
+	        err = tcptop_bpf__load(obj);
+	        if (err) {
+	                warning("Failed to load BPF object: %d\n", err);
+	                goto cleanup;
+	        }
+	        if (env.cgroup_filtering) {
+	                int zero = 0;
+	                int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
+	                cgfd = open(env.cgroup_path, O_RDONLY);
+	                if (cgfd < 0) {
+	                        warning("Failed opening Cgroup path: %s\n", env.cgroup_path);
+	                        goto cleanup;
+	                }
+		main_section13_3();
+	        err = tcptop_bpf__attach(obj);
+	        if (err) {
+	                warning("Failed to attach BPF programs: %d\n", err);
+	                goto cleanup;
+	        }
+	        if (signal(SIGINT, sig_handler) == SIG_ERR) {
+	                warning("Can't set signal handler: %s\n", strerror(errno));
+	                err = 1;
+	                goto cleanup;
+	        }
+	        while (1) {
+	                sleep(env.interval);
+	                if (env.clear_screen) {
+	                        err = system("clear");
+	                        if (err)
+	                                goto cleanup;
+	                }
+	                err = print_stat(obj);
+	                if (err)
+	                        goto cleanup;
+	                if (exiting || --env.count == 0)
+	                        goto cleanup;
+	        }
+	cleanup:
+	        if (env.cgroup_filtering && cgfd != -1)
+	                close(cgfd);
+	        tcptop_bpf__destroy(obj);
+	        return err != 0;
+	}
+}
+
 int main(int argc, char *argv[])
 {
-        static const struct argp argp = {
-                .options = opts,
-                .parser = parse_arg,
-                .doc = argp_program_doc,
-        };
-        struct tcptop_bpf *obj;
-        int cgfd = -1;
-        int err;
-        int family = -1;
-
-        err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-        if (err)
-                return err;
-
-        if (!bpf_is_root())
-                return 1;
-
-        libbpf_set_print(libbpf_print_fn);
-
-        if (env.ipv4_only)
-                family = AF_INET;
-        if (env.ipv6_only)
-                family = AF_INET6;
-
-        obj = tcptop_bpf__open();
-        if (!obj) {
-                warning("Failed to open BPF object\n");
-                return 1;
-        }
-
-        obj->rodata->target_pid = env.target_pid;
-        obj->rodata->target_family = family;
-        obj->rodata->filter_cg = env.cgroup_filtering;
-
-        err = tcptop_bpf__load(obj);
-        if (err) {
-                warning("Failed to load BPF object: %d\n", err);
-                goto cleanup;
-        }
-
-        if (env.cgroup_filtering) {
-                int zero = 0;
-                int cg_map_fd = bpf_map__fd(obj->maps.cgroup_map);
-
-                cgfd = open(env.cgroup_path, O_RDONLY);
-                if (cgfd < 0) {
-                        warning("Failed opening Cgroup path: %s\n", env.cgroup_path);
-                        goto cleanup;
-                }
-	main_section13_3();
-
-        err = tcptop_bpf__attach(obj);
-        if (err) {
-                warning("Failed to attach BPF programs: %d\n", err);
-                goto cleanup;
-        }
-
-        if (signal(SIGINT, sig_handler) == SIG_ERR) {
-                warning("Can't set signal handler: %s\n", strerror(errno));
-                err = 1;
-                goto cleanup;
-        }
-
-        while (1) {
-                sleep(env.interval);
-
-                if (env.clear_screen) {
-                        err = system("clear");
-                        if (err)
-                                goto cleanup;
-                }
-
-                err = print_stat(obj);
-                if (err)
-                        goto cleanup;
-
-                if (exiting || --env.count == 0)
-                        goto cleanup;
-        }
-
-cleanup:
-        if (env.cgroup_filtering && cgfd != -1)
-                close(cgfd);
-        tcptop_bpf__destroy(obj);
-
-        return err != 0;
-}
+	main_extra();
 
