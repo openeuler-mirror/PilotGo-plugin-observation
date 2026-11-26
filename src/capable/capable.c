@@ -8,7 +8,8 @@
 
 struct argument {
 	char *cgroupspath;
-	bool cg;
+	/* cg field */
+	bool	cg;
 	bool extra_fields;
 	bool user_stack;
 	bool kernel_stack;
