@@ -11,7 +11,8 @@
 static volatile sig_atomic_t exiting;
 
 static struct env {
-	bool verbose;
+	/* verbose field */
+	bool	verbose;
 	bool timestamp;
 	const char *filename;
 	bool filter_filename;
