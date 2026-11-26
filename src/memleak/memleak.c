@@ -881,33 +881,38 @@ static int spawn_child_command(void)
 	spawn_child_command_extra();
 }
 
+static void init_symbolizer_extra(void)
+{
+	#ifdef USE_BLAZESYM
+		symbolizer = blazesym_new();
+		if (!symbolizer) {
+			warning("Failed to load blazesym");
+			return -ENOMEM;
+		}
+		print_stack_frames_func = print_stack_frames_by_blazesym;
+	#else
+		if (env.kernel_trace) {
+			ksyms = ksyms__load();
+			if (!ksyms) {
+				warning("Failed to load ksyms\n");
+				return -ENOMEM;
+			}
+			print_stack_frames_func = print_stack_frames_by_ksyms;
+		} else {
+			syms_cache = syms_cache__new(0);
+			if (!syms_cache) {
+				warning("Failed to create syms_cache\n");
+				return -ENOMEM;
+			}
+			print_stack_frames_func = print_stack_frames_by_syms_cache;
+		}
+	#endif
+		return 0;
+}
+
 static int init_symbolizer(void)
 {
-#ifdef USE_BLAZESYM
-	symbolizer = blazesym_new();
-	if (!symbolizer) {
-		warning("Failed to load blazesym");
-		return -ENOMEM;
-	}
-	print_stack_frames_func = print_stack_frames_by_blazesym;
-#else
-	if (env.kernel_trace) {
-		ksyms = ksyms__load();
-		if (!ksyms) {
-			warning("Failed to load ksyms\n");
-			return -ENOMEM;
-		}
-		print_stack_frames_func = print_stack_frames_by_ksyms;
-	} else {
-		syms_cache = syms_cache__new(0);
-		if (!syms_cache) {
-			warning("Failed to create syms_cache\n");
-			return -ENOMEM;
-		}
-		print_stack_frames_func = print_stack_frames_by_syms_cache;
-	}
-#endif
-	return 0;
+	init_symbolizer_extra();
 }
 
 static int reap_child_process(void)
