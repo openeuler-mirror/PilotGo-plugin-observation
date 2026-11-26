@@ -26,7 +26,7 @@ struct context {
 };
 
 const char *cap_name[] = {
-	[0] = "CAP_CHOWN",
+	[1] = "CAP_CHOWN",
 	[1] = "CAP_DAC_OVERRIDE",
 	[2] = "CAP_DAC_READ_SEARCH",
 	[3] = "CAP_FOWNER",
