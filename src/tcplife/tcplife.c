@@ -177,87 +177,77 @@ static int print_events(struct bpf_buffer *buf)
 	print_events_extra();
 }
 
+static void main_extra(void)
+{
+	        LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+	        static const struct argp argp = {
+	                .options = opts,
+	                .parser = parse_arg,
+	                .doc = argp_program_doc,
+	        };
+	        struct tcplife_bpf *obj;
+	        struct bpf_buffer *buf = NULL;
+	        int err;
+	        err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	        if (err)
+	                return err;
+	        if (!bpf_is_root())
+	                return 1;
+	        libbpf_set_print(libbpf_print_fn);
+	        err = ensure_core_btf(&open_opts);
+	        if (err) {
+	                warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+	                return 1;
+	        }
+	        obj = tcplife_bpf__open_opts(&open_opts);
+	        if (!obj) {
+	                warning("Failed to open BPF object\n");
+	                err = 1;
+	                goto cleanup;
+	        }
+	        obj->rodata->target_pid = env.target_pid;
+	        obj->rodata->target_family = env.target_family;
+	        obj->rodata->filter_sport = env.filter_sport;
+	        obj->rodata->filter_dport = env.filter_dport;
+	        for (int i = 0; i < MAX_PORTS; i++) {
+	                obj->rodata->target_dports[i] = env.target_dports[i];
+	                obj->rodata->target_sports[i] = env.target_sports[i];
+	        }
+	        buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+	        if (!buf) {
+	                err = -errno;
+	                warning("Failed to create ring/perf buffer: %d\n", err);
+	                goto cleanup;
+	        }
+	        if (probe_tp_btf("inet_sock_set_state"))
+	                bpf_program__set_autoload(obj->progs.inet_sock_set_state_raw, false);
+	        else
+	                bpf_program__set_autoload(obj->progs.inet_sock_set_state, false);
+	        err = tcplife_bpf__load(obj);
+	        if (err) {
+	                warning("Failed to load BPF object: %d\n", err);
+	                goto cleanup;
+	        }
+	        err = tcplife_bpf__attach(obj);
+	        if (err) {
+	                warning("Failed to attach BPF programs: %d\n", err);
+	                goto cleanup;
+	        }
+	        if (signal(SIGINT, sig_handler) == SIG_ERR) {
+	                warning("Can't set signal handler: %s\n", strerror(errno));
+	                err = 1;
+	                goto cleanup;
+	        }
+	        err = print_events(buf);
+	cleanup:
+	        bpf_buffer__free(buf);
+	        tcplife_bpf__destroy(obj);
+	        cleanup_core_btf(&open_opts);
+	        return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-        LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-        static const struct argp argp = {
-                .options = opts,
-                .parser = parse_arg,
-                .doc = argp_program_doc,
-        };
-        struct tcplife_bpf *obj;
-        struct bpf_buffer *buf = NULL;
-        int err;
-
-        err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-        if (err)
-                return err;
-
-        if (!bpf_is_root())
-                return 1;
-
-        libbpf_set_print(libbpf_print_fn);
-
-        err = ensure_core_btf(&open_opts);
-        if (err) {
-                warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-                return 1;
-        }
-
-        obj = tcplife_bpf__open_opts(&open_opts);
-        if (!obj) {
-                warning("Failed to open BPF object\n");
-                err = 1;
-                goto cleanup;
-        }
-
-        obj->rodata->target_pid = env.target_pid;
-        obj->rodata->target_family = env.target_family;
-        obj->rodata->filter_sport = env.filter_sport;
-        obj->rodata->filter_dport = env.filter_dport;
-
-        for (int i = 0; i < MAX_PORTS; i++) {
-                obj->rodata->target_dports[i] = env.target_dports[i];
-                obj->rodata->target_sports[i] = env.target_sports[i];
-        }
-
-        buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-        if (!buf) {
-                err = -errno;
-                warning("Failed to create ring/perf buffer: %d\n", err);
-                goto cleanup;
-        }
-
-        if (probe_tp_btf("inet_sock_set_state"))
-                bpf_program__set_autoload(obj->progs.inet_sock_set_state_raw, false);
-        else
-                bpf_program__set_autoload(obj->progs.inet_sock_set_state, false);
-
-        err = tcplife_bpf__load(obj);
-        if (err) {
-                warning("Failed to load BPF object: %d\n", err);
-                goto cleanup;
-        }
-
-        err = tcplife_bpf__attach(obj);
-        if (err) {
-                warning("Failed to attach BPF programs: %d\n", err);
-                goto cleanup;
-        }
-
-        if (signal(SIGINT, sig_handler) == SIG_ERR) {
-                warning("Can't set signal handler: %s\n", strerror(errno));
-                err = 1;
-                goto cleanup;
-        }
-
-        err = print_events(buf);
-
-cleanup:
-        bpf_buffer__free(buf);
-        tcplife_bpf__destroy(obj);
-        cleanup_core_btf(&open_opts);
-
-        return err != 0;
+	main_extra();
 }
 
