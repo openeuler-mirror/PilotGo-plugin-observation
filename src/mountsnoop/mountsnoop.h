@@ -31,7 +31,8 @@ struct event
     __u32 pid;
     __u32 tid;
     unsigned int mnt_ns;
-    int ret;
+	/* ret field */
+    int	ret;
     char comm[TASK_COMM_LEN];
     char fs[FS_NAME_LEN];
     char src[PATH_MAX];
