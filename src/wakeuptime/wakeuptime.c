@@ -137,51 +137,46 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 static void sig_handler(int sig)
 {}
 
-static void print_map(struct ksyms *ksyms, struct wakeuptime_bpf *bpf_obj)
+static void print_map_extra(void)
 {
-	struct key_t lookup_key = {}, next_key;
-	unsigned long *ip;
-	int counts_fd, stack_traces_fd;
-	__u64 val;
-
-	ip = calloc(env.perf_max_stack_depth, sizeof(*ip));
-	if (!ip) {
-		warning("Failed to alloc ip\n");
-		return;
-	}
-
-	counts_fd = bpf_map__fd(bpf_obj->maps.counts);
-	stack_traces_fd = bpf_map__fd(bpf_obj->maps.stackmap);
-
-	while (!bpf_map_get_next_key(counts_fd, &lookup_key, &next_key)) {
-		int err = bpf_map_lookup_elem(counts_fd, &next_key, &val);
-
-		if (err < 0) {
-			warning("Failed to lookup info: %d\n", err);
-			free(ip);
+		struct key_t lookup_key = {}, next_key;
+		unsigned long *ip;
+		int counts_fd, stack_traces_fd;
+		__u64 val;
+		ip = calloc(env.perf_max_stack_depth, sizeof(*ip));
+		if (!ip) {
+			warning("Failed to alloc ip\n");
 			return;
 		}
-
-		printf("\n	%-16s %s\n", "target:", next_key.target);
-		lookup_key = next_key;
-
-		err = bpf_map_lookup_elem(stack_traces_fd, &next_key.wake_stack_id, ip);
-		if (err < 0)
-			warning("missed kernel stack: %d\n", err);
-
-		for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
-			const struct ksym *ksym = ksyms__map_addr(ksyms, ip[i]);
-
-			printf("	%-16lx %s\n", ip[i], ksym ? ksym->name : "Unknown");
+		counts_fd = bpf_map__fd(bpf_obj->maps.counts);
+		stack_traces_fd = bpf_map__fd(bpf_obj->maps.stackmap);
+		while (!bpf_map_get_next_key(counts_fd, &lookup_key, &next_key)) {
+			int err = bpf_map_lookup_elem(counts_fd, &next_key, &val);
+			if (err < 0) {
+				warning("Failed to lookup info: %d\n", err);
+				free(ip);
+				return;
+			}
+			printf("\n	%-16s %s\n", "target:", next_key.target);
+			lookup_key = next_key;
+			err = bpf_map_lookup_elem(stack_traces_fd, &next_key.wake_stack_id, ip);
+			if (err < 0)
+				warning("missed kernel stack: %d\n", err);
+			for (int i = 0; i < env.perf_max_stack_depth && ip[i]; i++) {
+				const struct ksym *ksym = ksyms__map_addr(ksyms, ip[i]);
+				printf("	%-16lx %s\n", ip[i], ksym ? ksym->name : "Unknown");
+			}
+			printf("	%-16s %s\n", "waker:", next_key.waker);
+			/* To convert val in microseconds */
+			val /= 1000;
+			printf("	%lld\n", val);
 		}
-		printf("	%-16s %s\n", "waker:", next_key.waker);
+		free(ip);
+}
 
-		/* To convert val in microseconds */
-		val /= 1000;
-		printf("	%lld\n", val);
-	}
-
-	free(ip);
+static void print_map(struct ksyms *ksyms, struct wakeuptime_bpf *bpf_obj)
+{
+	print_map_extra();
 }
 
 static void main_extra(void)
