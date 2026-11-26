@@ -571,23 +571,25 @@ static void free_stats(int stat_map, struct stack_stat **stats, size_t stat_idx)
 	free(stats);
 }
 
+static void print_stats_extra(void)
+{
+		struct stack_stat **stats;
+		size_t stat_idx;
+		int nr_stack_entries;
+		int ret;
+		ret = collect_stats(ksyms, stack_map, stat_map, &stats, &stat_idx);
+		if (ret)
+			return ret;
+		nr_stack_entries = MIN(env.nr_stack_entries, PERF_MAX_STACK_DEPTH);
+		print_acq_stats(ksyms, stats, stat_idx, nr_stack_entries);
+		print_hld_stats(ksyms, stats, stat_idx, nr_stack_entries);
+		free_stats(stat_map, stats, stat_idx);
+		return 0;
+}
+
 static int print_stats(struct ksyms *ksyms, int stack_map, int stat_map)
 {
-	struct stack_stat **stats;
-	size_t stat_idx;
-	int nr_stack_entries;
-	int ret;
-
-	ret = collect_stats(ksyms, stack_map, stat_map, &stats, &stat_idx);
-	if (ret)
-		return ret;
-
-	nr_stack_entries = MIN(env.nr_stack_entries, PERF_MAX_STACK_DEPTH);
-	print_acq_stats(ksyms, stats, stat_idx, nr_stack_entries);
-	print_hld_stats(ksyms, stats, stat_idx, nr_stack_entries);
-	free_stats(stat_map, stats, stat_idx);
-
-	return 0;
+	print_stats_extra();
 }
 
 static volatile sig_atomic_t exiting;
