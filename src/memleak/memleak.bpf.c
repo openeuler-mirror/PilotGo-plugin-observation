@@ -91,24 +91,25 @@ static __always_inline void update_statistics_del(u64 stack_id, u64 sz)
     __sync_fetch_and_add(&existing_cinfo->bits, -decremental_cinfo.bits);
 }
 
+static void gen_alloc_enter_extra(void)
+{
+	    if (size < min_size || size > max_size)
+	        return 0;
+	    if (sample_rate > 1)
+	    {
+	        if (bpf_ktime_get_ns() % sample_rate != 0)
+	            return 0;
+	    }
+	    const pid_t pid = bpf_get_current_pid_tgid() >> 32;
+	    bpf_map_update_elem(&sizes, &pid, &size, BPF_ANY);
+	    if (trace_all)
+	        bpf_printk("alloc entered, size = %lu\n", size);
+	    return 0;
+}
+
 static __always_inline int gen_alloc_enter(size_t size)
 {
-    if (size < min_size || size > max_size)
-        return 0;
-
-    if (sample_rate > 1)
-    {
-        if (bpf_ktime_get_ns() % sample_rate != 0)
-            return 0;
-    }
-
-    const pid_t pid = bpf_get_current_pid_tgid() >> 32;
-    bpf_map_update_elem(&sizes, &pid, &size, BPF_ANY);
-
-    if (trace_all)
-        bpf_printk("alloc entered, size = %lu\n", size);
-
-    return 0;
+	gen_alloc_enter_extra();
 }
 
 static __always_inline int gen_alloc_exit2(void *ctx, u64 address)
