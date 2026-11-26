@@ -90,33 +90,32 @@ static __always_inline void record_delta(info_t *info, u64 delta)
 	}
 }
 
+static void handle_exit_extra(void)
+{
+		irq_key_t ikey = {};
+		info_t *info;
+		u32 key = 0;
+		u64 delta;
+		u64 *tsp;
+		if (trace_filtered())
+			return 0;
+		tsp = bpf_map_lookup_elem(&start, &key);
+		if (!tsp)
+			return 0;
+		delta = bpf_ktime_get_ns() - *tsp;
+		if (!target_ns)
+			delta /= 1000U;
+		bpf_probe_read_kernel_str(&ikey.name, sizeof(ikey.name), BPF_CORE_READ(action, name));
+		info = bpf_map_lookup_or_try_init(&infos, &ikey, &zero);
+		if (!info)
+			return 0;
+		record_delta(info, delta);
+		return 0;
+}
+
 static int handle_exit(int irq, struct irqaction *action)
 {
-	irq_key_t ikey = {};
-	info_t *info;
-	u32 key = 0;
-	u64 delta;
-	u64 *tsp;
-
-	if (trace_filtered())
-		return 0;
-
-	tsp = bpf_map_lookup_elem(&start, &key);
-	if (!tsp)
-		return 0;
-
-	delta = bpf_ktime_get_ns() - *tsp;
-	if (!target_ns)
-		delta /= 1000U;
-
-	bpf_probe_read_kernel_str(&ikey.name, sizeof(ikey.name), BPF_CORE_READ(action, name));
-	info = bpf_map_lookup_or_try_init(&infos, &ikey, &zero);
-	if (!info)
-		return 0;
-
-	record_delta(info, delta);
-
-	return 0;
+	handle_exit_extra();
 }
 
 SEC("tp_btf/irq_handler_entry")
