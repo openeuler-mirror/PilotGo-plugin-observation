@@ -78,7 +78,7 @@ static struct env {
 	.verbose	= false,
 };
 
-const char *argp_program_version = "biotop 0.1";
+const char *argp_program_version = "biotop 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
 "Trace file reads/writes by process.\n"
