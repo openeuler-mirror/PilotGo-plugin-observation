@@ -94,23 +94,26 @@ static int clear_map(int map_fd)
 	return 0;
 }
 
+static void print_map_extra(void)
+{
+		struct key_t lookup_key = { .pid = -1 }, next_key;
+		__u64 val;
+		while (!bpf_map_get_next_key(map_fd, &lookup_key, &next_key)) {
+			int err = bpf_map_lookup_elem(map_fd, &next_key, &val);
+			if (err < 0) {
+				warning("Failed to lookup info: %d\n", err);
+				return err;
+			}
+			printf("%-16s %-7d %lld\n", next_key.comm, next_key.pid, val);
+			lookup_key = next_key;
+		}
+		printf("\n");
+		return clear_map(map_fd);
+}
+
 static int print_map(int map_fd)
 {
-	struct key_t lookup_key = { .pid = -1 }, next_key;
-	__u64 val;
-
-	while (!bpf_map_get_next_key(map_fd, &lookup_key, &next_key)) {
-		int err = bpf_map_lookup_elem(map_fd, &next_key, &val);
-		if (err < 0) {
-			warning("Failed to lookup info: %d\n", err);
-			return err;
-		}
-		printf("%-16s %-7d %lld\n", next_key.comm, next_key.pid, val);
-		lookup_key = next_key;
-	}
-	printf("\n");
-
-	return clear_map(map_fd);
+	print_map_extra();
 }
 
 int main(int argc, char *argv[])
