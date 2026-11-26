@@ -147,31 +147,33 @@ static int poll_events(struct bpf_buffer *buf)
 	return err;
 }
 
+static void attach_uprobes_extra(void)
+{
+		char *pthread_lib_path;
+		off_t func_off;
+		int err = 0;
+		pthread_lib_path = find_library_so("/usr/bin/ls", "/libpthread.so");
+		func_off = get_elf_func_offset(pthread_lib_path, "pthread_create");
+		if (func_off < 0) {
+			warning("Could not find pthread_create in %s\n", pthread_lib_path);
+			err = 1;
+			goto cleanup;
+		}
+		*link = bpf_program__attach_uprobe(obj->progs.pthread_create, false,
+						   -1, pthread_lib_path, func_off);
+		if (!*link) {
+			warning("Failed to attach pthread_create: %d\n", -errno);
+			err = 1;
+			goto cleanup;
+		}
+	cleanup:
+		free(pthread_lib_path);
+		return err != 0;
+}
+
 static int attach_uprobes(struct threadsnoop_bpf *obj, struct bpf_link **link)
 {
-	char *pthread_lib_path;
-	off_t func_off;
-	int err = 0;
-
-	pthread_lib_path = find_library_so("/usr/bin/ls", "/libpthread.so");
-	func_off = get_elf_func_offset(pthread_lib_path, "pthread_create");
-	if (func_off < 0) {
-		warning("Could not find pthread_create in %s\n", pthread_lib_path);
-		err = 1;
-		goto cleanup;
-	}
-
-	*link = bpf_program__attach_uprobe(obj->progs.pthread_create, false,
-					   -1, pthread_lib_path, func_off);
-	if (!*link) {
-		warning("Failed to attach pthread_create: %d\n", -errno);
-		err = 1;
-		goto cleanup;
-	}
-
-cleanup:
-	free(pthread_lib_path);
-	return err != 0;
+	attach_uprobes_extra();
 }
 
 int main(int argc, char *argv[])
