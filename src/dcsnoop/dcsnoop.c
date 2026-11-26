@@ -164,21 +164,25 @@ static int print_events(struct bpf_buffer *buf)
 	print_events_extra();
 }
 
+static void set_probes_autoload_extra(void)
+{
+		if (!env.trace_all) {
+			bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
+			bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
+		}
+		if (fentry_can_attach("d_lookup", NULL)) {
+			bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
+			bpf_program__set_autoload(obj->progs.d_lookup_kprobe, false);
+			bpf_program__set_autoload(obj->progs.d_lookup_kretprobe, false);
+		} else {
+			bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
+			bpf_program__set_autoload(obj->progs.d_lookup_fexit, false);
+		}
+}
+
 static void set_probes_autoload(struct dcsnoop_bpf *obj)
 {
-	if (!env.trace_all) {
-		bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
-		bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
-	}
-
-	if (fentry_can_attach("d_lookup", NULL)) {
-		bpf_program__set_autoload(obj->progs.lookup_fast_kprobe, false);
-		bpf_program__set_autoload(obj->progs.d_lookup_kprobe, false);
-		bpf_program__set_autoload(obj->progs.d_lookup_kretprobe, false);
-	} else {
-		bpf_program__set_autoload(obj->progs.lookup_fast_fentry, false);
-		bpf_program__set_autoload(obj->progs.d_lookup_fexit, false);
-	}
+	set_probes_autoload_extra();
 }
 
 static void main_extra(void)
