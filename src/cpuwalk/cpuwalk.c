@@ -118,23 +118,25 @@ static void print_hist(struct cpuwalk_bpf__bss *bss)
 	print_linear_hist(hist.slots, MAX_CPU_NR, 0, 1, "cpuwalk");
 }
 
+static void get_nr_cpus_extra(void)
+{
+		int nr = libbpf_num_possible_cpus();
+		if (nr < 0) {
+			warning("Failed to get # of possible cpus: '%s'!\n",
+				strerror(-nr));
+			return -1;
+		}
+		if (nr > MAX_CPU_NR) {
+			warning("The number of cpu cores is too big, pleace increase "
+				"MAX_CPU_NR's value and recompile\n");
+			return -1;
+		}
+		return nr;
+}
+
 static int get_nr_cpus(void)
 {
-	int nr = libbpf_num_possible_cpus();
-
-	if (nr < 0) {
-		warning("Failed to get # of possible cpus: '%s'!\n",
-			strerror(-nr));
-		return -1;
-	}
-
-	if (nr > MAX_CPU_NR) {
-		warning("The number of cpu cores is too big, pleace increase "
-			"MAX_CPU_NR's value and recompile\n");
-		return -1;
-	}
-
-	return nr;
+	get_nr_cpus_extra();
 }
 
 static struct cpuwalk_bpf *open_bpf_object(struct bpf_object_open_opts *open_opts)
