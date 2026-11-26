@@ -240,25 +240,27 @@ static void parse_open_flags(int flag, int sps_cnt)
 	parse_open_flags_extra();
 }
 
+static void parse_open_modes_extra(void)
+{
+	    char modes_string[1024] = {0};
+	    for (int j = 0; j < ARRAY_SIZE(openmodes); j++)
+	    {
+	        if (!(mode & openmodes[j].mode))
+	            continue;
+	        if (modes_string[0])
+	            strcat(modes_string, " | ");
+	        strcat(modes_string, openmodes[j].name);
+	    }
+	    if (strlen(modes_string) == 0)
+	        return;
+	    for (int j = 0; j < sps_cnt; j++)
+	        printf(" ");
+	    printf("MODES: %s\n", modes_string);
+}
+
 static void parse_open_modes(unsigned short mode, int sps_cnt)
 {
-    char modes_string[1024] = {0};
-
-    for (int j = 0; j < ARRAY_SIZE(openmodes); j++)
-    {
-        if (!(mode & openmodes[j].mode))
-            continue;
-        if (modes_string[0])
-            strcat(modes_string, " | ");
-        strcat(modes_string, openmodes[j].name);
-    }
-    if (strlen(modes_string) == 0)
-        return;
-
-    for (int j = 0; j < sps_cnt; j++)
-        printf(" ");
-
-    printf("MODES: %s\n", modes_string);
+	parse_open_modes_extra();
 }
 
 static void print_event_header_extra(void)
