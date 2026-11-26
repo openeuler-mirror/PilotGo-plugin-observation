@@ -114,20 +114,23 @@ static void lock_contended(void *ctx, void *lock)
 	lock_contended_extra();
 }
 
+static void lock_aborted_extra(void)
+{
+		u64 task_id;
+		struct task_lock tl = {};
+		if (target_lock && target_lock != lock)
+			return;
+		task_id = bpf_get_current_pid_tgid();
+		if (!tracing_task(task_id))
+			return;
+		tl.task_id = task_id;
+		tl.lock_ptr = (u64)lock;
+		bpf_map_delete_elem(&lockholder_map, &tl);
+}
+
 static void lock_aborted(void *lock)
 {
-	u64 task_id;
-	struct task_lock tl = {};
-
-	if (target_lock && target_lock != lock)
-		return;
-
-	task_id = bpf_get_current_pid_tgid();
-	if (!tracing_task(task_id))
-		return;
-	tl.task_id = task_id;
-	tl.lock_ptr = (u64)lock;
-	bpf_map_delete_elem(&lockholder_map, &tl);
+	lock_aborted_extra();
 }
 
 static void lock_acquired_extra(void)
