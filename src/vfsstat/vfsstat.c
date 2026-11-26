@@ -120,81 +120,72 @@ static void report_loop(struct vfsstat_bpf *skel)
 	}
 }
 
+static void main_extra(void)
+{
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+			.args_doc = args_doc
+		};
+		struct vfsstat_bpf *skel;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		err = ensure_core_btf(&open_opts);
+		if (err) {
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+			return 1;
+		}
+		skel = vfsstat_bpf__open();
+		if (!skel) {
+			warning("Failed to open BPF objects\n");
+			goto cleanup;
+		}
+		/* It fallbacks to kprobes when kernel does not support fentry. */
+		if (fentry_can_attach("vfs_read", NULL)) {
+			bpf_program__set_autoload(skel->progs.kprobe_vfs_read, false);
+			bpf_program__set_autoload(skel->progs.kprobe_vfs_write, false);
+			bpf_program__set_autoload(skel->progs.kprobe_vfs_fsync, false);
+			bpf_program__set_autoload(skel->progs.kprobe_vfs_open, false);
+			bpf_program__set_autoload(skel->progs.kprobe_vfs_create, false);
+		} else {
+			bpf_program__set_autoload(skel->progs.fentry_vfs_read, false);
+			bpf_program__set_autoload(skel->progs.fentry_vfs_write, false);
+			bpf_program__set_autoload(skel->progs.fentry_vfs_fsync, false);
+			bpf_program__set_autoload(skel->progs.fentry_vfs_open, false);
+			bpf_program__set_autoload(skel->progs.fentry_vfs_create, false);
+		}
+		err = vfsstat_bpf__load(skel);
+		if (err) {
+			warning("Failed to load BPF skelect: %d\n", err);
+			goto cleanup;
+		}
+		if (!skel->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		err = vfsstat_bpf__attach(skel);
+		if (err) {
+			warning("Failed to attach BPF programs: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		print_header();
+		report_loop(skel);
+	cleanup:
+		vfsstat_bpf__destroy(skel);
+		cleanup_core_btf(&open_opts);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-		.args_doc = args_doc
-	};
-	struct vfsstat_bpf *skel;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-		return 1;
-	}
-
-	skel = vfsstat_bpf__open();
-	if (!skel) {
-		warning("Failed to open BPF objects\n");
-		goto cleanup;
-	}
-
-	/* It fallbacks to kprobes when kernel does not support fentry. */
-	if (fentry_can_attach("vfs_read", NULL)) {
-		bpf_program__set_autoload(skel->progs.kprobe_vfs_read, false);
-		bpf_program__set_autoload(skel->progs.kprobe_vfs_write, false);
-		bpf_program__set_autoload(skel->progs.kprobe_vfs_fsync, false);
-		bpf_program__set_autoload(skel->progs.kprobe_vfs_open, false);
-		bpf_program__set_autoload(skel->progs.kprobe_vfs_create, false);
-	} else {
-		bpf_program__set_autoload(skel->progs.fentry_vfs_read, false);
-		bpf_program__set_autoload(skel->progs.fentry_vfs_write, false);
-		bpf_program__set_autoload(skel->progs.fentry_vfs_fsync, false);
-		bpf_program__set_autoload(skel->progs.fentry_vfs_open, false);
-		bpf_program__set_autoload(skel->progs.fentry_vfs_create, false);
-	}
-
-	err = vfsstat_bpf__load(skel);
-	if (err) {
-		warning("Failed to load BPF skelect: %d\n", err);
-		goto cleanup;
-	}
-
-	if (!skel->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	err = vfsstat_bpf__attach(skel);
-	if (err) {
-		warning("Failed to attach BPF programs: %s\n", strerror(-err));
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	print_header();
-
-	report_loop(skel);
-
-cleanup:
-	vfsstat_bpf__destroy(skel);
-	cleanup_core_btf(&open_opts);
-
-	return err != 0;
+	main_extra();
 }
 
