@@ -234,6 +234,16 @@ static void print_timestamp(void)
 	printf("%-8s\n", ts);
 }
 
+static void main_section7_3(void)
+{
+		/* update cgroup path fd to map */
+		if (env.cg) {
+			memcg_fd = setup_cgroup_map(bpf_obj);
+			if (memcg_fd < 0)
+				goto cleanup;
+		}
+}
+
 int main(int argc, char *argv[])
 {
 	static const struct argp argp = {
@@ -282,13 +292,7 @@ int main(int argc, char *argv[])
 		warning("failed to load BPF object: %d\n", err);
 		goto cleanup;
 	}
-
-	/* update cgroup path fd to map */
-	if (env.cg) {
-		memcg_fd = setup_cgroup_map(bpf_obj);
-		if (memcg_fd < 0)
-			goto cleanup;
-	}
+	main_section7_3();
 
 	err = hardirqs_bpf__attach(bpf_obj);
 	if (err) {
