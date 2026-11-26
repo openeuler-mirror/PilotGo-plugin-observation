@@ -94,29 +94,29 @@ static __always_inline void fill_event(struct pt_regs *ctx, struct event *event,
 	bpf_get_current_comm(&event->comm, sizeof(event->comm));
 }
 
+static void trace_return_extra(void)
+{
+		struct entry_t *entryp;
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		s64 delta_ns;
+		struct event *event;
+		entryp = bpf_map_lookup_elem(&entryinfo, &pid_tgid);
+		if (!entryp)
+			return 0;
+		delta_ns = bpf_ktime_get_ns() - entryp->start_ns;
+		if (delta_ns < 0 || delta_ns < duration_ns)
+			return 0;
+		event = reserve_buf(sizeof(struct event));
+		if (!event)
+			return 0;
+		fill_event(ctx, event, entryp, pid_tgid, delta_ns, kprobe);
+		submit_buf(ctx, event, sizeof(*event));
+		return 0;
+}
+
 static int trace_return(struct pt_regs *ctx, bool kprobe)
 {
-	struct entry_t *entryp;
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	s64 delta_ns;
-	struct event *event;
-
-	entryp = bpf_map_lookup_elem(&entryinfo, &pid_tgid);
-	if (!entryp)
-		return 0;
-
-	delta_ns = bpf_ktime_get_ns() - entryp->start_ns;
-	if (delta_ns < 0 || delta_ns < duration_ns)
-		return 0;
-
-	event = reserve_buf(sizeof(struct event));
-	if (!event)
-		return 0;
-
-	fill_event(ctx, event, entryp, pid_tgid, delta_ns, kprobe);
-
-	submit_buf(ctx, event, sizeof(*event));
-	return 0;
+	trace_return_extra();
 }
 
 SEC("kretprobe")
