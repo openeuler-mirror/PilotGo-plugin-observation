@@ -321,20 +321,22 @@ static void setup_stackmap(struct capable_bpf *obj, struct argument *argument)
 	bpf_map__set_max_entries(obj->maps.stackmap, argument->stack_storage_size);
 }
 
+static void fill_myinfo_extra(void)
+{
+		struct stat st;
+		if (stat("/proc/self/ns/pid", &st)) {
+			warning("Failed to stat pid file\n");
+			return -1;
+		}
+		obj->bss->myinfo.pid_tgid = getpid() | (__u64)syscall(SYS_gettid) << 32;
+		obj->bss->myinfo.dev = st.st_dev;
+		obj->bss->myinfo.ino = st.st_ino;
+		return 0;
+}
+
 static int fill_myinfo(struct capable_bpf *obj)
 {
-	struct stat st;
-
-	if (stat("/proc/self/ns/pid", &st)) {
-		warning("Failed to stat pid file\n");
-		return -1;
-	}
-
-	obj->bss->myinfo.pid_tgid = getpid() | (__u64)syscall(SYS_gettid) << 32;
-	obj->bss->myinfo.dev = st.st_dev;
-	obj->bss->myinfo.ino = st.st_ino;
-
-	return 0;
+	fill_myinfo_extra();
 }
 
 static int setup_cgroup_map(struct capable_bpf *obj, struct argument *argument,
