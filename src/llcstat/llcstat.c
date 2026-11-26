@@ -160,34 +160,36 @@ static int print_entry(int fd, struct key_info *lookup_key,
 	return 0;
 }
 
+static void print_map_extra(void)
+{
+		__u64 total_ref = 0, total_miss = 0, total_hit;
+		struct key_info lookup_key = { .cpu = -1 }, next_key;
+		int fd = bpf_map__fd(map);
+		int err;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = print_entry(fd, &lookup_key, &next_key,
+					  &total_ref, &total_miss);
+			if (err)
+				return;
+		}
+		total_hit = MAX((long)(total_ref - total_miss), 0);
+		printf("Total References: %llu Total Misses: %llu Hit Rate: %.2f%%\n",
+		       total_ref, total_miss, total_ref > 0 ?
+		       total_hit * 1.0 / total_ref * 100 : 0);
+		lookup_key.cpu = -1;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_delete_elem(fd, &next_key);
+			if (err) {
+				warning("Failed to cleanup infos: %d\n", err);
+				return;
+			}
+			lookup_key = next_key;
+		}
+}
+
 static void print_map(struct bpf_map *map)
 {
-	__u64 total_ref = 0, total_miss = 0, total_hit;
-	struct key_info lookup_key = { .cpu = -1 }, next_key;
-	int fd = bpf_map__fd(map);
-	int err;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = print_entry(fd, &lookup_key, &next_key,
-				  &total_ref, &total_miss);
-		if (err)
-			return;
-	}
-
-	total_hit = MAX((long)(total_ref - total_miss), 0);
-	printf("Total References: %llu Total Misses: %llu Hit Rate: %.2f%%\n",
-	       total_ref, total_miss, total_ref > 0 ?
-	       total_hit * 1.0 / total_ref * 100 : 0);
-
-	lookup_key.cpu = -1;
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err) {
-			warning("Failed to cleanup infos: %d\n", err);
-			return;
-		}
-		lookup_key = next_key;
-	}
+	print_map_extra();
 }
 
 static void main_extra(void)
