@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
 	
 	syms_cache = syms_cache__new(0);
 	if (!syms_cache) {
-		warning("Failed to to create syms cache\n");
+		warning("Failed to create syms cache\n");
 		err = -ENOMEM;
 		goto cleanup;
 	}

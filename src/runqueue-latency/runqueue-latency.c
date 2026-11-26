@@ -241,7 +241,7 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	printf("Tracing run queue lantency... Hit Ctrl-C to end.\n");
+	printf("Tracing run queue latency... Hit Ctrl-C to end.\n");
 
 	signal(SIGINT, sig_handler);
 

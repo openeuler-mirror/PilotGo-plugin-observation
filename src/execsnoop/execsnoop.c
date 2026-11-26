@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
 
 	err = ensure_core_btf(&open_opts);
 	if (err) {
-		warning("Failed to fetch neccessary BTF for CO-RE: %s\n", strerror(-err));
+		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
 	}
 
