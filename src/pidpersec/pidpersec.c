@@ -66,66 +66,58 @@ static void report_loop(struct pidpersec_bpf *obj)
     }
 }
 
+static void main_extra(void)
+{
+	    struct pidpersec_bpf *obj;
+	    static const struct argp argp = {
+	        .options = opts,
+	        .parser = parse_arg,
+	        .doc = argp_program_doc,
+	    };
+	    int err;
+	    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	    if (err)
+	        return err;
+	    if (!bpf_is_root())
+	        return 1;
+	    libbpf_set_print(libbpf_print_fn);
+	    obj = pidpersec_bpf__open();
+	    if (!obj)
+	    {
+	        warning("Failed to open BPF object\n");
+	        return 1;
+	    }
+	    if (probe_tp_btf("sched_process_fork"))
+	        bpf_program__set_autoload(obj->progs.sched_process_fork_raw, false);
+	    else
+	        bpf_program__set_autoload(obj->progs.sched_process_fork, false);
+	    err = pidpersec_bpf__load(obj);
+	    if (err)
+	    {
+	        warning("Failed to load BPF object\n");
+	        goto cleanup;
+	    }
+	    if (!obj->bss)
+	    {
+	        warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+	        err = 1;
+	        goto cleanup;
+	    }
+	    err = pidpersec_bpf__attach(obj);
+	    if (err)
+	    {
+	        warning("Failed to attach BPF object\n");
+	        goto cleanup;
+	    }
+	    signal(SIGINT, sig_handler);
+	    printf("Tracing... Ctrl-C to end.\n");
+	    report_loop(obj);
+	cleanup:
+	    pidpersec_bpf__destroy(obj);
+	    return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-    struct pidpersec_bpf *obj;
-    static const struct argp argp = {
-        .options = opts,
-        .parser = parse_arg,
-        .doc = argp_program_doc,
-    };
-    int err;
-
-    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-    if (err)
-        return err;
-
-    if (!bpf_is_root())
-        return 1;
-
-    libbpf_set_print(libbpf_print_fn);
-
-    obj = pidpersec_bpf__open();
-    if (!obj)
-    {
-        warning("Failed to open BPF object\n");
-        return 1;
-    }
-
-    if (probe_tp_btf("sched_process_fork"))
-        bpf_program__set_autoload(obj->progs.sched_process_fork_raw, false);
-    else
-        bpf_program__set_autoload(obj->progs.sched_process_fork, false);
-
-    err = pidpersec_bpf__load(obj);
-    if (err)
-    {
-        warning("Failed to load BPF object\n");
-        goto cleanup;
-    }
-
-    if (!obj->bss)
-    {
-        warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-        err = 1;
-        goto cleanup;
-    }
-
-    err = pidpersec_bpf__attach(obj);
-    if (err)
-    {
-        warning("Failed to attach BPF object\n");
-        goto cleanup;
-    }
-
-    signal(SIGINT, sig_handler);
-
-    printf("Tracing... Ctrl-C to end.\n");
-
-    report_loop(obj);
-
-cleanup:
-    pidpersec_bpf__destroy(obj);
-
-    return err != 0;
+	main_extra();
 }
