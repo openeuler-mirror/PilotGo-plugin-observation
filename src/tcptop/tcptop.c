@@ -180,95 +180,85 @@ static void print_stat_section4_1(void)
 	               "RX_KB", "TX_KB\n");
 }
 
+static void print_stat_extra(void)
+{
+	        struct ip_key_t key, *prev_key = NULL;
+	        static struct info_t infos[OUTPUT_ROWS_LIMIT];
+	        int fd = bpf_map__fd(obj->maps.ip_map);
+	        bool ipv6_header_printed = false;
+	        int rows = 0;
+	        int err = 0;
+	        if (!env.no_summary) {
+	                FILE *f = fopen("/proc/loadavg", "r");
+	                if (f) {
+	                        char ts[16], buf[256];
+	                        strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	                        if (fread(buf, 1, sizeof(buf), f))
+	                                printf("%8s loadavg: %s\n", ts, buf);
+	                        fclose(f);
+	                }
+	        }
+	        while (!bpf_map_get_next_key(fd, prev_key, &infos[rows].key)) {
+	                err = bpf_map_lookup_elem(fd, &infos[rows].key, &infos[rows].value);
+	                if (err) {
+	                        warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
+	                        return err;
+	                }
+	                prev_key = &infos[rows].key;
+	                rows++;
+	        }
+		print_stat_section4_1();
+	        qsort(infos, rows, sizeof(struct info_t), sort_column);
+	        rows = MIN(rows, env.output_rows);
+	        for (int i = 0; i < rows; i++) {
+	                /* Default width to fit IPv4 plus port. */
+	                int column_width = 21;
+	                struct ip_key_t *key = &infos[i].key;
+	                struct traffic_t *value = &infos[i].value;
+	                if (key->family == AF_INET6) {
+	                        /* Width to fit IPv6 plus port. */
+	                        column_width = 51;
+	                        if (!ipv6_header_printed) {
+	                                printf("\n%-6s %-12s %-51s %-51s %6s %6s",
+	                                       "PID", "COMM", "LADDR6", "RADDR6",
+	                                       "RX_KB", "TX_KB\n");
+	                                ipv6_header_printed = true;
+	                        }
+	                }
+	                char saddr[INET6_ADDRSTRLEN];
+	                char daddr[INET6_ADDRSTRLEN];
+	                inet_ntop(key->family, &key->saddr, saddr, INET6_ADDRSTRLEN);
+	                inet_ntop(key->family, &key->daddr, daddr, INET6_ADDRSTRLEN);
+	                /*
+	                 * A port is stored in u16, so highest value is 65535, which is
+	                 * 5 characters long.
+	                 * We need one character more for ':'.
+	                 */
+	                size_t size = INET6_ADDRSTRLEN + PORT_LENGTH + 1;
+	                char saddr_port[size], daddr_port[size];
+	                snprintf(saddr_port, size, "%s:%d", saddr, key->lport);
+	                snprintf(daddr_port, size, "%s:%d", daddr, key->dport);
+	                printf("%-6d %-12.12s %-*s %-*s %6ld %6ld\n",
+	                       key->pid, key->name, column_width, saddr_port,
+	                       column_width, daddr_port,
+	                       value->received / 1024, value->sent / 1024);
+	        }
+	        printf("\n");
+	        prev_key = NULL;
+	        while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+	                err = bpf_map_delete_elem(fd, &key);
+	                if (err) {
+	                        warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
+	                        return err;
+	                }
+	                prev_key = &key;
+	        }
+	        return err;
+}
+
 static int print_stat(struct tcptop_bpf *obj)
 {
-        struct ip_key_t key, *prev_key = NULL;
-        static struct info_t infos[OUTPUT_ROWS_LIMIT];
-        int fd = bpf_map__fd(obj->maps.ip_map);
-        bool ipv6_header_printed = false;
-        int rows = 0;
-        int err = 0;
-
-        if (!env.no_summary) {
-                FILE *f = fopen("/proc/loadavg", "r");
-
-                if (f) {
-                        char ts[16], buf[256];
-
-                        strftime_now(ts, sizeof(ts), "%H:%M:%S");
-                        if (fread(buf, 1, sizeof(buf), f))
-                                printf("%8s loadavg: %s\n", ts, buf);
-                        fclose(f);
-                }
-        }
-
-        while (!bpf_map_get_next_key(fd, prev_key, &infos[rows].key)) {
-                err = bpf_map_lookup_elem(fd, &infos[rows].key, &infos[rows].value);
-                if (err) {
-                        warning("bpf_map_lookup_elem failed: %s\n", strerror(errno));
-                        return err;
-                }
-                prev_key = &infos[rows].key;
-                rows++;
-        }
-	print_stat_section4_1();
-
-        qsort(infos, rows, sizeof(struct info_t), sort_column);
-        rows = MIN(rows, env.output_rows);
-
-        for (int i = 0; i < rows; i++) {
-                /* Default width to fit IPv4 plus port. */
-                int column_width = 21;
-                struct ip_key_t *key = &infos[i].key;
-                struct traffic_t *value = &infos[i].value;
-
-                if (key->family == AF_INET6) {
-                        /* Width to fit IPv6 plus port. */
-                        column_width = 51;
-                        if (!ipv6_header_printed) {
-                                printf("\n%-6s %-12s %-51s %-51s %6s %6s",
-                                       "PID", "COMM", "LADDR6", "RADDR6",
-                                       "RX_KB", "TX_KB\n");
-                                ipv6_header_printed = true;
-                        }
-                }
-
-                char saddr[INET6_ADDRSTRLEN];
-                char daddr[INET6_ADDRSTRLEN];
-
-                inet_ntop(key->family, &key->saddr, saddr, INET6_ADDRSTRLEN);
-                inet_ntop(key->family, &key->daddr, daddr, INET6_ADDRSTRLEN);
-
-                /*
-                 * A port is stored in u16, so highest value is 65535, which is
-                 * 5 characters long.
-                 * We need one character more for ':'.
-                 */
-                size_t size = INET6_ADDRSTRLEN + PORT_LENGTH + 1;
-                char saddr_port[size], daddr_port[size];
-
-                snprintf(saddr_port, size, "%s:%d", saddr, key->lport);
-                snprintf(daddr_port, size, "%s:%d", daddr, key->dport);
-
-                printf("%-6d %-12.12s %-*s %-*s %6ld %6ld\n",
-                       key->pid, key->name, column_width, saddr_port,
-                       column_width, daddr_port,
-                       value->received / 1024, value->sent / 1024);
-        }
-
-        printf("\n");
-
-        prev_key = NULL;
-        while (!bpf_map_get_next_key(fd, prev_key, &key)) {
-                err = bpf_map_delete_elem(fd, &key);
-                if (err) {
-                        warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
-                        return err;
-                }
-                prev_key = &key;
-        }
-
-        return err;
+	print_stat_extra();
 }
 
 static void main_section13_3(void)
