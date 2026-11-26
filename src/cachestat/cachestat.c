@@ -92,25 +92,29 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void get_meminfo_extra(void)
+{
+		FILE *f;
+		f = fopen("/proc/meminfo", "r");
+		if (!f)
+			return -1;
+		if (fscanf(f,
+			   "MemTotal: %*u kB\n"
+			   "MemFree: %*u kB\n"
+			   "MemAvailable: %*u kB\n"
+			   "Buffers: %llu kB\n"
+			   "Cached: %llu kB\n",
+			   buffers, cached) != 2) {
+			fclose(f);
+			return -1;
+		}
+		fclose(f);
+		return 0;
+}
+
 static int get_meminfo(__u64 *buffers, __u64 *cached)
 {
-	FILE *f;
-
-	f = fopen("/proc/meminfo", "r");
-	if (!f)
-		return -1;
-	if (fscanf(f,
-		   "MemTotal: %*u kB\n"
-		   "MemFree: %*u kB\n"
-		   "MemAvailable: %*u kB\n"
-		   "Buffers: %llu kB\n"
-		   "Cached: %llu kB\n",
-		   buffers, cached) != 2) {
-		fclose(f);
-		return -1;
-	}
-	fclose(f);
-	return 0;
+	get_meminfo_extra();
 }
 
 /*
