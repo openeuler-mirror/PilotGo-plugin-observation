@@ -17,6 +17,7 @@ static struct env {
 	bool	ignore_errors;
 	char	*target_ports;
 	bool	verbose;
+	int count;
 } env = {
 	.ignore_errors = true,
 };
@@ -85,6 +86,9 @@ static void parse_arg_extra(void)
 		case 'p':
 			env.target_pid = argp_parse_pid(key, arg, state);
 			break;
+			case 'n':
+				env.count = atoi(arg);
+				break;
 		case 'c':
 			env.cgroupspath = arg;
 			env.cg = true;
