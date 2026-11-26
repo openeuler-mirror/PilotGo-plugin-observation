@@ -8,6 +8,7 @@ static struct env {
 	char *disk;
 	int duration;
 	bool milliseconds;
+	bool enable_debug;
 	bool verbose;
 } env = {
 	.duration = -1,
