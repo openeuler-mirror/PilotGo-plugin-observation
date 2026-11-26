@@ -13,7 +13,8 @@
 
 struct rqinfo {
 	__u32 pid;
-	int kern_stack_size;
+	/* kern_stack_size field */
+	int	kern_stack_size;
 	__u64 kern_stack[MAX_STACK];
 	char comm[TASK_COMM_LEN];
 	__u32 dev;
