@@ -139,36 +139,40 @@ static bool setup_dirty_tp(struct cachestat_bpf *obj)
 	return true;
 }
 
+static void setup_misses_tp_extra(void)
+{
+		/* misses add tracepoint */
+		if (fentry_can_attach("filemap_add_folio", NULL)) {
+			int err = bpf_program__set_attach_target(
+					obj->progs.fentry_add_to_page_cache_lru, 0,
+					"filemap_add_folio");
+			if (err) {
+				warning("Failed to set attach target\n");
+				return false;
+			}
+		}
+		if (fentry_can_attach("add_to_page_cache_lru", NULL) ||
+		    fentry_can_attach("filemap_add_folio", NULL)) {
+			bpf_program__set_autoload(obj->progs.kprobe_add_to_page_cache_lru,
+						  false);
+			bpf_program__set_autoload(obj->progs.kprobe_filemap_add_folio,
+						  false);
+		} else {
+			if (kprobe_exists("filemap_add_folio"))
+				bpf_program__set_autoload(
+					obj->progs.kprobe_add_to_page_cache_lru, false);
+			else
+				bpf_program__set_autoload(
+					obj->progs.kprobe_filemap_add_folio, false);
+			bpf_program__set_autoload(obj->progs.fentry_add_to_page_cache_lru,
+						  false);
+		}
+		return true;
+}
+
 static bool setup_misses_tp(struct cachestat_bpf *obj)
 {
-	/* misses add tracepoint */
-	if (fentry_can_attach("filemap_add_folio", NULL)) {
-		int err = bpf_program__set_attach_target(
-				obj->progs.fentry_add_to_page_cache_lru, 0,
-				"filemap_add_folio");
-		if (err) {
-			warning("Failed to set attach target\n");
-			return false;
-		}
-	}
-
-	if (fentry_can_attach("add_to_page_cache_lru", NULL) ||
-	    fentry_can_attach("filemap_add_folio", NULL)) {
-		bpf_program__set_autoload(obj->progs.kprobe_add_to_page_cache_lru,
-					  false);
-		bpf_program__set_autoload(obj->progs.kprobe_filemap_add_folio,
-					  false);
-	} else {
-		if (kprobe_exists("filemap_add_folio"))
-			bpf_program__set_autoload(
-				obj->progs.kprobe_add_to_page_cache_lru, false);
-		else
-			bpf_program__set_autoload(
-				obj->progs.kprobe_filemap_add_folio, false);
-		bpf_program__set_autoload(obj->progs.fentry_add_to_page_cache_lru,
-					  false);
-	}
-	return true;
+	setup_misses_tp_extra();
 }
 
 static void setup_total_tp_extra(void)
