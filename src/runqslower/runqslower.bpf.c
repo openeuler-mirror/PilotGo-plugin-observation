@@ -49,41 +49,38 @@ static int trace_enqueue(struct task_struct *p)
 
 
 __always_inline
+static void handle_switch_extra(void)
+{
+		struct runq_event event = {};
+		u64 *tsp, delta_us;
+		u32 pid;
+		/* treat like an enqueue event and store timestamp */
+		if (get_task_state(prev) == TASK_RUNNING)
+			trace_enqueue(prev);
+		pid = BPF_CORE_READ(next, pid);
+		/* fetch timestamp and calculate delta */
+		tsp = bpf_map_lookup_elem(&start, &pid);
+		if (!tsp)
+			return 0;
+		delta_us = (bpf_ktime_get_ns() - *tsp) / 1000;
+		/* not slow? return */
+		if (min_us && delta_us <= min_us)
+			return 0;
+		event.pid = pid;
+		event.prev_pid = BPF_CORE_READ(prev, pid);
+		event.delta_us = delta_us;
+		BPF_CORE_READ_STR_INTO(&event.task, next, comm);
+		BPF_CORE_READ_STR_INTO(&event.prev_task, prev, comm);
+		/* output */
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
+				      &event, sizeof(event));
+		bpf_map_delete_elem(&start, &pid);
+		return 0;
+}
+
 static int handle_switch(void *ctx, struct task_struct *prev, struct task_struct *next)
 {
-	struct runq_event event = {};
-
-	u64 *tsp, delta_us;
-	u32 pid;
-
-	/* treat like an enqueue event and store timestamp */
-	if (get_task_state(prev) == TASK_RUNNING)
-		trace_enqueue(prev);
-
-	pid = BPF_CORE_READ(next, pid);
-
-	/* fetch timestamp and calculate delta */
-	tsp = bpf_map_lookup_elem(&start, &pid);
-	if (!tsp)
-		return 0;
-
-	delta_us = (bpf_ktime_get_ns() - *tsp) / 1000;
-	/* not slow? return */
-	if (min_us && delta_us <= min_us)
-		return 0;
-
-	event.pid = pid;
-	event.prev_pid = BPF_CORE_READ(prev, pid);
-	event.delta_us = delta_us;
-	BPF_CORE_READ_STR_INTO(&event.task, next, comm);
-	BPF_CORE_READ_STR_INTO(&event.prev_task, prev, comm);
-
-	/* output */
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
-			      &event, sizeof(event));
-
-	bpf_map_delete_elem(&start, &pid);
-	return 0;
+	handle_switch_extra();
 }
 
 SEC("tp_btf/sched_wakeup")
