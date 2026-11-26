@@ -195,7 +195,7 @@ static int set_fentry_attach_target(struct bpf_program *prog, const char *funcna
 {
 	long err = bpf_program__set_attach_target(prog, 0, funcname);
 
-	if (err)
+	if (err != 0)
 		warning("failed to set attach %s: %s\n", label, strerror(-err));
 
 	return err;
