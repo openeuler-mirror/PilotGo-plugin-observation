@@ -25,6 +25,7 @@ const char argp_program_doc[] =
 "EXAMPLES:\n"
 "    bashreadline\n"
 "    bashreadline -s /usr/lib/libreadline.so\n";
+"    bashreadline --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "shared", 's', "PATH", 0, "the location of libreadline.so library" },
