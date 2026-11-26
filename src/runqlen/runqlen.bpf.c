@@ -12,40 +12,40 @@ const volatile bool target_host = false;
 struct hist hists[MAX_CPU_NR] = {};
 
 SEC("perf_event")
+static void do_sample_extra(void)
+{
+		struct task_struct *task;
+		struct hist *hist;
+		u64 slot, cpu = 0;
+		task = (struct task_struct *)bpf_get_current_task();
+		if (target_host)
+			slot = BPF_CORE_READ(task, se.cfs_rq, rq, nr_running);
+		else
+			slot = BPF_CORE_READ(task, se.cfs_rq, nr_running);
+		/*
+		 * Calculate run queue length by subtracting the currently running task,
+		 * if present. len 0 == idle, len 1 == one running task.
+		 */
+		if (slot > 0)
+			slot--;
+		if (target_per_cpu) {
+			cpu = bpf_get_smp_processor_id();
+			if (cpu >= MAX_CPU_NR)
+				return 0;
+		}
+		hist = &hists[cpu];
+		if (slot >= MAX_SLOTS)
+			slot = MAX_SLOTS - 1;
+		if (target_per_cpu)
+			hist->slots[slot]++;
+		else
+			__sync_fetch_and_add(&hist->slots[slot], 1);
+		return 0;
+}
+
 int do_sample(struct bpf_perf_event_data *ctx)
 {
-	struct task_struct *task;
-	struct hist *hist;
-	u64 slot, cpu = 0;
-
-	task = (struct task_struct *)bpf_get_current_task();
-	if (target_host)
-		slot = BPF_CORE_READ(task, se.cfs_rq, rq, nr_running);
-	else
-		slot = BPF_CORE_READ(task, se.cfs_rq, nr_running);
-
-	/*
-	 * Calculate run queue length by subtracting the currently running task,
-	 * if present. len 0 == idle, len 1 == one running task.
-	 */
-	if (slot > 0)
-		slot--;
-
-	if (target_per_cpu) {
-		cpu = bpf_get_smp_processor_id();
-		if (cpu >= MAX_CPU_NR)
-			return 0;
-	}
-
-	hist = &hists[cpu];
-	if (slot >= MAX_SLOTS)
-		slot = MAX_SLOTS - 1;
-	if (target_per_cpu)
-		hist->slots[slot]++;
-	else
-		__sync_fetch_and_add(&hist->slots[slot], 1);
-
-	return 0;
+	do_sample_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
