@@ -130,20 +130,24 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
 }
 
+static void alias_parse_extra(void)
+{
+		char *name = basename(prog);
+		if (!strcmp(name, "opensnoop2"))
+			env.target_op = F_OPEN;
+		else if (!strcmp(name, "closesnoop"))
+			env.target_op = F_CLOSE;
+		else if (!strcmp(name, "writesnoop"))
+			env.target_op = F_WRITE;
+		else if (!strcmp(name, "readsnoop"))
+			env.target_op = F_READ;
+		else if (!strcmp(name, "statsnoop"))
+			env.target_op = F_STATX;
+}
+
 static void alias_parse(char *prog)
 {
-	char *name = basename(prog);
-
-	if (!strcmp(name, "opensnoop2"))
-		env.target_op = F_OPEN;
-	else if (!strcmp(name, "closesnoop"))
-		env.target_op = F_CLOSE;
-	else if (!strcmp(name, "writesnoop"))
-		env.target_op = F_WRITE;
-	else if (!strcmp(name, "readsnoop"))
-		env.target_op = F_READ;
-	else if (!strcmp(name, "statsnoop"))
-		env.target_op = F_STATX;
+	alias_parse_extra();
 }
 
 static void disable_missing_tracepoints(struct filesnoop_bpf *obj)
