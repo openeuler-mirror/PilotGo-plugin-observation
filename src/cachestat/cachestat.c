@@ -12,7 +12,7 @@ struct argument {
 static volatile sig_atomic_t exiting;
 static volatile bool verbose = false;
 
-const char *argp_program_version = "cachestat 0.1";
+const char *argp_program_version = "cachestat 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
 "Count cache kernel function calls.\n"
