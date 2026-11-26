@@ -287,27 +287,28 @@ errout:
 	return err;
 }
 
+static void print_headers_extra(void)
+{
+		const char *fs = fs_configs[fs_type].fs;
+		if (csv) {
+			printf("ENDTIME_ns,TASK,PID,TYPE,BYTES,OFFSET_b,LATENCY_us,FILE\n");
+			return;
+		}
+		if (min_lat_ms)
+			printf("Tracing %s operations slower than %llu ms", fs, min_lat_ms);
+		else
+			printf("Tracing %s operations", fs);
+		if (duration)
+			printf(" for %ld secs.\n", duration);
+		else
+			printf("... Hit Ctrl-C to end.\n");
+		printf("%-8s %-16s %-7s %1s %-10s %-8s %7s %s\n",
+		       "TIME", "COMM", "PID", "T", "BYTES", "OFF_KB", "LAT(ms)", "FILENAME");
+}
+
 static void print_headers()
 {
-	const char *fs = fs_configs[fs_type].fs;
-
-	if (csv) {
-		printf("ENDTIME_ns,TASK,PID,TYPE,BYTES,OFFSET_b,LATENCY_us,FILE\n");
-		return;
-	}
-
-	if (min_lat_ms)
-		printf("Tracing %s operations slower than %llu ms", fs, min_lat_ms);
-	else
-		printf("Tracing %s operations", fs);
-
-	if (duration)
-		printf(" for %ld secs.\n", duration);
-	else
-		printf("... Hit Ctrl-C to end.\n");
-
-	printf("%-8s %-16s %-7s %1s %-10s %-8s %7s %s\n",
-	       "TIME", "COMM", "PID", "T", "BYTES", "OFF_KB", "LAT(ms)", "FILENAME");
+	print_headers_extra();
 }
 
 static void print_event_csv(const struct event *e)
