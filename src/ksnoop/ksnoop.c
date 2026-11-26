@@ -85,7 +85,7 @@ static void type_to_value(struct btf *btf, char *name, __u32 type_id,
 	__s32 id = type_id;
 
 	if (strlen(val->name) == 0) {
-		if (name)
+		if (name != 0)
 			strncpy(val->name, name,
 				sizeof(val->name) - 1);
 		else
