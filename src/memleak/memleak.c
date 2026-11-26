@@ -658,76 +658,64 @@ static void reset_allocs(size_t nr_allocs)
 	reset_allocs_extra();
 }
 
+static void print_outstanding_allocs_extra(void)
+{
+	    time_t t = time(NULL);
+	    struct tm *tm = localtime(&t);
+	    size_t nr_allocs = 0;
+	    // for each struct alloc_info "alloc_info" in the bpf map "allocs"
+	    for (uint64_t prev_key = 0, curr_key = 0;; prev_key = curr_key)
+	    {
+	        struct alloc_info alloc_info = {};
+	        int ret;
+	        if (bpf_map_get_next_key(allocs_fd, &prev_key, &curr_key))
+	        {
+	            if (errno == ENOENT)
+	                break;
+	            perror("map get next key error");
+	            return -errno;
+	        }
+	        if (bpf_map_lookup_elem(allocs_fd, &curr_key, &alloc_info))
+	        {
+	            if (errno == ENOENT)
+	                continue;
+	            perror("map lookup error");
+	            return -errno;
+	        }
+	        // filter by age
+	        if (get_ktime_ns() - env.min_age_ns < alloc_info.timestamp_ns)
+	            continue;
+	        // filter invalid stacks
+	        if (alloc_info.stack_id < 0)
+	            continue;
+	        ret = merge_alloc(&nr_allocs, curr_key, &alloc_info);
+	        if (ret < 0)
+	            return ret;
+	        if (ret > 0)
+	            continue;
+	        ret = add_alloc(&nr_allocs, curr_key, &alloc_info);
+	        if (ret < 0)
+	            return ret;
+	        if (nr_allocs > ALLOCS_MAX_ENTRIES)
+	            break;
+	    }
+	    // sort the allocs array in descending order
+	    qsort(allocs, nr_allocs, sizeof(allocs[0]), alloc_size_compare);
+	    // get min of allocs we stored vs the top N requested stacks
+	    size_t nr_allocs_to_show = MIN(nr_allocs, env.top_stacks);
+	    if (nr_allocs_to_show)
+	    {
+	        printf("[%d:%d:%d] Top %zu stacks with outstanding allocations:\n",
+	               tm->tm_hour, tm->tm_min, tm->tm_sec, nr_allocs_to_show);
+	        print_stack_frames(allocs, nr_allocs_to_show, stack_traces_fd);
+	        reset_allocs(nr_allocs);
+	    }
+	    return 0;
+}
+
 static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
 {
-    time_t t = time(NULL);
-    struct tm *tm = localtime(&t);
-
-    size_t nr_allocs = 0;
-
-    // for each struct alloc_info "alloc_info" in the bpf map "allocs"
-    for (uint64_t prev_key = 0, curr_key = 0;; prev_key = curr_key)
-    {
-        struct alloc_info alloc_info = {};
-        int ret;
-
-        if (bpf_map_get_next_key(allocs_fd, &prev_key, &curr_key))
-        {
-            if (errno == ENOENT)
-                break;
-
-            perror("map get next key error");
-            return -errno;
-        }
-
-        if (bpf_map_lookup_elem(allocs_fd, &curr_key, &alloc_info))
-        {
-            if (errno == ENOENT)
-                continue;
-
-            perror("map lookup error");
-            return -errno;
-        }
-
-        // filter by age
-        if (get_ktime_ns() - env.min_age_ns < alloc_info.timestamp_ns)
-            continue;
-
-        // filter invalid stacks
-        if (alloc_info.stack_id < 0)
-            continue;
-
-        ret = merge_alloc(&nr_allocs, curr_key, &alloc_info);
-        if (ret < 0)
-            return ret;
-        if (ret > 0)
-            continue;
-
-        ret = add_alloc(&nr_allocs, curr_key, &alloc_info);
-        if (ret < 0)
-            return ret;
-
-        if (nr_allocs > ALLOCS_MAX_ENTRIES)
-            break;
-    }
-
-    // sort the allocs array in descending order
-    qsort(allocs, nr_allocs, sizeof(allocs[0]), alloc_size_compare);
-
-    // get min of allocs we stored vs the top N requested stacks
-    size_t nr_allocs_to_show = MIN(nr_allocs, env.top_stacks);
-
-    if (nr_allocs_to_show)
-    {
-        printf("[%d:%d:%d] Top %zu stacks with outstanding allocations:\n",
-               tm->tm_hour, tm->tm_min, tm->tm_sec, nr_allocs_to_show);
-
-        print_stack_frames(allocs, nr_allocs_to_show, stack_traces_fd);
-
-        reset_allocs(nr_allocs);
-    }
-
-    return 0;
+	print_outstanding_allocs_extra();
 }
 
 static void print_outstanding_combined_allocs_extra(void)
