@@ -151,34 +151,35 @@ static void print_header(void)
 		       "PID", "COMM", "IP", "SADDR", "DADDR", "DPORT", "LAT(ms)");
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		char src[INET6_ADDRSTRLEN];
+		char dst[INET6_ADDRSTRLEN];
+		union ip_addr s, d;
+		if (env.timestamp)
+			printf("%-9.3f ", time_since_start());
+		if (fill_addrs(e, &s, &d))
+			return 1;
+		if (env.lport) {
+			printf("%-6d %-16.16s v%d %-16s %-6d %-16s %-5d %.2f\n", e->tgid,
+			       e->comm, e->af == AF_INET ? 4 : 6,
+			       inet_ntop(e->af, &s, src, sizeof(src)), e->lport,
+			       inet_ntop(e->af, &d, dst, sizeof(dst)), ntohs(e->dport),
+			       e->delta_us / 1000.0);
+		} else {
+			printf("%-6d %-16.16s v%d %-16s %-16s %-5d %.2f\n", e->tgid, e->comm,
+			       e->af == AF_INET ? 4 : 6,
+			       inet_ntop(e->af, &s, src, sizeof(src)),
+			       inet_ntop(e->af, &d, dst, sizeof(dst)), ntohs(e->dport),
+			       e->delta_us / 1000.0);
+		}
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-	char src[INET6_ADDRSTRLEN];
-	char dst[INET6_ADDRSTRLEN];
-	union ip_addr s, d;
-
-	if (env.timestamp)
-		printf("%-9.3f ", time_since_start());
-
-	if (fill_addrs(e, &s, &d))
-		return 1;
-
-	if (env.lport) {
-		printf("%-6d %-16.16s v%d %-16s %-6d %-16s %-5d %.2f\n", e->tgid,
-		       e->comm, e->af == AF_INET ? 4 : 6,
-		       inet_ntop(e->af, &s, src, sizeof(src)), e->lport,
-		       inet_ntop(e->af, &d, dst, sizeof(dst)), ntohs(e->dport),
-		       e->delta_us / 1000.0);
-	} else {
-		printf("%-6d %-16.16s v%d %-16s %-16s %-5d %.2f\n", e->tgid, e->comm,
-		       e->af == AF_INET ? 4 : 6,
-		       inet_ntop(e->af, &s, src, sizeof(src)),
-		       inet_ntop(e->af, &d, dst, sizeof(dst)), ntohs(e->dport),
-		       e->delta_us / 1000.0);
-	}
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
