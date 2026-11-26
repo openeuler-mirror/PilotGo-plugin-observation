@@ -175,24 +175,25 @@ static int print_count(struct softirqs_bpf__bss *bss)
 }
 
 static struct hist zero;
+static void print_hist_extra(void)
+{
+		const char *units = env.nanoseconds ? "nsecs" : "usecs";
+		__u32 vec;
+		for (vec = 0; vec < NR_SOFTIRQS; vec++) {
+			struct hist hist = bss->hists[vec];
+			bss->hists[vec] = zero;
+			if (!memcmp(&zero, &hist, sizeof(hist)))
+				continue;
+			printf("softirq = %s\n", softirq_vec_names[vec]);
+			print_log2_hist(hist.slots, MAX_SLOTS, units);
+			printf("\n");
+		}
+		return 0;
+}
+
 static int print_hist(struct softirqs_bpf__bss *bss)
 {
-	const char *units = env.nanoseconds ? "nsecs" : "usecs";
-	__u32 vec;
-
-	for (vec = 0; vec < NR_SOFTIRQS; vec++) {
-		struct hist hist = bss->hists[vec];
-
-		bss->hists[vec] = zero;
-		if (!memcmp(&zero, &hist, sizeof(hist)))
-			continue;
-
-		printf("softirq = %s\n", softirq_vec_names[vec]);
-		print_log2_hist(hist.slots, MAX_SLOTS, units);
-		printf("\n");
-	}
-
-	return 0;
+	print_hist_extra();
 }
 
 static void main_extra(void)
