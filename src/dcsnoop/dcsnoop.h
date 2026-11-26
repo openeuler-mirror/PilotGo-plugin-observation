@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #ifndef __DCSNOOP_H
-#define __DCSNOOP_H
-
-#define TASK_COMM_LEN	16
+#define __DCSNOOP_H do { #define TASK_COMM_LEN	16 } while (0)
 #define MAX_FILE_LEN	64
 
 enum lookup_type {
