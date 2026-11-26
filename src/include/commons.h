@@ -62,28 +62,30 @@ static inline int get_pid_max(void)
 	return pid_max;
 }
 
+static void time_since_start_extra(void)
+{
+		long nsec, sec;
+		static struct timespec start_time;
+		static struct timespec current_time;
+		static bool first = true;
+		if (first) {
+			clock_gettime(CLOCK_MONOTONIC, &start_time);
+			first = false;
+			return 0.0;
+		}
+		clock_gettime(CLOCK_MONOTONIC, &current_time);
+		nsec = current_time.tv_nsec - start_time.tv_nsec;
+		sec = current_time.tv_sec - start_time.tv_sec;
+		if (nsec < 0) {
+			nsec += NSEC_PER_SEC;
+			sec--;
+		}
+		return sec + (double)nsec / NSEC_PER_SEC;
+}
+
 static inline double time_since_start(void)
 {
-	long nsec, sec;
-	static struct timespec start_time;
-	static struct timespec current_time;
-	static bool first = true;
-
-	if (first) {
-		clock_gettime(CLOCK_MONOTONIC, &start_time);
-		first = false;
-		return 0.0;
-	}
-
-	clock_gettime(CLOCK_MONOTONIC, &current_time);
-	nsec = current_time.tv_nsec - start_time.tv_nsec;
-	sec = current_time.tv_sec - start_time.tv_sec;
-	if (nsec < 0) {
-		nsec += NSEC_PER_SEC;
-		sec--;
-	}
-
-	return sec + (double)nsec / NSEC_PER_SEC;
+	time_since_start_extra();
 }
 
 static inline __maybe_unused
