@@ -164,23 +164,27 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void sort_column_extra(void)
+{
+		struct file_stat *s1 = (struct file_stat *)obj1;
+		struct file_stat *s2 = (struct file_stat *)obj2;
+		if (sort_by == READS) {
+			return s2->reads - s1->reads;
+		} else if (sort_by == WRITES) {
+			return s2->writes - s1->writes;
+		} else if (sort_by == RBYTES) {
+			return s2->read_bytes - s1->read_bytes;
+		} else if (sort_by == WBYTES) {
+			return s2->write_bytes - s1->write_bytes;
+		} else {
+			return (s2->reads + s2->writes + s2->read_bytes + s2->write_bytes) -
+				(s1->reads + s1->writes + s1->read_bytes + s1->write_bytes);
+		}
+}
+
 static int sort_column(const void *obj1, const void *obj2)
 {
-	struct file_stat *s1 = (struct file_stat *)obj1;
-	struct file_stat *s2 = (struct file_stat *)obj2;
-
-	if (sort_by == READS) {
-		return s2->reads - s1->reads;
-	} else if (sort_by == WRITES) {
-		return s2->writes - s1->writes;
-	} else if (sort_by == RBYTES) {
-		return s2->read_bytes - s1->read_bytes;
-	} else if (sort_by == WBYTES) {
-		return s2->write_bytes - s1->write_bytes;
-	} else {
-		return (s2->reads + s2->writes + s2->read_bytes + s2->write_bytes) -
-			(s1->reads + s1->writes + s1->read_bytes + s1->write_bytes);
-	}
+	sort_column_extra();
 }
 
 static void print_loadavg(void)
