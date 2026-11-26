@@ -106,6 +106,17 @@ static int poll_events(struct perf_buffer *pb)
     return err;
 }
 
+static void main_section3_2(void)
+{
+	    pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
+	                          handle_event, handle_lost_events, NULL, NULL);
+	    if (!pb)
+	    {
+	        warning("Failed to open perf buffer: %d\n", err);
+	        goto cleanup;
+	    }
+}
+
 int main(int argc, char *argv[])
 {
     static const struct argp argp = {
@@ -145,14 +156,7 @@ int main(int argc, char *argv[])
         warning("Failed to attach BPF programs\n");
         goto cleanup;
     }
-
-    pb = perf_buffer__new(bpf_map__fd(obj->maps.events), PERF_BUFFER_PAGES,
-                          handle_event, handle_lost_events, NULL, NULL);
-    if (!pb)
-    {
-        warning("Failed to open perf buffer: %d\n", err);
-        goto cleanup;
-    }
+	main_section3_2();
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
     {
