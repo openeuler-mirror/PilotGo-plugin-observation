@@ -120,39 +120,39 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 static void sig_handler(int sig)
 {}
 
+static void init_freqs_mhz_extra(void)
+{
+		char path[64];
+		FILE *f;
+		for (int i = 0; i < nr_cpus; i++) {
+			snprintf(path, sizeof(path),
+				 "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq",
+				 i);
+			f = fopen(path, "r");
+			if (!f) {
+				warning("Failed to open '%s': %s\n", path,
+					strerror(errno));
+				return -1;
+			}
+			if (fscanf(f, "%u\n", &freqs_mhz[i]) != 1) {
+				warning("Failed to parse '%s': %s\n", path,
+					strerror(errno));
+				fclose(f);
+				return -1;
+			}
+			/*
+			 * scaling_cur_freq is in kHZ. to be handled with
+			 * a small data size, it's converted in mHZ.
+			 */
+			freqs_mhz[i] /= 1000;
+			fclose(f);
+		}
+		return 0;
+}
+
 static int init_freqs_mhz(__u32 *freqs_mhz, int nr_cpus)
 {
-	char path[64];
-	FILE *f;
-
-	for (int i = 0; i < nr_cpus; i++) {
-		snprintf(path, sizeof(path),
-			 "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq",
-			 i);
-
-		f = fopen(path, "r");
-		if (!f) {
-			warning("Failed to open '%s': %s\n", path,
-				strerror(errno));
-			return -1;
-		}
-
-		if (fscanf(f, "%u\n", &freqs_mhz[i]) != 1) {
-			warning("Failed to parse '%s': %s\n", path,
-				strerror(errno));
-			fclose(f);
-			return -1;
-		}
-
-		/*
-		 * scaling_cur_freq is in kHZ. to be handled with
-		 * a small data size, it's converted in mHZ.
-		 */
-		freqs_mhz[i] /= 1000;
-		fclose(f);
-	}
-
-	return 0;
+	init_freqs_mhz_extra();
 }
 
 static void print_linear_hists(struct bpf_map *hists,
