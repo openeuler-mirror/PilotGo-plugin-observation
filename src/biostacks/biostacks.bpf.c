@@ -56,27 +56,27 @@ static __always_inline void fill_rqinfo(void *ctx, struct rqinfo *rqinfo,
 	rqinfo->dev = dev;
 }
 
+static void trace_start_extra(void)
+{
+		struct internal_rqinfo *i_rqinfop = NULL, i_rqinfo = {};
+		u32 dev;
+		dev = rq_disk_dev(rq);
+		if (filter_dev && dev != target_dev)
+			return 0;
+		if (merge_bio)
+			i_rqinfop = bpf_map_lookup_elem(&rqinfos, &rq);
+		if (!i_rqinfop)
+			i_rqinfop = &i_rqinfo;
+		i_rqinfop->start_ts = bpf_ktime_get_ns();
+		fill_rqinfo(ctx, &i_rqinfop->rqinfo, dev);
+		if (i_rqinfop == &i_rqinfo)
+			bpf_map_update_elem(&rqinfos, &rq, i_rqinfop, BPF_ANY);
+		return 0;
+}
+
 static __always_inline int trace_start(void *ctx, struct request *rq, bool merge_bio)
 {
-	struct internal_rqinfo *i_rqinfop = NULL, i_rqinfo = {};
-	u32 dev;
-
-	dev = rq_disk_dev(rq);
-	if (filter_dev && dev != target_dev)
-		return 0;
-
-	if (merge_bio)
-		i_rqinfop = bpf_map_lookup_elem(&rqinfos, &rq);
-	if (!i_rqinfop)
-		i_rqinfop = &i_rqinfo;
-
-	i_rqinfop->start_ts = bpf_ktime_get_ns();
-	fill_rqinfo(ctx, &i_rqinfop->rqinfo, dev);
-
-	if (i_rqinfop == &i_rqinfo)
-		bpf_map_update_elem(&rqinfos, &rq, i_rqinfop, BPF_ANY);
-
-	return 0;
+	trace_start_extra();
 }
 
 SEC("fentry/blk_account_io_start")
