@@ -349,6 +349,16 @@ static void sig_handler(int sig)
 	exiting = 1;
 }
 
+static void main_section11_1(void)
+{
+		obj = syscount_bpf__open_opts(&open_opts);
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			err = 1;
+			goto free_names;
+		}
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -387,13 +397,7 @@ int main(int argc, char *argv[])
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
 		return 1;
 	}
-
-	obj = syscount_bpf__open_opts(&open_opts);
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		err = 1;
-		goto free_names;
-	}
+	main_section11_1();
 
 	if (env.pid)
 		obj->rodata->filter_pid = env.pid;
