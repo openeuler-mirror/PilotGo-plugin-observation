@@ -20,31 +20,31 @@ struct {
 	__type(value, struct event);
 } values SEC(".maps");
 
+static void probe_entry_extra(void)
+{
+		__u64 pid_tgid;
+		__u32 pid, tgid;
+		struct event event = {};
+		if (tpid <= 0)
+			return 0;
+		if (target_signal && target_signal != sig)
+			return 0;
+		pid_tgid = bpf_get_current_pid_tgid();
+		pid = pid_tgid;
+		tgid = pid_tgid >> 32;
+		if (filtered_pid && tgid != filtered_pid)
+			return 0;
+		event.pid = tgid;
+		event.tpid = tpid;
+		event.sig = sig;
+		bpf_get_current_comm(&event.comm, sizeof(event.comm));
+		bpf_map_update_elem(&values, &pid, &event, BPF_ANY);
+		return 0;
+}
+
 static __always_inline int probe_entry(pid_t tpid, int sig)
 {
-	__u64 pid_tgid;
-	__u32 pid, tgid;
-	struct event event = {};
-
-	if (tpid <= 0)
-		return 0;
-
-	if (target_signal && target_signal != sig)
-		return 0;
-
-	pid_tgid = bpf_get_current_pid_tgid();
-	pid = pid_tgid;
-	tgid = pid_tgid >> 32;
-
-	if (filtered_pid && tgid != filtered_pid)
-		return 0;
-
-	event.pid = tgid;
-	event.tpid = tpid;
-	event.sig = sig;
-	bpf_get_current_comm(&event.comm, sizeof(event.comm));
-	bpf_map_update_elem(&values, &pid, &event, BPF_ANY);
-	return 0;
+	probe_entry_extra();
 }
 
 static void probe_exit_extra(void)
