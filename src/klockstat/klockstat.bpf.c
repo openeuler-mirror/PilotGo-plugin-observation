@@ -77,42 +77,41 @@ static bool tracing_task(u64 task_id)
 	return true;
 }
 
+static void lock_contended_extra(void)
+{
+		u64 task_id;
+		struct lockholder_info li = {};
+		struct task_lock tl = {};
+		if (target_lock && target_lock != lock)
+			return;
+		task_id = bpf_get_current_pid_tgid();
+		if (!tracing_task(task_id))
+			return;
+		li.task_id = task_id;
+		li.lock_ptr = (u64)lock;
+		/*
+		 * Skip 4 frames, e.g.:
+		 *	__this_module+0x34ef
+		 *	__this_module+0x34ef
+		 *	__this_module+0x34ef
+		 *	      mutex_lock+0x5
+		 *
+		 * Note: If you make major changes to this bpf program, double check
+		 * that you aren't skipping too many frames.
+		 */
+		li.stack_id = bpf_get_stackid(ctx, &stack_map, 0 | BPF_F_FAST_STACK_CMP);
+		/* legit failures include EEXIST */
+		if (li.stack_id < 0)
+			return;
+		li.try_at = bpf_ktime_get_ns();
+		tl.task_id = task_id;
+		tl.lock_ptr = (u64)lock;
+		bpf_map_update_elem(&lockholder_map, &tl, &li, BPF_ANY);
+}
+
 static void lock_contended(void *ctx, void *lock)
 {
-	u64 task_id;
-	struct lockholder_info li = {};
-	struct task_lock tl = {};
-
-	if (target_lock && target_lock != lock)
-		return;
-
-	task_id = bpf_get_current_pid_tgid();
-	if (!tracing_task(task_id))
-		return;
-
-	li.task_id = task_id;
-	li.lock_ptr = (u64)lock;
-
-	/*
-	 * Skip 4 frames, e.g.:
-	 *	__this_module+0x34ef
-	 *	__this_module+0x34ef
-	 *	__this_module+0x34ef
-	 *	      mutex_lock+0x5
-	 *
-	 * Note: If you make major changes to this bpf program, double check
-	 * that you aren't skipping too many frames.
-	 */
-	li.stack_id = bpf_get_stackid(ctx, &stack_map, 0 | BPF_F_FAST_STACK_CMP);
-
-	/* legit failures include EEXIST */
-	if (li.stack_id < 0)
-		return;
-	li.try_at = bpf_ktime_get_ns();
-
-	tl.task_id = task_id;
-	tl.lock_ptr = (u64)lock;
-	bpf_map_update_elem(&lockholder_map, &tl, &li, BPF_ANY);
+	lock_contended_extra();
 }
 
 static void lock_aborted(void *lock)
