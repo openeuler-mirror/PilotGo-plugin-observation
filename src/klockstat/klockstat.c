@@ -703,101 +703,89 @@ static void enable_kprobes(struct klockstat_bpf *obj)
 	}
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	static struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.args_doc = args_doc,
-		.doc = argp_program_doc,
-	};
-	struct klockstat_bpf *obj = NULL;
-	struct ksyms *ksyms = NULL;
-	int err;
-	void *lock_addr = NULL;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, &env);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	signal(SIGINT, sig_handler);
-	libbpf_set_print(libbpf_print_fn);
-
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		warning("failed to load kallsyms\n");
-		err = 1;
-		goto cleanup;
-	}
-	if (env.lock_name) {
-		lock_addr = get_lock_addr(ksyms, env.lock_name);
-		if (!lock_addr) {
-			warning("Failed to find lock %s\n", env.lock_name);
+		static struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.args_doc = args_doc,
+			.doc = argp_program_doc,
+		};
+		struct klockstat_bpf *obj = NULL;
+		struct ksyms *ksyms = NULL;
+		int err;
+		void *lock_addr = NULL;
+		err = argp_parse(&argp, argc, argv, 0, NULL, &env);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		signal(SIGINT, sig_handler);
+		libbpf_set_print(libbpf_print_fn);
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			warning("failed to load kallsyms\n");
 			err = 1;
 			goto cleanup;
 		}
-	}
-
-	obj = klockstat_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	obj->rodata->target_tgid = env.pid;
-	obj->rodata->target_pid = env.tid;
-	obj->rodata->target_lock = lock_addr;
-	obj->rodata->per_thread = env.per_thread;
-
-	if (fentry_can_attach("mutex_locK", NULL) ||
-	    fentry_can_attach("mutex_lock_nested", NULL))
-		enable_fentry(obj);
-	else
-		enable_kprobes(obj);
-
-	err = klockstat_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object\n");
-		goto cleanup;
-	}
-
-	err = klockstat_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs\n");
-		goto cleanup;
-	}
-
-	printf("Tracing mutex/sem lock events... Hit Ctrl-C to end\n");
-
-	for (int i = 0; i < env.iterations && !exiting; i++) {
-		sleep(env.interval);
-
-		printf("\n");
-		if (env.timestamp) {
-			char ts[32];
-
-			strftime_now(ts, sizeof(ts), "%H:%M:%S");
-			printf("%-8s\n", ts);
+		if (env.lock_name) {
+			lock_addr = get_lock_addr(ksyms, env.lock_name);
+			if (!lock_addr) {
+				warning("Failed to find lock %s\n", env.lock_name);
+				err = 1;
+				goto cleanup;
+			}
 		}
-
-		if (print_stats(ksyms, bpf_map__fd(obj->maps.stack_map),
-				bpf_map__fd(obj->maps.stat_map))) {
-			warning("print_stats error, aborting.\n");
-			break;
+		obj = klockstat_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			err = 1;
+			goto cleanup;
 		}
-		fflush(stdout);
-	}
+		obj->rodata->target_tgid = env.pid;
+		obj->rodata->target_pid = env.tid;
+		obj->rodata->target_lock = lock_addr;
+		obj->rodata->per_thread = env.per_thread;
+		if (fentry_can_attach("mutex_locK", NULL) ||
+		    fentry_can_attach("mutex_lock_nested", NULL))
+			enable_fentry(obj);
+		else
+			enable_kprobes(obj);
+		err = klockstat_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object\n");
+			goto cleanup;
+		}
+		err = klockstat_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs\n");
+			goto cleanup;
+		}
+		printf("Tracing mutex/sem lock events... Hit Ctrl-C to end\n");
+		for (int i = 0; i < env.iterations && !exiting; i++) {
+			sleep(env.interval);
+			printf("\n");
+			if (env.timestamp) {
+				char ts[32];
+				strftime_now(ts, sizeof(ts), "%H:%M:%S");
+				printf("%-8s\n", ts);
+			}
+			if (print_stats(ksyms, bpf_map__fd(obj->maps.stack_map),
+					bpf_map__fd(obj->maps.stat_map))) {
+				warning("print_stats error, aborting.\n");
+				break;
+			}
+			fflush(stdout);
+		}
+		printf("Exiting trace of mutex/sem locks\n");
+	cleanup:
+		if (obj)
+			klockstat_bpf__destroy(obj);
+		ksyms__free(ksyms);
+		return err != 0;
+}
 
-	printf("Exiting trace of mutex/sem locks\n");
-
-cleanup:
-	if (obj)
-		klockstat_bpf__destroy(obj);
-	ksyms__free(ksyms);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
