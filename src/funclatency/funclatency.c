@@ -26,7 +26,7 @@ static struct env {
 	.iterations = 99999999,
 };
 
-const char *argp_program_version = "funclatency 0.1";
+const char *argp_program_version = "funclatency 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char args_doc[] = "FUNCTION";
 const char argp_program_doc[] =
