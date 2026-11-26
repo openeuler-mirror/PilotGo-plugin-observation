@@ -158,63 +158,54 @@ static struct cpuwalk_bpf *open_bpf_object(struct bpf_object_open_opts *open_opt
 	return obj;
 }
 
+static void main_extra(void)
+{
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct bpf_link *links[MAX_CPU_NR] = {};
+		struct cpuwalk_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		nr_cpus = get_nr_cpus();
+		if (nr_cpus < 0)
+			return 1;
+		obj = open_bpf_object(&open_opts);
+		if (!obj)
+			return 1;
+		err = cpuwalk_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF objects\n");
+			goto cleanup;
+		}
+		if (!obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		err = open_and_attach_perf_event(obj->progs.do_sample, links);
+		if (err)
+			goto cleanup;
+		printf("Sampling CPU at %dhz... Hit Ctrl-C to end.\n", frequency);
+		signal(SIGINT, sig_handler);
+		sleep(-1);
+		print_hist(obj->bss);
+	cleanup:
+		for (int i = 0; i < nr_cpus; i++)
+			bpf_link__destroy(links[i]);
+		cpuwalk_bpf__destroy(obj);
+		cleanup_core_btf(&open_opts);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct bpf_link *links[MAX_CPU_NR] = {};
-	struct cpuwalk_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	nr_cpus = get_nr_cpus();
-	if (nr_cpus < 0)
-		return 1;
-
-	obj = open_bpf_object(&open_opts);
-	if (!obj)
-		return 1;
-
-	err = cpuwalk_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF objects\n");
-		goto cleanup;
-	}
-
-	if (!obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	err = open_and_attach_perf_event(obj->progs.do_sample, links);
-	if (err)
-		goto cleanup;
-
-	printf("Sampling CPU at %dhz... Hit Ctrl-C to end.\n", frequency);
-
-	signal(SIGINT, sig_handler);
-
-	sleep(-1);
-	print_hist(obj->bss);
-
-cleanup:
-	for (int i = 0; i < nr_cpus; i++)
-		bpf_link__destroy(links[i]);
-
-	cpuwalk_bpf__destroy(obj);
-	cleanup_core_btf(&open_opts);
-
-	return err != 0;
+	main_extra();
 }
