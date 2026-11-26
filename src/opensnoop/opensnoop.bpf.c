@@ -87,42 +87,41 @@ int tracepoint__syscalls__sys_enter_openat(struct trace_event_raw_sys_enter *ctx
     return 0;
 }
 
+static void trace_exit_extra(void)
+{
+	    struct event *eventp;
+	    struct args_t *argsp;
+	    uintptr_t stack[3];
+	    int ret;
+	    u64 id = bpf_get_current_pid_tgid();
+	    pid_t pid = (pid_t)id;
+	    argsp = bpf_map_lookup_and_delete_elem(&start, &pid);
+	    if (!argsp)
+	        return 0;
+	    ret = ctx->ret;
+	    if (target_failed && ret >= 0)
+	        return 0;
+	    eventp = reserve_buf(sizeof(*eventp));
+	    if (!eventp)
+	        return 0;
+	    eventp->pid = id >> 32;
+	    eventp->uid = (uid_t)bpf_get_current_uid_gid();
+	    bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+	    bpf_probe_read_user_str(&eventp->fname, sizeof(eventp->fname), argsp->fname);
+	    eventp->flags = argsp->flags;
+	    eventp->modes = argsp->modes;
+	    eventp->ret = ret;
+	    bpf_get_stack(ctx, &stack, sizeof(stack), BPF_F_USER_STACK);
+	    /* Skip the first address that is usually the syscall it-self */
+	    eventp->callers[0] = stack[1];
+	    eventp->callers[1] = stack[2];
+	    submit_buf(ctx, eventp, sizeof(*eventp));
+	    return 0;
+}
+
 static __always_inline int trace_exit(struct trace_event_raw_sys_exit *ctx)
 {
-    struct event *eventp;
-    struct args_t *argsp;
-    uintptr_t stack[3];
-    int ret;
-    u64 id = bpf_get_current_pid_tgid();
-    pid_t pid = (pid_t)id;
-
-    argsp = bpf_map_lookup_and_delete_elem(&start, &pid);
-    if (!argsp)
-        return 0;
-
-    ret = ctx->ret;
-    if (target_failed && ret >= 0)
-        return 0;
-
-    eventp = reserve_buf(sizeof(*eventp));
-    if (!eventp)
-        return 0;
-
-    eventp->pid = id >> 32;
-    eventp->uid = (uid_t)bpf_get_current_uid_gid();
-    bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
-    bpf_probe_read_user_str(&eventp->fname, sizeof(eventp->fname), argsp->fname);
-    eventp->flags = argsp->flags;
-    eventp->modes = argsp->modes;
-    eventp->ret = ret;
-
-    bpf_get_stack(ctx, &stack, sizeof(stack), BPF_F_USER_STACK);
-    /* Skip the first address that is usually the syscall it-self */
-    eventp->callers[0] = stack[1];
-    eventp->callers[1] = stack[2];
-
-    submit_buf(ctx, eventp, sizeof(*eventp));
-    return 0;
+	trace_exit_extra();
 }
 
 SEC("tracepoint/syscalls/sys_exit_open")
