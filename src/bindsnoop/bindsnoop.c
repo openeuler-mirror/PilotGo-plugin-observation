@@ -142,29 +142,29 @@ static void format_socket_opts(__u8 opts_mask, char *buf)
 	buf[i] = '\0';
 }
 
+static void handle_event_extra2(void)
+{
+		struct bind_event *e = data;
+		char addr[48];
+		char opts[6];
+		if (env.emit_timestamp) {
+			char ts[32];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%8s ", ts);
+		}
+		format_socket_opts(e->opts, opts);
+		if (e->ver == 4)
+			inet_ntop(AF_INET, &e->addr, addr, sizeof(addr));
+		else
+			inet_ntop(AF_INET6, &e->addr, addr, sizeof(addr));
+		printf("%-7d %-16s %-3d %-5s %-5s %-4d %-5d %-48s\n",
+		       e->pid, e->task, e->ret, proto_name(e->proto), opts,
+		       e->bound_dev_if, e->port, addr);
+}
+
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
-	struct bind_event *e = data;
-	char addr[48];
-	char opts[6];
-
-	if (env.emit_timestamp) {
-		char ts[32];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		printf("%8s ", ts);
-	}
-
-	format_socket_opts(e->opts, opts);
-
-	if (e->ver == 4)
-		inet_ntop(AF_INET, &e->addr, addr, sizeof(addr));
-	else
-		inet_ntop(AF_INET6, &e->addr, addr, sizeof(addr));
-
-	printf("%-7d %-16s %-3d %-5s %-5s %-4d %-5d %-48s\n",
-	       e->pid, e->task, e->ret, proto_name(e->proto), opts,
-	       e->bound_dev_if, e->port, addr);
+	handle_event_extra2();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
