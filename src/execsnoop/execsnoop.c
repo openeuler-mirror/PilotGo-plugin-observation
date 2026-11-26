@@ -188,24 +188,27 @@ static void inline quoted_symbol(char c)
 	quoted_symbol_extra();
 }
 
+static void print_quoted_args_extra(void)
+{
+		int args_done = 0;
+		putchar('"');
+		for (int i = 0; i < e->args_size && args_done < e->args_count; i++) {
+			char c = e->args[i];
+			if (c != '\0') {
+				quoted_symbol(c);
+				continue;
+			}
+			args_done++;
+			putchar('"');
+			putchar(' ');
+			if (args_done < e->args_count)
+				putchar('"');
+		}
+}
+
 static void print_quoted_args(const struct event *e)
 {
-	int args_done = 0;
-
-	putchar('"');
-	for (int i = 0; i < e->args_size && args_done < e->args_count; i++) {
-		char c = e->args[i];
-
-		if (c != '\0') {
-			quoted_symbol(c);
-			continue;
-		}
-		args_done++;
-		putchar('"');
-		putchar(' ');
-		if (args_done < e->args_count)
-			putchar('"');
-	}
+	print_quoted_args_extra();
 }
 
 static void print_plain_args_extra(void)
