@@ -54,73 +54,76 @@ static const struct argp_option opts[] = {
 	{}
 };
 
-static error_t parse_arg(int key, char *arg, struct argp_state *state)
+static void parse_arg_extra(void)
 {
-	static int pos_args;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'u':
-		env.user_threads_only = true;
-		break;
-	case 'p':
-		env.pid = argp_parse_pid(key, arg, state);
-		break;
-	case OPT_PERF_MAX_STACK_DEPTH:
-		errno = 0;
-		env.perf_max_stack_depth = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid perf max stack depth: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case OPT_STACK_STORAGE_SIZE:
-		errno = 0;
-		env.stack_storage_size = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid stack storage size: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case 'm':
-		errno = 0;
-		env.min_block_time = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid min block time (in us): %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case 'M':
-		errno = 0;
-		env.max_block_time = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid max block time (in us): %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case ARGP_KEY_ARG:
-		errno = 0;
-		if (pos_args == 0) {
-			env.duration = strtol(arg, NULL, 10);
-			if (errno || env.duration <= 0) {
-				warning("Invalid duration (in s)\n");
+		static int pos_args;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'u':
+			env.user_threads_only = true;
+			break;
+		case 'p':
+			env.pid = argp_parse_pid(key, arg, state);
+			break;
+		case OPT_PERF_MAX_STACK_DEPTH:
+			errno = 0;
+			env.perf_max_stack_depth = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid perf max stack depth: %s\n", arg);
 				argp_usage(state);
 			}
-		} else {
-			warning("Unrecognized positional argument: %s\n", arg);
-			argp_usage(state);
+			break;
+		case OPT_STACK_STORAGE_SIZE:
+			errno = 0;
+			env.stack_storage_size = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid stack storage size: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case 'm':
+			errno = 0;
+			env.min_block_time = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid min block time (in us): %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case 'M':
+			errno = 0;
+			env.max_block_time = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid max block time (in us): %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case ARGP_KEY_ARG:
+			errno = 0;
+			if (pos_args == 0) {
+				env.duration = strtol(arg, NULL, 10);
+				if (errno || env.duration <= 0) {
+					warning("Invalid duration (in s)\n");
+					argp_usage(state);
+				}
+			} else {
+				warning("Unrecognized positional argument: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
 		}
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
+		return 0;
+}
 
-	return 0;
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
