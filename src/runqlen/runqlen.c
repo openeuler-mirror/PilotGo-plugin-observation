@@ -74,45 +74,48 @@ static void parse_positional(int *pos_args, char *arg, struct argp_state *state)
 	(*pos_args)++;
 }
 
+static void parse_arg_extra(void)
+{
+		static int pos_args;
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'C':
+			env.per_cpu = true;
+			break;
+		case 'O':
+			env.runqocc = true;
+			break;
+		case 'T':
+			env.timestamp = true;
+			break;
+		case 'H':
+			env.host = true;
+			break;
+		case 'f':
+			errno = 0;
+			env.freq = strtol(arg, NULL, 10);
+			if (errno) {
+				warning("Invalid freq (in hz): %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case ARGP_KEY_ARG:
+			parse_positional(&pos_args, arg, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	static int pos_args;
-
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'C':
-		env.per_cpu = true;
-		break;
-	case 'O':
-		env.runqocc = true;
-		break;
-	case 'T':
-		env.timestamp = true;
-		break;
-	case 'H':
-		env.host = true;
-		break;
-	case 'f':
-		errno = 0;
-		env.freq = strtol(arg, NULL, 10);
-		if (errno) {
-			warning("Invalid freq (in hz): %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case ARGP_KEY_ARG:
-		parse_positional(&pos_args, arg, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int nr_cpus;
