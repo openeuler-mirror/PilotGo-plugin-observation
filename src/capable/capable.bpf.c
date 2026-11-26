@@ -180,32 +180,29 @@ int BPF_KPROBE(kprobe__cap_capable_entry, const struct cred *cred,
 }
 
 SEC("kretprobe/cap_capable")
+static void BPF_KRETPROBE_extra(void)
+{
+		__u64 pid_tgid;
+		struct args_t *argsp;
+		struct cap_event event = {};
+		if (current_ns_pid_tgid(&pid_tgid))
+			return 0;
+		argsp = bpf_map_lookup_elem(&start, &pid_tgid);
+		if (!argsp)
+			return 0;
+		bpf_map_delete_elem(&start, &pid_tgid);
+		fill_event(&event, argsp, pid_tgid);
+		event.ret = PT_REGS_RC(ctx);
+		if (already_seen(argsp, pid_tgid))
+			return 0;
+		record_stack_info(ctx, &event, pid_tgid);
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
+		return 0;
+}
+
 int BPF_KRETPROBE(kretprobe__cap_capable_exit)
 {
-	__u64 pid_tgid;
-	struct args_t *argsp;
-	struct cap_event event = {};
-
-	if (current_ns_pid_tgid(&pid_tgid))
-		return 0;
-
-	argsp = bpf_map_lookup_elem(&start, &pid_tgid);
-	if (!argsp)
-		return 0;
-
-	bpf_map_delete_elem(&start, &pid_tgid);
-
-	fill_event(&event, argsp, pid_tgid);
-	event.ret = PT_REGS_RC(ctx);
-
-	if (already_seen(argsp, pid_tgid))
-		return 0;
-
-	record_stack_info(ctx, &event, pid_tgid);
-
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
-
-	return 0;
+	BPF_KRETPROBE_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
