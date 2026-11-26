@@ -69,6 +69,7 @@ static struct env {
 	int	interval;
 	int	count;
 	bool	verbose;
+	int timeout;
 } env = {
 	.clear_screen	= true,
 	.output_rows	= 20,
@@ -174,6 +175,9 @@ static void parse_arg_extra(void)
 		case 'h':
 			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
 			break;
+			case 'T':
+				env.timeout = atoi(arg);
+				break;
 		case ARGP_KEY_ARG:
 			parse_positional_arg(arg, pos_args++, state);
 			break;
