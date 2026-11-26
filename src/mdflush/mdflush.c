@@ -119,61 +119,55 @@ static void main_section3_2(void)
 	    }
 }
 
+static void main_extra(void)
+{
+	    static const struct argp argp = {
+	        .options = opts,
+	        .parser = parse_arg,
+	        .doc = argp_program_doc,
+	    };
+	    struct perf_buffer *pb = NULL;
+	    struct mdflush_bpf *obj;
+	    int err;
+	    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+	    if (err)
+	        return err;
+	    libbpf_set_print(libbpf_print_fn);
+	    obj = mdflush_bpf__open();
+	    if (!obj)
+	    {
+	        warning("Failed to open BPF object\n");
+	        return 1;
+	    }
+	    select_probes(obj);
+	    err = mdflush_bpf__load(obj);
+	    if (err)
+	    {
+	        warning("Failed to load BPF object: %d\n", err);
+	        goto cleanup;
+	    }
+	    err = mdflush_bpf__attach(obj);
+	    if (err)
+	    {
+	        warning("Failed to attach BPF programs\n");
+	        goto cleanup;
+	    }
+		main_section3_2();
+	    if (signal(SIGINT, sig_handler) == SIG_ERR)
+	    {
+	        warning("Can't set signal handler: %s\n", strerror(errno));
+	        err = 1;
+	        goto cleanup;
+	    }
+	    print_header();
+	    err = poll_events(pb);
+	cleanup:
+	    perf_buffer__free(pb);
+	    mdflush_bpf__destroy(obj);
+	    return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-    static const struct argp argp = {
-        .options = opts,
-        .parser = parse_arg,
-        .doc = argp_program_doc,
-    };
-    struct perf_buffer *pb = NULL;
-    struct mdflush_bpf *obj;
-    int err;
-
-    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-    if (err)
-        return err;
-
-    libbpf_set_print(libbpf_print_fn);
-
-    obj = mdflush_bpf__open();
-    if (!obj)
-    {
-        warning("Failed to open BPF object\n");
-        return 1;
-    }
-
-    select_probes(obj);
-
-    err = mdflush_bpf__load(obj);
-    if (err)
-    {
-        warning("Failed to load BPF object: %d\n", err);
-        goto cleanup;
-    }
-
-    err = mdflush_bpf__attach(obj);
-    if (err)
-    {
-        warning("Failed to attach BPF programs\n");
-        goto cleanup;
-    }
-	main_section3_2();
-
-    if (signal(SIGINT, sig_handler) == SIG_ERR)
-    {
-        warning("Can't set signal handler: %s\n", strerror(errno));
-        err = 1;
-        goto cleanup;
-    }
-
-    print_header();
-
-    err = poll_events(pb);
-
-cleanup:
-    perf_buffer__free(pb);
-    mdflush_bpf__destroy(obj);
-
-    return err != 0;
+	main_extra();
 }
