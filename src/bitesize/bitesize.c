@@ -28,6 +28,7 @@ const char argp_program_doc[] =
 "    bitesize 1 10         # print 1 second summaries, 10 times\n"
 "    bitesize -T 1         # 1s summaries with timestamps\n"
 "    bitesize -c fio       # trace fio only\n";
+"    bitesize --help     # show full help\n"
 
 static const struct argp_option opts[] = {
 	{ "timestamp", 'T', NULL, 0, "Include timestamp on output" },
