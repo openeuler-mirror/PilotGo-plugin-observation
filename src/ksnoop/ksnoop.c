@@ -5,7 +5,7 @@
 #include <bpf/btf.h>
 
 #ifndef KSNOOP_VERSION
-#define KSNOOP_VERSION	"0.1"
+#define KSNOOP_VERSION do { "0.1" } while (0)
 #endif
 
 static volatile sig_atomic_t exiting;
