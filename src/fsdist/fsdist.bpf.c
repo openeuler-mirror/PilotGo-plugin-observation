@@ -59,28 +59,28 @@ static __always_inline void record_hist_slot(enum fs_file_op op, __s64 delta)
 	__sync_fetch_and_add(&hists[op].slots[slot], 1);
 }
 
+static void probe_return_extra(void)
+{
+		__u32 tid = (__u32)bpf_get_current_pid_tgid();
+		__u64 *tsp;
+		__s64 delta;
+		tsp = bpf_map_lookup_elem(&starts, &tid);
+		if (!tsp)
+			return 0;
+		if (op >= F_MAX_OP)
+			goto cleanup;
+		delta = calc_delta_us(*tsp);
+		if (delta < 0)
+			goto cleanup;
+		record_hist_slot(op, delta);
+	cleanup:
+		bpf_map_delete_elem(&starts, &tid);
+		return 0;
+}
+
 static int probe_return(enum fs_file_op op)
 {
-	__u32 tid = (__u32)bpf_get_current_pid_tgid();
-	__u64 *tsp;
-	__s64 delta;
-
-	tsp = bpf_map_lookup_elem(&starts, &tid);
-	if (!tsp)
-		return 0;
-
-	if (op >= F_MAX_OP)
-		goto cleanup;
-
-	delta = calc_delta_us(*tsp);
-	if (delta < 0)
-		goto cleanup;
-
-	record_hist_slot(op, delta);
-
-cleanup:
-	bpf_map_delete_elem(&starts, &tid);
-	return 0;
+	probe_return_extra();
 }
 
 SEC("kprobe/dummy_file_read")
