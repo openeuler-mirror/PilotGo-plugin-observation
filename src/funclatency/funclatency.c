@@ -8,7 +8,8 @@
 #include "uprobe_helpers.h"
 
 static struct env {
-	int units;
+	/* units field */
+	int	units;
 	pid_t pid;
 	unsigned int duration;
 	unsigned int interval;
