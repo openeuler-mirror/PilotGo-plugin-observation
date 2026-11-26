@@ -337,35 +337,35 @@ static void handle_event_extra2(void)
 	    return 0;
 }
 
+static void handle_event_extra(void)
+{
+	    const struct event *e = data;
+	    int fd, err, sps_cnt;
+	    const char *program_name = basename((char *)ctx);
+	    /* name filtering is currently done in user space */
+	    if (env.name && strstr(e->comm, env.name) == NULL)
+	        return 0;
+	    /* skip this program */
+	    if (!strcmp(program_name, e->comm))
+	        return 0;
+	    /* prepare fileds */
+	    if (e->ret >= 0)
+	    {
+	        fd = e->ret;
+	        err = 0;
+	    }
+	    else
+	    {
+	        fd = -1;
+	        err = -e->ret;
+	    }
+	    sps_cnt = print_event_header(e, fd, err);
+		handle_event_extra2();
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-    const struct event *e = data;
-    int fd, err, sps_cnt;
-    const char *program_name = basename((char *)ctx);
-
-    /* name filtering is currently done in user space */
-    if (env.name && strstr(e->comm, env.name) == NULL)
-        return 0;
-
-    /* skip this program */
-    if (!strcmp(program_name, e->comm))
-        return 0;
-
-    /* prepare fileds */
-    if (e->ret >= 0)
-    {
-        fd = e->ret;
-        err = 0;
-    }
-    else
-    {
-        fd = -1;
-        err = -e->ret;
-    }
-
-    sps_cnt = print_event_header(e, fd, err);
-
-	handle_event_extra2();
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
