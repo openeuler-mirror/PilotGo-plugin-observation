@@ -594,24 +594,27 @@ static int add_alloc(size_t *nr_allocs, uint64_t addr,
 	return 0;
 }
 
+static void reset_allocs_extra(void)
+{
+		/* Reset allocs list so that we dont accidentaly reuse data the next
+		 * time we call this function */
+		for (size_t i = 0; i < nr_allocs; i++) {
+			allocs[i].stack_id = 0;
+			if (env.show_allocs) {
+				struct allocation_node *it = allocs[i].allocations;
+				while (!it) {
+					struct allocation_node *this = it;
+					it = it->next;
+					free(this);
+				}
+				allocs[i].allocations = NULL;
+			}
+		}
+}
+
 static void reset_allocs(size_t nr_allocs)
 {
-	/* Reset allocs list so that we dont accidentaly reuse data the next
-	 * time we call this function */
-	for (size_t i = 0; i < nr_allocs; i++) {
-		allocs[i].stack_id = 0;
-		if (env.show_allocs) {
-			struct allocation_node *it = allocs[i].allocations;
-
-			while (!it) {
-				struct allocation_node *this = it;
-
-				it = it->next;
-				free(this);
-			}
-			allocs[i].allocations = NULL;
-		}
-	}
+	reset_allocs_extra();
 }
 
 static int print_outstanding_allocs(int allocs_fd, int stack_traces_fd)
