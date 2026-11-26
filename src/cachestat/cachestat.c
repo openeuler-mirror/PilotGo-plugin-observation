@@ -250,73 +250,63 @@ static int print_stats(struct cachestat_bpf *obj, bool timestamp)
 	return 0;
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct argument argument = {
+			.interval = -1,
+			.times = 99999999,
+		};
+		struct cachestat_bpf *obj;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = cachestat_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		if (!setup_dirty_tp(obj) || !setup_misses_tp(obj))
+			goto cleanup;
+		setup_total_tp(obj);
+		err = cachestat_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object\n");
+			goto cleanup;
+		}
+		if (!obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		err = cachestat_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs\n");
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		print_header(argument.timestamp);
+		while (1) {
+			sleep(argument.interval);
+			err = print_stats(obj, argument.timestamp);
+			if (err)
+				goto cleanup;
+			if (exiting || --argument.times == 0)
+				break;
+		}
+	cleanup:
+		cachestat_bpf__destroy(obj);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct argument argument = {
-		.interval = -1,
-		.times = 99999999,
-	};
-	struct cachestat_bpf *obj;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, &argument);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = cachestat_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	if (!setup_dirty_tp(obj) || !setup_misses_tp(obj))
-		goto cleanup;
-
-	setup_total_tp(obj);
-
-	err = cachestat_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object\n");
-		goto cleanup;
-	}
-
-	if (!obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	err = cachestat_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs\n");
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	print_header(argument.timestamp);
-
-	while (1) {
-		sleep(argument.interval);
-
-		err = print_stats(obj, argument.timestamp);
-		if (err)
-			goto cleanup;
-
-		if (exiting || --argument.times == 0)
-			break;
-	}
-
-cleanup:
-	cachestat_bpf__destroy(obj);
-	return err != 0;
+	main_extra();
 }
