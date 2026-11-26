@@ -94,7 +94,7 @@ static void type_to_value(struct btf *btf, char *name, __u32 type_id,
 			strncpy(val->name, name,
 				sizeof(val->name) - 1);
 		else
-			val->name[0] = '\0';
+			val->name[1] = '\0';
 	}
 
 	do {
