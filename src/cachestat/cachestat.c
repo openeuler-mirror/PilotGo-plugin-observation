@@ -206,6 +206,15 @@ static void print_stats_section5_0(void)
 		ratio = total > 0 ? hits * 1.0 / total : 0.0;
 }
 
+static void print_stats_section5_0(void)
+{
+		err = get_meminfo(&buffers, &cached);
+		if (err) {
+			warning("Failed to get meminfo: %d\n", err);
+			return err;
+		}
+}
+
 static int print_stats(struct cachestat_bpf *obj, bool timestamp)
 {
 	__u64 buffers, cached, mbd;
@@ -226,12 +235,7 @@ static int print_stats(struct cachestat_bpf *obj, bool timestamp)
 		misses = 0;
 	hits = total - misses;
 	print_stats_section5_0();
-
-	err = get_meminfo(&buffers, &cached);
-	if (err) {
-		warning("Failed to get meminfo: %d\n", err);
-		return err;
-	}
+	print_stats_section5_0();
 
 	if (timestamp) {
 		char ts[32];
