@@ -104,40 +104,42 @@ static void disable_fentry(struct readahead_bpf *obj)
 	disable_prog(obj->progs.folio_mark_accessed);
 }
 
+static void try_fentry_extra(void)
+{
+	    /*
+	     * starting from v5.10-rc1, __do_page_cache_readahead has renamed to
+	     * do_page_cache_ra, so we specify the function dynamically.
+	     */
+	    if (!readahead__set_attach_target(obj->progs.do_page_cache_ra))
+	        goto out_shutdown_fentry;
+	    if (!readahead__set_attach_target(obj->progs.do_page_cache_ra_ret))
+	        goto out_shutdown_fentry;
+	    if (fentry_can_attach("folio_mark_accessed", NULL) &&
+	        fentry_can_attach("filemap_alloc_folio", NULL))
+	    {
+	        disable_prog(obj->progs.page_cache_alloc_ret);
+	        disable_prog(obj->progs.mark_page_accessed);
+	    }
+	    else if (fentry_can_attach("mark_page_accessed", NULL) &&
+	             fentry_can_attach("__page_cache_alloc", NULL))
+	    {
+	        disable_prog(obj->progs.filemap_alloc_folio_ret);
+	        disable_prog(obj->progs.folio_mark_accessed);
+	    }
+	    else
+	    {
+	        goto out_shutdown_fentry;
+	    }
+	    disable_kprobes(obj);
+	    return true;
+	out_shutdown_fentry:
+	    disable_fentry(obj);
+	    return false;
+}
+
 static bool try_fentry(struct readahead_bpf *obj)
 {
-    /*
-     * starting from v5.10-rc1, __do_page_cache_readahead has renamed to
-     * do_page_cache_ra, so we specify the function dynamically.
-     */
-    if (!readahead__set_attach_target(obj->progs.do_page_cache_ra))
-        goto out_shutdown_fentry;
-    if (!readahead__set_attach_target(obj->progs.do_page_cache_ra_ret))
-        goto out_shutdown_fentry;
-
-    if (fentry_can_attach("folio_mark_accessed", NULL) &&
-        fentry_can_attach("filemap_alloc_folio", NULL))
-    {
-        disable_prog(obj->progs.page_cache_alloc_ret);
-        disable_prog(obj->progs.mark_page_accessed);
-    }
-    else if (fentry_can_attach("mark_page_accessed", NULL) &&
-             fentry_can_attach("__page_cache_alloc", NULL))
-    {
-        disable_prog(obj->progs.filemap_alloc_folio_ret);
-        disable_prog(obj->progs.folio_mark_accessed);
-    }
-    else
-    {
-        goto out_shutdown_fentry;
-    }
-
-    disable_kprobes(obj);
-    return true;
-
-out_shutdown_fentry:
-    disable_fentry(obj);
-    return false;
+	try_fentry_extra();
 }
 
 
