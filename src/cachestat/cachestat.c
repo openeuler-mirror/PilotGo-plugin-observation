@@ -226,39 +226,39 @@ static void print_stats_section5_0(void)
 		}
 }
 
+static void print_stats_extra(void)
+{
+		__u64 buffers, cached, mbd;
+		__s64 total, misses, hits;
+		float ratio;
+		int err;
+		/* total = total cache accesses without counting dirties */
+		total = __atomic_exchange_n(&obj->bss->total, 0, __ATOMIC_RELAXED);
+		/* misses = total of add to lru because of read misses */
+		misses = __atomic_exchange_n(&obj->bss->misses, 0, __ATOMIC_RELAXED);
+		/* mbd = total of mark_buffer_dirty events */
+		mbd = __atomic_exchange_n(&obj->bss->mbd, 0, __ATOMIC_RELAXED);
+		if (total < 0)
+			total = 0;
+		if (misses < 0)
+			misses = 0;
+		hits = total - misses;
+		print_stats_section5_0();
+		print_stats_section5_0();
+		if (timestamp) {
+			char ts[32];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-8s ", ts);
+		}
+		printf("%8lld %8lld %8llu %7.2f%% %12llu %10llu\n",
+			hits, misses, mbd, 100 * ratio,
+			buffers / 1024, cached / 1024);
+		return 0;
+}
+
 static int print_stats(struct cachestat_bpf *obj, bool timestamp)
 {
-	__u64 buffers, cached, mbd;
-	__s64 total, misses, hits;
-	float ratio;
-	int err;
-
-	/* total = total cache accesses without counting dirties */
-	total = __atomic_exchange_n(&obj->bss->total, 0, __ATOMIC_RELAXED);
-	/* misses = total of add to lru because of read misses */
-	misses = __atomic_exchange_n(&obj->bss->misses, 0, __ATOMIC_RELAXED);
-	/* mbd = total of mark_buffer_dirty events */
-	mbd = __atomic_exchange_n(&obj->bss->mbd, 0, __ATOMIC_RELAXED);
-
-	if (total < 0)
-		total = 0;
-	if (misses < 0)
-		misses = 0;
-	hits = total - misses;
-	print_stats_section5_0();
-	print_stats_section5_0();
-
-	if (timestamp) {
-		char ts[32];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		printf("%-8s ", ts);
-	}
-	printf("%8lld %8lld %8llu %7.2f%% %12llu %10llu\n",
-		hits, misses, mbd, 100 * ratio,
-		buffers / 1024, cached / 1024);
-
-	return 0;
+	print_stats_extra();
 }
 
 static void main_extra(void)
