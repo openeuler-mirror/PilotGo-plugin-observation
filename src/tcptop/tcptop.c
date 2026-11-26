@@ -72,69 +72,74 @@ struct info_t {
         struct traffic_t value;
 };
 
+static void parse_arg_extra(void)
+{
+	        switch (key) {
+	        case 'p':
+	                env.target_pid = argp_parse_pid(key, arg, state);
+	                break;
+	        case 'c':
+	                env.cgroup_path = arg;
+	                env.cgroup_filtering = true;
+	                break;
+	        case 'C':
+	                env.clear_screen = false;
+	                break;
+	        case 'S':
+	                env.no_summary = true;
+	                break;
+	        case '4':
+	                env.ipv4_only = true;
+	                break;
+	        case '6':
+	                env.ipv6_only = true;
+	                break;
+	        case 's':
+	                if (!strcmp(arg, "all")) {
+	                        env.sort_by = ALL;
+	                } else if (!strcmp(arg, "sent")) {
+	                        env.sort_by = SENT;
+	                } else if (!strcmp(arg, "received")) {
+	                        env.sort_by = RECEIVED;
+	                } else {
+	                        warning("Invalid sort method: %s\n", arg);
+	                        argp_usage(state);
+	                }
+	                break;
+	        case 'r':
+	                env.output_rows = MIN(argp_parse_long(key, arg, state), OUTPUT_ROWS_LIMIT);
+	                break;
+	        case 'v':
+	                env.verbose = true;
+	                break;
+	        case 'h':
+	                argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+	                break;
+	        case ARGP_KEY_END:
+	                if (env.ipv4_only && env.ipv6_only) {
+	                        warning("Only one --ipvX option should be used\n");
+	                        argp_usage(state);
+	                }
+	                break;
+	        case ARGP_KEY_ARG:
+	                if (state->arg_num == 0) {
+	                        env.interval = argp_parse_long(key, arg, state);
+	                } else if (state->arg_num == 1) {
+	                        env.count = argp_parse_long(key, arg, state);
+	                } else {
+	                        warning("Unrecognized positional argument: %s\n", arg);
+	                        argp_usage(state);
+	                }
+	                break;
+	        default:
+	                return ARGP_ERR_UNKNOWN;
+	        }
+	        return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-        switch (key) {
-        case 'p':
-                env.target_pid = argp_parse_pid(key, arg, state);
-                break;
-        case 'c':
-                env.cgroup_path = arg;
-                env.cgroup_filtering = true;
-                break;
-        case 'C':
-                env.clear_screen = false;
-                break;
-        case 'S':
-                env.no_summary = true;
-                break;
-        case '4':
-                env.ipv4_only = true;
-                break;
-        case '6':
-                env.ipv6_only = true;
-                break;
-        case 's':
-                if (!strcmp(arg, "all")) {
-                        env.sort_by = ALL;
-                } else if (!strcmp(arg, "sent")) {
-                        env.sort_by = SENT;
-                } else if (!strcmp(arg, "received")) {
-                        env.sort_by = RECEIVED;
-                } else {
-                        warning("Invalid sort method: %s\n", arg);
-                        argp_usage(state);
-                }
-                break;
-        case 'r':
-                env.output_rows = MIN(argp_parse_long(key, arg, state), OUTPUT_ROWS_LIMIT);
-                break;
-        case 'v':
-                env.verbose = true;
-                break;
-        case 'h':
-                argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-                break;
-        case ARGP_KEY_END:
-                if (env.ipv4_only && env.ipv6_only) {
-                        warning("Only one --ipvX option should be used\n");
-                        argp_usage(state);
-                }
-                break;
-        case ARGP_KEY_ARG:
-                if (state->arg_num == 0) {
-                        env.interval = argp_parse_long(key, arg, state);
-                } else if (state->arg_num == 1) {
-                        env.count = argp_parse_long(key, arg, state);
-                } else {
-                        warning("Unrecognized positional argument: %s\n", arg);
-                        argp_usage(state);
-                }
-                break;
-        default:
-                return ARGP_ERR_UNKNOWN;
-        }
-        return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
