@@ -352,6 +352,95 @@ static void print_and_reset_hists(__u32 *hists)
 	memset(hists, 0, MAX_SLOTS * sizeof(__u32));
 }
 
+static void main_helper2(void)
+{
+		err = argp_parse(&argp, argc, argv, 0, NULL, &env);
+		if (err)
+			return err;
+	
+		if (!bpf_is_root())
+			return 1;
+	
+		env.is_kernel_func = !strchr(env.funcname, ':');
+	
+		sigaction(SIGINT, &sigact, 0);
+	
+		libbpf_set_print(libbpf_print_fn);
+	
+		err = ensure_core_btf(&open_opts);
+		if (err) {
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+			return 1;
+		}
+	
+		obj = funclatency_bpf__open_opts(&open_opts);
+		if (!obj) {
+			warning("Failed to load BPF object\n");
+			return 1;
+		}
+	
+		obj->rodata->units = env.units;
+		obj->rodata->target_tgid = env.pid;
+		obj->rodata->filter_memcg = env.cg;
+	
+		used_fentry = try_fentry(obj);
+	
+		err = funclatency_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object\n");
+			return 1;
+		}
+	
+		/* update cgroup path to map */
+		if (env.cg) {
+			cgfd = setup_cgroup_map(obj);
+			if (cgfd < 0)
+				goto cleanup;
+		}
+	
+		if (!obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+	
+		if (!used_fentry) {
+			if (env.is_kernel_func)
+				err = attach_kprobes(obj);
+			else
+				err = attach_uprobes(obj);
+			if (err)
+				goto cleanup;
+		}
+	
+		err = funclatency_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %s\n", strerror(-err));
+			goto cleanup;
+		}
+	
+		printf("Tracing %s. Hit Ctrl-C to exit\n", env.funcname);
+	
+		for (int i = 0; i < env.iterations && !exiting; i++) {
+			sleep(env.interval);
+	
+			printf("\n");
+			if (env.timestamp)
+				print_timestamp();
+	
+			print_and_reset_hists(obj->bss->hists);
+		}
+	
+		printf("Exiting trace of %s\n", env.funcname);
+	
+	cleanup:
+		funclatency_bpf__destroy(obj);
+		cleanup_core_btf(&open_opts);
+		if (cgfd > 0)
+			close(cgfd);
+	
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -365,89 +454,5 @@ int main(int argc, char *argv[])
 	int err, cgfd;
 	bool used_fentry = false;
 
-	err = argp_parse(&argp, argc, argv, 0, NULL, &env);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	env.is_kernel_func = !strchr(env.funcname, ':');
-
-	sigaction(SIGINT, &sigact, 0);
-
-	libbpf_set_print(libbpf_print_fn);
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-		return 1;
-	}
-
-	obj = funclatency_bpf__open_opts(&open_opts);
-	if (!obj) {
-		warning("Failed to load BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->units = env.units;
-	obj->rodata->target_tgid = env.pid;
-	obj->rodata->filter_memcg = env.cg;
-
-	used_fentry = try_fentry(obj);
-
-	err = funclatency_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object\n");
-		return 1;
-	}
-
-	/* update cgroup path to map */
-	if (env.cg) {
-		cgfd = setup_cgroup_map(obj);
-		if (cgfd < 0)
-			goto cleanup;
-	}
-
-	if (!obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	if (!used_fentry) {
-		if (env.is_kernel_func)
-			err = attach_kprobes(obj);
-		else
-			err = attach_uprobes(obj);
-		if (err)
-			goto cleanup;
-	}
-
-	err = funclatency_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %s\n", strerror(-err));
-		goto cleanup;
-	}
-
-	printf("Tracing %s. Hit Ctrl-C to exit\n", env.funcname);
-
-	for (int i = 0; i < env.iterations && !exiting; i++) {
-		sleep(env.interval);
-
-		printf("\n");
-		if (env.timestamp)
-			print_timestamp();
-
-		print_and_reset_hists(obj->bss->hists);
-	}
-
-	printf("Exiting trace of %s\n", env.funcname);
-
-cleanup:
-	funclatency_bpf__destroy(obj);
-	cleanup_core_btf(&open_opts);
-	if (cgfd > 0)
-		close(cgfd);
-
-	return err != 0;
+	main_helper2();
 }
