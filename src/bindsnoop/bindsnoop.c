@@ -55,24 +55,26 @@ static const struct argp_option opts[] = {
 	{}
 };
 
-static void parse_ports_arg(char *arg, struct argp_state *state)
+static void parse_ports_arg_extra(void)
 {
-	char *port;
-
-	if (!arg) {
-		warning("No ports specified\n");
-		argp_usage(state);
-	}
-
-	env.target_ports = strdup(arg);
-	for (port = strtok(arg, ","); port; port = strtok(NULL, ",")) {
-		int port_num = strtol(port, NULL, 10);
-
-		if (errno || port_num <= 0 || port_num > 65536) {
-			warning("Invalid ports: %s\n", arg);
+		char *port;
+		if (!arg) {
+			warning("No ports specified\n");
 			argp_usage(state);
 		}
-	}
+		env.target_ports = strdup(arg);
+		for (port = strtok(arg, ","); port; port = strtok(NULL, ",")) {
+			int port_num = strtol(port, NULL, 10);
+			if (errno || port_num <= 0 || port_num > 65536) {
+				warning("Invalid ports: %s\n", arg);
+				argp_usage(state);
+			}
+		}
+}
+
+static void parse_ports_arg(char *arg, struct argp_state *state)
+{
+	parse_ports_arg_extra();
 }
 
 static void parse_arg_extra(void)
