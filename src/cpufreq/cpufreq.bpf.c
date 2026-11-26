@@ -57,20 +57,22 @@ static __always_inline __u64 freq_slot(__u32 freq_mhz)
 	return slot;
 }
 
+static void account_process_freq_extra(void)
+{
+		struct hkey hkey = {};
+		struct hist *hist;
+		if (!pid)
+			return;
+		bpf_get_current_comm(&hkey.comm, sizeof(hkey.comm));
+		hist = bpf_map_lookup_or_try_init(&hists, &hkey, &zero);
+		if (!hist)
+			return;
+		__sync_fetch_and_add(&hist->slots[slot], 1);
+}
+
 static __always_inline void account_process_freq(__u32 pid, __u64 slot)
 {
-	struct hkey hkey = {};
-	struct hist *hist;
-
-	if (!pid)
-		return;
-
-	bpf_get_current_comm(&hkey.comm, sizeof(hkey.comm));
-	hist = bpf_map_lookup_or_try_init(&hists, &hkey, &zero);
-	if (!hist)
-		return;
-
-	__sync_fetch_and_add(&hist->slots[slot], 1);
+	account_process_freq_extra();
 }
 
 SEC("tp_btf/cpu_frequency")
