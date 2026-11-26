@@ -123,32 +123,32 @@ static void collect_bpf_fds(DIR *dir, const char *root, regex_t *regex,
 	}
 }
 
+static void find_bpf_fds_extra(void)
+{
+		struct bpf_count counts[MAX_BPF_TYPES];
+		int counts_size = 0;
+		char root[MAX_PATH_LEN];
+		regex_t regex;
+		DIR *dir;
+		if (regcomp(&regex, "anon_inode:bpf-(\\w+)", REG_EXTENDED) != 0) {
+			warning("Failed to compile regex\n");
+			return;
+		}
+		snprintf(root, sizeof(root), "/proc/%s/fd", pid);
+		dir = opendir(root);
+		if (!dir)
+			return;
+		collect_bpf_fds(dir, root, &regex, counts, &counts_size);
+		for (int i = 0; i < counts_size; i++)
+			printf("%-6s %-16s %-8s %-4d\n", pid, comm_for_pid(pid),
+			       counts[i].bpf_name, counts[i].count);
+		closedir(dir);
+		regfree(&regex);
+}
+
 static void find_bpf_fds(const char *pid)
 {
-	struct bpf_count counts[MAX_BPF_TYPES];
-	int counts_size = 0;
-	char root[MAX_PATH_LEN];
-	regex_t regex;
-	DIR *dir;
-
-	if (regcomp(&regex, "anon_inode:bpf-(\\w+)", REG_EXTENDED) != 0) {
-		warning("Failed to compile regex\n");
-		return;
-	}
-
-	snprintf(root, sizeof(root), "/proc/%s/fd", pid);
-	dir = opendir(root);
-	if (!dir)
-		return;
-
-	collect_bpf_fds(dir, root, &regex, counts, &counts_size);
-
-	for (int i = 0; i < counts_size; i++)
-		printf("%-6s %-16s %-8s %-4d\n", pid, comm_for_pid(pid),
-		       counts[i].bpf_name, counts[i].count);
-
-	closedir(dir);
-	regfree(&regex);
+	find_bpf_fds_extra();
 }
 
 static void main_extra(void)
