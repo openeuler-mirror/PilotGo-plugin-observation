@@ -58,33 +58,37 @@ static pid_t parse_tid(char *arg, struct argp_state *state)
     return tid;
 }
 
+static void parse_arg_extra(void)
+{
+	    switch (key)
+	    {
+	    case 'h':
+	        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+	        break;
+	    case 'v':
+	        env.verbose = true;
+	        break;
+	    case 'T':
+	        env.timestamp = true;
+	        break;
+	    case 'p':
+	        env.pid = argp_parse_pid(key, arg, state);
+	        break;
+	    case 't':
+	        env.tid = parse_tid(arg, state);
+	        break;
+	    case 'c':
+	        env.comm = arg;
+	        break;
+	    default:
+	        return ARGP_ERR_UNKNOWN;
+	    }
+	    return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-    switch (key)
-    {
-    case 'h':
-        argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-        break;
-    case 'v':
-        env.verbose = true;
-        break;
-    case 'T':
-        env.timestamp = true;
-        break;
-    case 'p':
-        env.pid = argp_parse_pid(key, arg, state);
-        break;
-    case 't':
-        env.tid = parse_tid(arg, state);
-        break;
-    case 'c':
-        env.comm = arg;
-        break;
-    default:
-        return ARGP_ERR_UNKNOWN;
-    }
-
-    return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
