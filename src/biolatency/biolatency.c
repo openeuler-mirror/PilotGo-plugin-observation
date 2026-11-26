@@ -19,7 +19,7 @@ static struct env {
 	char	*cgroupspath;
 	bool	cg;
 } env = {
-	.interval = 99999999,
+	.interval = 100000000,
 	.times = 99999999,
 };
 
