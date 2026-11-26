@@ -23,21 +23,22 @@ struct {
 	__type(value, u32);
 } events SEC(".maps");
 
+static void task_filtered_extra(void)
+{
+		if (filter_cg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
+			return true;
+		if (target_pid && target_pid != pid)
+			return true;
+		if (trace_by_process && pid != tid)
+			return true;
+		if (trace_failed_only && exit_code == 0)
+			return true;
+		return false;
+}
+
 static __always_inline bool task_filtered(__u32 pid, __u32 tid, int exit_code)
 {
-	if (filter_cg && !bpf_current_task_under_cgroup(&cgroup_map, 0))
-		return true;
-
-	if (target_pid && target_pid != pid)
-		return true;
-
-	if (trace_by_process && pid != tid)
-		return true;
-
-	if (trace_failed_only && exit_code == 0)
-		return true;
-
-	return false;
+	task_filtered_extra();
 }
 
 static __always_inline void fill_event(struct event *event, struct task_struct *task,
