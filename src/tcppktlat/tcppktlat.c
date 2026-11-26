@@ -62,46 +62,51 @@ static void parse_positional(int arg_num, char *arg, struct argp_state *state)
 	env.min_us = argp_parse_long(ARGP_KEY_ARG, arg, state);
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'T':
+			env.timestamp = true;
+			break;
+		case 'p':
+			env.pid = argp_parse_pid(key, arg, state);
+			break;
+		case 't':
+			env.tid = argp_parse_pid(key, arg, state);
+			break;
+		case 'l':
+			env.lport = argp_parse_long(key, arg, state);
+			break;
+		case 'r':
+			env.rport = argp_parse_long(key, arg, state);
+			break;
+		case 'W':
+			env.column_width = argp_parse_long(key, arg, state);
+			break;
+		case '4':
+			env.target_family = AF_INET;
+			break;
+		case '6':
+			env.target_family = AF_INET6;
+			break;
+		case ARGP_KEY_ARG:
+			parse_positional(state->arg_num, arg, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'T':
-		env.timestamp = true;
-		break;
-	case 'p':
-		env.pid = argp_parse_pid(key, arg, state);
-		break;
-	case 't':
-		env.tid = argp_parse_pid(key, arg, state);
-		break;
-	case 'l':
-		env.lport = argp_parse_long(key, arg, state);
-		break;
-	case 'r':
-		env.rport = argp_parse_long(key, arg, state);
-		break;
-	case 'W':
-		env.column_width = argp_parse_long(key, arg, state);
-		break;
-	case '4':
-		env.target_family = AF_INET;
-		break;
-	case '6':
-		env.target_family = AF_INET6;
-		break;
-	case ARGP_KEY_ARG:
-		parse_positional(state->arg_num, arg, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
