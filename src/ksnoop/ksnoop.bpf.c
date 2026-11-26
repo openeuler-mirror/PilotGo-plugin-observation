@@ -317,27 +317,29 @@ static int read_arg_data(struct pt_regs *ctx, struct trace *trace,
 	return 0;
 }
 
+static void predicate_matches_extra(void)
+{
+		bool ok = false;
+		if (!(currtrace->flags & KSNOOP_F_PREDICATE_MASK))
+			return true;
+		if (currtrace->flags & KSNOOP_F_PREDICATE_EQ &&
+		    currdata->raw_value == currtrace->predicate_value)
+			ok = true;
+		if (currtrace->flags & KSNOOP_F_PREDICATE_NOTEQ &&
+		    currdata->raw_value != currtrace->predicate_value)
+			ok = true;
+		if (currtrace->flags & KSNOOP_F_PREDICATE_GT &&
+		    currdata->raw_value > currtrace->predicate_value)
+			ok = true;
+		if (currtrace->flags & KSNOOP_F_PREDICATE_LT &&
+		    currdata->raw_value < currtrace->predicate_value)
+			ok = true;
+		return ok;
+}
+
 static bool predicate_matches(struct value *currtrace, struct trace_data *currdata)
 {
-	bool ok = false;
-
-	if (!(currtrace->flags & KSNOOP_F_PREDICATE_MASK))
-		return true;
-
-	if (currtrace->flags & KSNOOP_F_PREDICATE_EQ &&
-	    currdata->raw_value == currtrace->predicate_value)
-		ok = true;
-	if (currtrace->flags & KSNOOP_F_PREDICATE_NOTEQ &&
-	    currdata->raw_value != currtrace->predicate_value)
-		ok = true;
-	if (currtrace->flags & KSNOOP_F_PREDICATE_GT &&
-	    currdata->raw_value > currtrace->predicate_value)
-		ok = true;
-	if (currtrace->flags & KSNOOP_F_PREDICATE_LT &&
-	    currdata->raw_value < currtrace->predicate_value)
-		ok = true;
-
-	return ok;
+	predicate_matches_extra();
 }
 
 static void trace_arg_applies_extra(void)
