@@ -141,7 +141,7 @@ static const char *gen_call(const struct event *e)
 
     if (e->op == UMOUNT)
     {
-        snprintf(call, sizeof(call), "umount(\"%s\", %s) = %s",
+        snprintf(call, sizeof ( call ), "umount(\"%s\", %s) = %s",
                  e->dest, strflags(e->flags), strerrno(e->ret));
     }
     else
