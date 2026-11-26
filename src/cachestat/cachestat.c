@@ -164,22 +164,26 @@ static bool setup_misses_tp(struct cachestat_bpf *obj)
 	return true;
 }
 
+static void setup_total_tp_extra(void)
+{
+		/* total add tracepoint */
+		if (fentry_can_attach("mark_page_accessed", NULL))
+			bpf_program__set_autoload(obj->progs.kprobe_mark_page_accessed,
+						  false);
+		else
+			bpf_program__set_autoload(obj->progs.fentry_mark_page_accessed,
+						  false);
+		if (fentry_can_attach("mark_buffer_dirty", NULL))
+			bpf_program__set_autoload(obj->progs.kprobe_mark_buffer_dirty,
+						  false);
+		else
+			bpf_program__set_autoload(obj->progs.fentry_mark_buffer_dirty,
+						  false);
+}
+
 static void setup_total_tp(struct cachestat_bpf *obj)
 {
-	/* total add tracepoint */
-	if (fentry_can_attach("mark_page_accessed", NULL))
-		bpf_program__set_autoload(obj->progs.kprobe_mark_page_accessed,
-					  false);
-	else
-		bpf_program__set_autoload(obj->progs.fentry_mark_page_accessed,
-					  false);
-
-	if (fentry_can_attach("mark_buffer_dirty", NULL))
-		bpf_program__set_autoload(obj->progs.kprobe_mark_buffer_dirty,
-					  false);
-	else
-		bpf_program__set_autoload(obj->progs.fentry_mark_buffer_dirty,
-					  false);
+	setup_total_tp_extra();
 }
 
 static void print_header(bool timestamp)
