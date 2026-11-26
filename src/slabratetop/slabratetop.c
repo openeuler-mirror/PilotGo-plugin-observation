@@ -163,20 +163,24 @@ static int collect_stats(int fd, struct slabrate_info *values)
 	collect_stats_extra();
 }
 
+static void clear_stats_extra(void)
+{
+		char *key, **prev_key = NULL;
+		int err;
+		while (!bpf_map_get_next_key(fd, prev_key, &key)) {
+			err = bpf_map_delete_elem(fd, &key);
+			if (err) {
+				warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
+				return err;
+			}
+			prev_key = &key;
+		}
+		return 0;
+}
+
 static int clear_stats(int fd)
 {
-	char *key, **prev_key = NULL;
-	int err;
-
-	while (!bpf_map_get_next_key(fd, prev_key, &key)) {
-		err = bpf_map_delete_elem(fd, &key);
-		if (err) {
-			warning("bpf_map_delete_elem failed: %s\n", strerror(errno));
-			return err;
-		}
-		prev_key = &key;
-	}
-	return 0;
+	clear_stats_extra();
 }
 
 static void print_stat_extra(void)
