@@ -1,3 +1,5 @@
+[简体中文](README.md) | [English](README.en.md)
+
 # PilotGo-plugin-observation
 
 #### 介绍
