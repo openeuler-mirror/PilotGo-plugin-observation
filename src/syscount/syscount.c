@@ -276,23 +276,27 @@ static bool read_vals(int fd, struct data_ext_t *vals, __u32 *count)
 	return read_vals_fallback(fd, vals, count);
 }
 
+static void parse_errno_arg_extra(void)
+{
+		int number;
+		errno = 0;
+		number = strtol(arg, NULL, 10);
+		if (errno) {
+			number = errno_by_name(arg);
+			if (number < 0) {
+				warning("Invalid errno: %s (bad, or can't "
+					"parse dynamically; consider using "
+					"numeric value and/or installing the "
+					"errno program from moreutils)\n", arg);
+				argp_usage(state);
+			}
+		}
+		return number;
+}
+
 static int parse_errno_arg(const char *arg, struct argp_state *state)
 {
-	int number;
-
-	errno = 0;
-	number = strtol(arg, NULL, 10);
-	if (errno) {
-		number = errno_by_name(arg);
-		if (number < 0) {
-			warning("Invalid errno: %s (bad, or can't "
-				"parse dynamically; consider using "
-				"numeric value and/or installing the "
-				"errno program from moreutils)\n", arg);
-			argp_usage(state);
-		}
-	}
-	return number;
+	parse_errno_arg_extra();
 }
 
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
