@@ -24,22 +24,22 @@ static __always_inline bool current_comm_is_bash(void)
 }
 
 SEC("uretprobe/readline")
+static void BPF_KRETPROBE_extra0(void)
+{
+		readline_str_t data;
+		if (!ret)
+			return 0;
+		if (!current_comm_is_bash())
+			return 0;
+		data.pid = bpf_get_current_pid_tgid() >> 32;
+		bpf_core_read_user_str(&data.str, sizeof(data.str), ret);
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &data, sizeof(data));
+		return 0;
+}
+
 int BPF_KRETPROBE(printret, const void *ret)
 {
-	readline_str_t data;
-
-	if (!ret)
-		return 0;
-
-	if (!current_comm_is_bash())
-		return 0;
-
-	data.pid = bpf_get_current_pid_tgid() >> 32;
-	bpf_core_read_user_str(&data.str, sizeof(data.str), ret);
-
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &data, sizeof(data));
-
-	return 0;
+	BPF_KRETPROBE_extra0();
 }
 
 char LICENSE[] SEC("license") = "GPL";
