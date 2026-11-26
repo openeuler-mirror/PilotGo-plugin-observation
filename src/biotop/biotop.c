@@ -205,23 +205,26 @@ struct data_t {
 	struct val_t value;
 };
 
+static void sort_column_extra(void)
+{
+		struct data_t *d1 = (struct data_t *)obj1;
+		struct data_t *d2 = (struct data_t *)obj2;
+		struct val_t *s1 = &d1->value;
+		struct val_t *s2 = &d2->value;
+		if (env.sort_by == IO)
+			return s2->io - s1->io;
+		else if (env.sort_by == BYTES)
+			return s2->bytes - s1->bytes;
+		else if (env.sort_by == TIME)
+			return s2->us - s1->us;
+		else
+			return (s2->io + s2->bytes + s2->us)
+				- (s1->io + s1->bytes + s1->us);
+}
+
 static int sort_column(const void *obj1, const void *obj2)
 {
-	struct data_t *d1 = (struct data_t *)obj1;
-	struct data_t *d2 = (struct data_t *)obj2;
-
-	struct val_t *s1 = &d1->value;
-	struct val_t *s2 = &d2->value;
-
-	if (env.sort_by == IO)
-		return s2->io - s1->io;
-	else if (env.sort_by == BYTES)
-		return s2->bytes - s1->bytes;
-	else if (env.sort_by == TIME)
-		return s2->us - s1->us;
-	else
-		return (s2->io + s2->bytes + s2->us)
-			- (s1->io + s1->bytes + s1->us);
+	sort_column_extra();
 }
 
 static void parse_disk_stat_extra(void)
