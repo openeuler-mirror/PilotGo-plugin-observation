@@ -190,6 +190,22 @@ static void print_header(bool timestamp)
 		"HITRATIO", "BUFFERS_MB", "CACHED_MB");
 }
 
+static void print_stats_section5_0(void)
+{
+	
+		/*
+		 * If hits are < 0, then its possible misses are overestimated
+		 * due to possibly page cache read ahead adding more pages than
+		 * needed. In this case just assume misses as total and reset
+		 * hits.
+		 */
+		if (hits < 0) {
+			misses = total;
+			hits = 0;
+		}
+		ratio = total > 0 ? hits * 1.0 / total : 0.0;
+}
+
 static int print_stats(struct cachestat_bpf *obj, bool timestamp)
 {
 	__u64 buffers, cached, mbd;
@@ -209,18 +225,7 @@ static int print_stats(struct cachestat_bpf *obj, bool timestamp)
 	if (misses < 0)
 		misses = 0;
 	hits = total - misses;
-
-	/*
-	 * If hits are < 0, then its possible misses are overestimated
-	 * due to possibly page cache read ahead adding more pages than
-	 * needed. In this case just assume misses as total and reset
-	 * hits.
-	 */
-	if (hits < 0) {
-		misses = total;
-		hits = 0;
-	}
-	ratio = total > 0 ? hits * 1.0 / total : 0.0;
+	print_stats_section5_0();
 
 	err = get_meminfo(&buffers, &cached);
 	if (err) {
