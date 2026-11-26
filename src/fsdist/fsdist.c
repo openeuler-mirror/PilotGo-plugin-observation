@@ -365,107 +365,94 @@ errout:
 	return err;
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct fsdist_bpf *obj;
-	bool support_fentry;
-	int err;
-
-	alias_parse(argv[0]);
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (fs_type == NONE) {
-		warning("Filesystem must be specified using -t option.\n");
-		return 1;
-	}
-
-	libbpf_set_print(libbpf_print_fn);
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
-		return 1;
-	}
-
-	obj = fsdist_bpf__open_opts(&open_opts);
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->target_pid = target_pid;
-	obj->rodata->in_ms = timestamp_in_ms;
-
-	/*
-	 * before load
-	 * if fentry is supported, we set attach target and disable kprobes
-	 * otherwise, we disable fentry and attach kprobes after loading
-	 */
-	support_fentry = check_fentry();
-	if (support_fentry) {
-		err = fentry_set_attach_target(obj);
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct fsdist_bpf *obj;
+		bool support_fentry;
+		int err;
+		alias_parse(argv[0]);
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (fs_type == NONE) {
+			warning("Filesystem must be specified using -t option.\n");
+			return 1;
+		}
+		libbpf_set_print(libbpf_print_fn);
+		err = ensure_core_btf(&open_opts);
 		if (err) {
-			warning("Failed to set attach target: %d\n", err);
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-err));
+			return 1;
+		}
+		obj = fsdist_bpf__open_opts(&open_opts);
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->target_pid = target_pid;
+		obj->rodata->in_ms = timestamp_in_ms;
+		/*
+		 * before load
+		 * if fentry is supported, we set attach target and disable kprobes
+		 * otherwise, we disable fentry and attach kprobes after loading
+		 */
+		support_fentry = check_fentry();
+		if (support_fentry) {
+			err = fentry_set_attach_target(obj);
+			if (err) {
+				warning("Failed to set attach target: %d\n", err);
+				goto cleanup;
+			}
+			disable_kprobes(obj);
+		} else {
+			disable_fentry(obj);
+		}
+		err = fsdist_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
 			goto cleanup;
 		}
-		disable_kprobes(obj);
-	} else {
-		disable_fentry(obj);
-	}
+		if (!obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		/*
+		 * after load
+		 * if entry is supported, let libbpf do auto load otherwise, we attach
+		 * to kprobes manually
+		 */
+		err = support_fentry ? fsdist_bpf__attach(obj) : attach_kprobes(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		printf("Tracing %s operation latency... Hit Ctrl-C to end.\n",
+		       fs_configs[fs_type].fs);
+		while (1) {
+			sleep(interval);
+			printf("\n");
+			if (emit_timestamp)
+				print_timestamp();
+			err = print_hists(obj->bss);
+			if (err)
+				break;
+			if (exiting || --count == 0)
+				break;
+		}
+	cleanup:
+		fsdist_bpf__destroy(obj);
+		cleanup_core_btf(&open_opts);
+		return err != 0;
+}
 
-	err = fsdist_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	if (!obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	/*
-	 * after load
-	 * if entry is supported, let libbpf do auto load otherwise, we attach
-	 * to kprobes manually
-	 */
-	err = support_fentry ? fsdist_bpf__attach(obj) : attach_kprobes(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	printf("Tracing %s operation latency... Hit Ctrl-C to end.\n",
-	       fs_configs[fs_type].fs);
-
-	while (1) {
-		sleep(interval);
-		printf("\n");
-
-		if (emit_timestamp)
-			print_timestamp();
-
-		err = print_hists(obj->bss);
-		if (err)
-			break;
-
-		if (exiting || --count == 0)
-			break;
-	}
-
-cleanup:
-	fsdist_bpf__destroy(obj);
-	cleanup_core_btf(&open_opts);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
