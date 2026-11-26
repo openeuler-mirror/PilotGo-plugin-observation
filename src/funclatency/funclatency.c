@@ -32,7 +32,7 @@ const char args_doc[] = "FUNCTION";
 const char argp_program_doc[] =
 "Time functions and print latency as a histogram\n"
 "\n"
-"Usage: funclatency [-h] [-m|-u] [-p PID] [-d DURATION] [ -i INTERVAL ] [-c CG]\n"
+"usage: funclatency [-h] [-m|-u] [-p PID] [-d DURATION] [ -i INTERVAL ] [-c CG]\n"
 "                   [-T] FUNCTION\n"
 "       Choices for FUNCTION: FUNCTION         (kprobe)\n"
 "                             LIBRARY:FUNCTION (uprobe a library in -p PID)\n"
