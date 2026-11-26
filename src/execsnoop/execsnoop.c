@@ -238,28 +238,29 @@ static void print_args(const struct event *e, bool quote)
 		fputs(" ...", stdout);
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		char ts[32];
+		if (env.name && !strstr(e->comm, env.name))
+			return;
+		if (env.line && !strstr(e->comm, env.line))
+			return;
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		if (env.time)
+			printf("%-8s ", ts);
+		if (env.timestamp)
+			printf("%-8.3f", time_since_start());
+		if (env.print_uid)
+			printf("%-6d ", e->uid);
+		printf("%-16s %-8d %-8d %3d ", e->comm, e->pid, e->ppid, e->retval);
+		print_args(e, env.quote);
+		putchar('\n');
+}
+
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
-	const struct event *e = data;
-	char ts[32];
-
-	if (env.name && !strstr(e->comm, env.name))
-		return;
-	if (env.line && !strstr(e->comm, env.line))
-		return;
-
-	strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
-	if (env.time)
-		printf("%-8s ", ts);
-	if (env.timestamp)
-		printf("%-8.3f", time_since_start());
-	if (env.print_uid)
-		printf("%-6d ", e->uid);
-
-	printf("%-16s %-8d %-8d %3d ", e->comm, e->pid, e->ppid, e->retval);
-	print_args(e, env.quote);
-	putchar('\n');
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
