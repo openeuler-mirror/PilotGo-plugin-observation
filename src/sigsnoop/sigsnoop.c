@@ -155,96 +155,86 @@ static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 	warning("Lost %llu events on CPU #%d\n", lost_cnt, cpu);
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct bpf_buffer *buf = NULL;
-	struct sigsnoop_bpf *obj;
-	int err;
-
-	alias_parse(argv[0]);
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = sigsnoop_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->filtered_pid = target_pid;
-	obj->rodata->target_signal = target_signal;
-	obj->rodata->failed_only = failed_only;
-
-	if (kill_only) {
-		disable_prog(obj->progs.sig_trace);
-	} else {
-		disable_prog(obj->progs.kill_entry);
-		disable_prog(obj->progs.kill_exit);
-		disable_prog(obj->progs.tkill_entry);
-		disable_prog(obj->progs.tkill_exit);
-		disable_prog(obj->progs.tgkill_entry);
-		disable_prog(obj->progs.tgkill_exit);
-	}
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		err = -errno;
-		warning("Failed to create ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	err = sigsnoop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = sigsnoop_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
-	if (err) {
-		warning("Failed to open ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		err = 1;
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		goto cleanup;
-	}
-
-	printf("%-8s %-7s %-16s %-9s %-7s %6s\n",
-	       "TIME", "PID", "COMM", "SIG", "TPID", "RESULT");
-
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Error polling ring/perf buffer: %d\n", err);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct bpf_buffer *buf = NULL;
+		struct sigsnoop_bpf *obj;
+		int err;
+		alias_parse(argv[0]);
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = sigsnoop_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->filtered_pid = target_pid;
+		obj->rodata->target_signal = target_signal;
+		obj->rodata->failed_only = failed_only;
+		if (kill_only) {
+			disable_prog(obj->progs.sig_trace);
+		} else {
+			disable_prog(obj->progs.kill_entry);
+			disable_prog(obj->progs.kill_exit);
+			disable_prog(obj->progs.tkill_entry);
+			disable_prog(obj->progs.tkill_exit);
+			disable_prog(obj->progs.tgkill_entry);
+			disable_prog(obj->progs.tgkill_exit);
+		}
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			err = -errno;
+			warning("Failed to create ring/perf buffer: %d\n", err);
 			goto cleanup;
 		}
-		/* reset err to return 0 if exiting */
-		err = 0;
-	}
+		err = sigsnoop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = sigsnoop_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		err = bpf_buffer__open(buf, handle_event, handle_lost_events, NULL);
+		if (err) {
+			warning("Failed to open ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			err = 1;
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			goto cleanup;
+		}
+		printf("%-8s %-7s %-16s %-9s %-7s %6s\n",
+		       "TIME", "PID", "COMM", "SIG", "TPID", "RESULT");
+		while (!exiting) {
+			err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+			if (err < 0 && err != -EINTR) {
+				warning("Error polling ring/perf buffer: %d\n", err);
+				goto cleanup;
+			}
+			/* reset err to return 0 if exiting */
+			err = 0;
+		}
+	cleanup:
+		bpf_buffer__free(buf);
+		sigsnoop_bpf__destroy(obj);
+		return err != 0;
+}
 
-cleanup:
-	bpf_buffer__free(buf);
-	sigsnoop_bpf__destroy(obj);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
 
