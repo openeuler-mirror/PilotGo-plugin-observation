@@ -311,58 +311,56 @@ static void disable_kprobes(struct fsdist_bpf *obj)
 	bpf_program__set_autoload(obj->progs.getattr_exit, false);
 }
 
+static void attach_kprobes_extra(void)
+{
+		long err = 0;
+		struct fs_config *cfg = &fs_configs[fs_type];
+		err = attach_kprobe_pair(obj->progs.file_read_entry,
+					 obj->progs.file_read_exit,
+					 cfg->op_funcs[F_READ],
+					 &obj->links.file_read_entry,
+					 &obj->links.file_read_exit);
+		if (err)
+			goto errout;
+		err = attach_kprobe_pair(obj->progs.file_write_entry,
+					 obj->progs.file_write_exit,
+					 cfg->op_funcs[F_WRITE],
+					 &obj->links.file_write_entry,
+					 &obj->links.file_write_exit);
+		if (err)
+			goto errout;
+		err = attach_kprobe_pair(obj->progs.file_open_entry,
+					 obj->progs.file_open_exit,
+					 cfg->op_funcs[F_OPEN],
+					 &obj->links.file_open_entry,
+					 &obj->links.file_open_exit);
+		if (err)
+			goto errout;
+		err = attach_kprobe_pair(obj->progs.file_sync_entry,
+					 obj->progs.file_sync_exit,
+					 cfg->op_funcs[F_FSYNC],
+					 &obj->links.file_sync_entry,
+					 &obj->links.file_sync_exit);
+		if (err)
+			goto errout;
+		if (!cfg->op_funcs[F_GETATTR])
+			return 0;
+		err = attach_kprobe_pair(obj->progs.getattr_entry,
+					 obj->progs.getattr_exit,
+					 cfg->op_funcs[F_GETATTR],
+					 &obj->links.getattr_entry,
+					 &obj->links.getattr_exit);
+		if (err)
+			goto errout;
+		return 0;
+	errout:
+		warning("failed to attach kprobe: %ld\n", err);
+		return err;
+}
+
 static int attach_kprobes(struct fsdist_bpf *obj)
 {
-	long err = 0;
-	struct fs_config *cfg = &fs_configs[fs_type];
-
-	err = attach_kprobe_pair(obj->progs.file_read_entry,
-				 obj->progs.file_read_exit,
-				 cfg->op_funcs[F_READ],
-				 &obj->links.file_read_entry,
-				 &obj->links.file_read_exit);
-	if (err)
-		goto errout;
-
-	err = attach_kprobe_pair(obj->progs.file_write_entry,
-				 obj->progs.file_write_exit,
-				 cfg->op_funcs[F_WRITE],
-				 &obj->links.file_write_entry,
-				 &obj->links.file_write_exit);
-	if (err)
-		goto errout;
-
-	err = attach_kprobe_pair(obj->progs.file_open_entry,
-				 obj->progs.file_open_exit,
-				 cfg->op_funcs[F_OPEN],
-				 &obj->links.file_open_entry,
-				 &obj->links.file_open_exit);
-	if (err)
-		goto errout;
-
-	err = attach_kprobe_pair(obj->progs.file_sync_entry,
-				 obj->progs.file_sync_exit,
-				 cfg->op_funcs[F_FSYNC],
-				 &obj->links.file_sync_entry,
-				 &obj->links.file_sync_exit);
-	if (err)
-		goto errout;
-
-	if (!cfg->op_funcs[F_GETATTR])
-		return 0;
-
-	err = attach_kprobe_pair(obj->progs.getattr_entry,
-				 obj->progs.getattr_exit,
-				 cfg->op_funcs[F_GETATTR],
-				 &obj->links.getattr_entry,
-				 &obj->links.getattr_exit);
-	if (err)
-		goto errout;
-
-	return 0;
-errout:
-	warning("failed to attach kprobe: %ld\n", err);
-	return err;
+	attach_kprobes_extra();
 }
 
 static void main_extra(void)
