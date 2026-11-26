@@ -172,23 +172,25 @@ safe_strtoul(const char *str, unsigned long min, unsigned long max,
 }
 
 static inline __maybe_unused
+static void argp_parse_long_extra(void)
+{
+		long temp;
+		if (!arg) {
+			warning("Arg is NULL\n");
+			argp_usage(state);
+		}
+		errno = 0;
+		temp = strtol(arg, NULL, 10);
+		if (errno || temp <= 0) {
+			warning("Error arg: %c : %s\n", (char)key, arg);
+			argp_usage(state);
+		}
+		return temp;
+}
+
 long argp_parse_long(int key, const char *arg, const struct argp_state *state)
 {
-	long temp;
-
-	if (!arg) {
-		warning("Arg is NULL\n");
-		argp_usage(state);
-	}
-
-	errno = 0;
-	temp = strtol(arg, NULL, 10);
-	if (errno || temp <= 0) {
-		warning("Error arg: %c : %s\n", (char)key, arg);
-		argp_usage(state);
-	}
-
-	return temp;
+	argp_parse_long_extra();
 }
 
 static inline bool do_process_running(int pid)
