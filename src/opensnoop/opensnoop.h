@@ -9,7 +9,8 @@
 struct args_t
 {
     const char *fname;
-    int flags;
+	/* flags field */
+    int	flags;
     unsigned short modes;
 };
 
