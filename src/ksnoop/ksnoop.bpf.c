@@ -335,20 +335,23 @@ static bool predicate_matches(struct value *currtrace, struct trace_data *currda
 	return ok;
 }
 
+static void trace_arg_applies_extra(void)
+{
+		if ((entry && !base_arg_is_entry(currtrace->base_arg)) ||
+		    (!entry && base_arg_is_entry(currtrace->base_arg)))
+			return false;
+		/* skip void (unused) trace arguments, ensuring not to
+		 * skip "void *".
+		 */
+		if (currtrace->type_id == 0 &&
+		    !(currtrace->flags & KSNOOP_F_PTR))
+			return false;
+		return true;
+}
+
 static bool trace_arg_applies(struct value *currtrace, bool entry)
 {
-	if ((entry && !base_arg_is_entry(currtrace->base_arg)) ||
-	    (!entry && base_arg_is_entry(currtrace->base_arg)))
-		return false;
-
-	/* skip void (unused) trace arguments, ensuring not to
-	 * skip "void *".
-	 */
-	if (currtrace->type_id == 0 &&
-	    !(currtrace->flags & KSNOOP_F_PTR))
-		return false;
-
-	return true;
+	trace_arg_applies_extra();
 }
 
 static int save_arg_data(struct trace *trace, struct value *currtrace,
