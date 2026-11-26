@@ -117,35 +117,35 @@ int tgkill_exit(struct trace_event_raw_sys_exit *ctx)
 }
 
 SEC("tracepoint/signal/signal_generate")
+static void sig_trace_extra(void)
+{
+		struct event *eventp = NULL;
+		pid_t tpid = ctx->pid;
+		int ret = ctx->errno;
+		int sig = ctx->sig;
+		__u32 tgid;
+		if (failed_only && ret == 0)
+			return 0;
+		if (target_signal && sig != target_signal)
+			return 0;
+		tgid = bpf_get_current_pid_tgid() >> 32;
+		if (filtered_pid && tgid != filtered_pid)
+			return 0;
+		eventp = reserve_buf(sizeof(*eventp));
+		if (!eventp)
+			return 0;
+		eventp->pid = tgid;
+		eventp->tpid = tpid;
+		eventp->sig = sig;
+		eventp->ret = -ret;
+		bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
+		submit_buf(ctx, eventp, sizeof(*eventp));
+		return 0;
+}
+
 int sig_trace(struct trace_event_raw_signal_generate *ctx)
 {
-	struct event *eventp = NULL;
-	pid_t tpid = ctx->pid;
-	int ret = ctx->errno;
-	int sig = ctx->sig;
-	__u32 tgid;
-
-	if (failed_only && ret == 0)
-		return 0;
-
-	if (target_signal && sig != target_signal)
-		return 0;
-
-	tgid = bpf_get_current_pid_tgid() >> 32;
-	if (filtered_pid && tgid != filtered_pid)
-		return 0;
-
-	eventp = reserve_buf(sizeof(*eventp));
-	if (!eventp)
-		return 0;
-
-	eventp->pid = tgid;
-	eventp->tpid = tpid;
-	eventp->sig = sig;
-	eventp->ret = -ret;
-	bpf_get_current_comm(&eventp->comm, sizeof(eventp->comm));
-	submit_buf(ctx, eventp, sizeof(*eventp));
-	return 0;
+	sig_trace_extra();
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
