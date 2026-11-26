@@ -95,24 +95,24 @@ static void print_exit_reason(const struct event *e)
 	printf("\n");
 }
 
+static void handle_event_extra(void)
+{
+		struct event *e = data;
+		const struct argument *argument = ctx;
+		if (argument->emit_timestamp) {
+			char ts[32];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%8s ", ts);
+		}
+		double age = (e->exit_time - e->start_time) / 1e9;
+		printf("%-16s %-7d %-7d %-7d %-7.2f ",
+		       e->comm, e->pid, e->ppid, e->tid, age);
+		print_exit_reason(e);
+}
+
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz)
 {
-	struct event *e = data;
-	const struct argument *argument = ctx;
-
-	if (argument->emit_timestamp) {
-		char ts[32];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
-		printf("%8s ", ts);
-	}
-
-	double age = (e->exit_time - e->start_time) / 1e9;
-	printf("%-16s %-7d %-7d %-7d %-7.2f ",
-	       e->comm, e->pid, e->ppid, e->tid, age);
-
-	print_exit_reason(e);
+	handle_event_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
