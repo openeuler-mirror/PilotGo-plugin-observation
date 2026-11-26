@@ -91,20 +91,25 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_fs_arg_extra(void)
+{
+		if (!strcmp(arg, "btrfs")) {
+			fs_type = BTRFS;
+		} else if (!strcmp(arg, "ext4")) {
+			fs_type = EXT4;
+		} else if (!strcmp(arg, "nfs")) {
+			fs_type = NFS;
+		} else if (!strcmp(arg, "xfs")) {
+			fs_type = XFS;
+		} else {
+			warning("invalid filesystem\n");
+			argp_usage(state);
+		}
+}
+
 static void parse_fs_arg(const char *arg, struct argp_state *state)
 {
-	if (!strcmp(arg, "btrfs")) {
-		fs_type = BTRFS;
-	} else if (!strcmp(arg, "ext4")) {
-		fs_type = EXT4;
-	} else if (!strcmp(arg, "nfs")) {
-		fs_type = NFS;
-	} else if (!strcmp(arg, "xfs")) {
-		fs_type = XFS;
-	} else {
-		warning("invalid filesystem\n");
-		argp_usage(state);
-	}
+	parse_fs_arg_extra();
 }
 
 static void parse_positional_arg(const char *arg, struct argp_state *state,
