@@ -681,39 +681,42 @@ static void enable_fentry(struct klockstat_bpf *obj)
 	enable_fentry_extra();
 }
 
+static void enable_kprobes_extra(void)
+{
+		disable_prog(obj->progs.mutex_lock);
+		disable_prog(obj->progs.mutex_lock_exit);
+		disable_prog(obj->progs.mutex_trylock_exit);
+		disable_prog(obj->progs.mutex_lock_interruptible);
+		disable_prog(obj->progs.mutex_lock_interruptible_exit);
+		disable_prog(obj->progs.mutex_lock_killable);
+		disable_prog(obj->progs.mutex_lock_killable_exit);
+		disable_prog(obj->progs.mutex_unlock);
+		disable_prog(obj->progs.down_read);
+		disable_prog(obj->progs.down_read_exit);
+		disable_prog(obj->progs.down_read_trylock_exit);
+		disable_prog(obj->progs.down_read_interruptible);
+		disable_prog(obj->progs.down_read_interruptible_exit);
+		disable_prog(obj->progs.down_read_killable);
+		disable_prog(obj->progs.down_read_killable_exit);
+		disable_prog(obj->progs.up_read);
+		disable_prog(obj->progs.down_write);
+		disable_prog(obj->progs.down_write_exit);
+		disable_prog(obj->progs.down_write_trylock_exit);
+		disable_prog(obj->progs.down_write_killable);
+		disable_prog(obj->progs.down_write_killable_exit);
+		disable_prog(obj->progs.up_write);
+		/**
+		 * commit 31784cff7ee0 ("rwsem: Implement down_read_interruptible")
+		 */
+		if (!kprobe_exists("down_read_interruptible")) {
+			disable_prog(obj->progs.kprobe_down_read_interruptible);
+			disable_prog(obj->progs.kprobe_down_read_interruptible_exit);
+		}
+}
+
 static void enable_kprobes(struct klockstat_bpf *obj)
 {
-	disable_prog(obj->progs.mutex_lock);
-	disable_prog(obj->progs.mutex_lock_exit);
-	disable_prog(obj->progs.mutex_trylock_exit);
-	disable_prog(obj->progs.mutex_lock_interruptible);
-	disable_prog(obj->progs.mutex_lock_interruptible_exit);
-	disable_prog(obj->progs.mutex_lock_killable);
-	disable_prog(obj->progs.mutex_lock_killable_exit);
-	disable_prog(obj->progs.mutex_unlock);
-
-	disable_prog(obj->progs.down_read);
-	disable_prog(obj->progs.down_read_exit);
-	disable_prog(obj->progs.down_read_trylock_exit);
-	disable_prog(obj->progs.down_read_interruptible);
-	disable_prog(obj->progs.down_read_interruptible_exit);
-	disable_prog(obj->progs.down_read_killable);
-	disable_prog(obj->progs.down_read_killable_exit);
-	disable_prog(obj->progs.up_read);
-	disable_prog(obj->progs.down_write);
-	disable_prog(obj->progs.down_write_exit);
-	disable_prog(obj->progs.down_write_trylock_exit);
-	disable_prog(obj->progs.down_write_killable);
-	disable_prog(obj->progs.down_write_killable_exit);
-	disable_prog(obj->progs.up_write);
-
-	/**
-	 * commit 31784cff7ee0 ("rwsem: Implement down_read_interruptible")
-	 */
-	if (!kprobe_exists("down_read_interruptible")) {
-		disable_prog(obj->progs.kprobe_down_read_interruptible);
-		disable_prog(obj->progs.kprobe_down_read_interruptible_exit);
-	}
+	enable_kprobes_extra();
 }
 
 static void main_extra(void)
