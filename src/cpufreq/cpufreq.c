@@ -39,39 +39,44 @@ static const struct argp_option opts[] = {
 	{}
 };
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'd':
+			errno = 0;
+			env.duration = strtol(arg, NULL, 10);
+			if (errno || env.duration <= 0) {
+				warning("Invalid duration: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case 'c':
+			env.cgroupspath = arg;
+			env.cg = true;
+			break;
+		case 'f':
+			errno = 0;
+			env.freq = strtol(arg, NULL, 10);
+			if (errno || env.freq <= 0) {
+				warning("Invalid freq (in HZ): %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'd':
-		errno = 0;
-		env.duration = strtol(arg, NULL, 10);
-		if (errno || env.duration <= 0) {
-			warning("Invalid duration: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case 'c':
-		env.cgroupspath = arg;
-		env.cg = true;
-		break;
-	case 'f':
-		errno = 0;
-		env.freq = strtol(arg, NULL, 10);
-		if (errno || env.freq <= 0) {
-			warning("Invalid freq (in HZ): %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static int nr_cpus;
