@@ -68,43 +68,48 @@ static struct env {
 	.uid = (uid_t)-1
 };
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'c':
+			env.count = true;
+			break;
+		case 't':
+			env.print_timestamp = true;
+			break;
+		case 'U':
+			env.print_uid = true;
+			break;
+		case 'p':
+			env.pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'u':
+			if (get_uint(arg, &env.uid, 0, (uid_t)-2)) {
+				warning("Invalid UID: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case 'C':
+			warning("Not implemented: --cgroupmap\n");
+			break;
+		case 'M':
+			warning("Not implemented: --mntnsmap\n");
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'c':
-		env.count = true;
-		break;
-	case 't':
-		env.print_timestamp = true;
-		break;
-	case 'U':
-		env.print_uid = true;
-		break;
-	case 'p':
-		env.pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'u':
-		if (get_uint(arg, &env.uid, 0, (uid_t)-2)) {
-			warning("Invalid UID: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case 'C':
-		warning("Not implemented: --cgroupmap\n");
-		break;
-	case 'M':
-		warning("Not implemented: --mntnsmap\n");
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
