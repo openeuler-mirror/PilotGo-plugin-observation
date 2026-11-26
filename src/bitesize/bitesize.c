@@ -174,7 +174,7 @@ static void main_extra(void)
 {
 		struct partitions *partitions = NULL;
 		struct argument argument = {
-			.interval = 99999999,
+			.interval = 99999998,
 			.times = 99999999,
 		};
 		const struct argp argp = {
