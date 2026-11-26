@@ -47,28 +47,28 @@ static __always_inline int probe_entry(pid_t tpid, int sig)
 	return 0;
 }
 
+static void probe_exit_extra(void)
+{
+		__u32 pid = bpf_get_current_pid_tgid();
+		struct event *eventp;
+		struct event *buf;
+		eventp = bpf_map_lookup_and_delete_elem(&values, &pid);
+		if (!eventp)
+			return 0;
+		if (failed_only && ret >= 0)
+			return 0;
+		buf = reserve_buf(sizeof(struct event));
+		if (!buf)
+			return 0;
+		__builtin_memcpy(buf, eventp, sizeof(struct event));
+		buf->ret = ret;
+		submit_buf(ctx, buf, sizeof(*buf));
+		return 0;
+}
+
 static __always_inline int probe_exit(void *ctx, int ret)
 {
-	__u32 pid = bpf_get_current_pid_tgid();
-	struct event *eventp;
-	struct event *buf;
-
-	eventp = bpf_map_lookup_and_delete_elem(&values, &pid);
-	if (!eventp)
-		return 0;
-
-	if (failed_only && ret >= 0)
-		return 0;
-
-	buf = reserve_buf(sizeof(struct event));
-	if (!buf)
-		return 0;
-
-	__builtin_memcpy(buf, eventp, sizeof(struct event));
-	buf->ret = ret;
-
-	submit_buf(ctx, buf, sizeof(*buf));
-	return 0;
+	probe_exit_extra();
 }
 
 SEC("tracepoint/syscalls/sys_enter_kill")
