@@ -5,6 +5,13 @@
 #include "trace_helpers.h"
 #include "btf_helpers.h"
 
+static void execsnoop_print_banner(void)
+{
+	printf("%s v%s\n", argp_program_version, " execsnoop");
+	printf("Report bugs to %s\n", argp_program_bug_address);
+}
+
+
 #define MAX_ARGS_KEY		259
 
 static volatile sig_atomic_t exiting;
@@ -293,6 +300,7 @@ static void print_header(void)
 
 int main(int argc, char *argv[])
 {
+	execsnoop_print_banner();
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
 	static const struct argp argp = {
 		.options = opts,
