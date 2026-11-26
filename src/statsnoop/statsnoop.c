@@ -114,23 +114,28 @@ static void disable_stat_tp_pair(const char *name,
 	}
 }
 
+static void disable_missing_tracepoints_extra(void)
+{
+		disable_stat_tp_pair("sys_enter_statfs",
+				     obj->progs.handle_statfs_entry,
+				     obj->progs.handle_statfs_return);
+		disable_stat_tp_pair("sys_enter_statx",
+				     obj->progs.handle_statx_entry,
+				     obj->progs.handle_statx_return);
+		disable_stat_tp_pair("sys_enter_newstat",
+				     obj->progs.handle_newstat_entry,
+				     obj->progs.handle_newstat_return);
+		disable_stat_tp_pair("sys_enter_newfstatat",
+				     obj->progs.handle_newfstatat_entry,
+				     obj->progs.handle_newfstatat_return);
+		disable_stat_tp_pair("sys_enter_newlstat",
+				     obj->progs.handle_newlstat_entry,
+				     obj->progs.handle_newlstat_return);
+}
+
 static void disable_missing_tracepoints(struct statsnoop_bpf *obj)
 {
-	disable_stat_tp_pair("sys_enter_statfs",
-			     obj->progs.handle_statfs_entry,
-			     obj->progs.handle_statfs_return);
-	disable_stat_tp_pair("sys_enter_statx",
-			     obj->progs.handle_statx_entry,
-			     obj->progs.handle_statx_return);
-	disable_stat_tp_pair("sys_enter_newstat",
-			     obj->progs.handle_newstat_entry,
-			     obj->progs.handle_newstat_return);
-	disable_stat_tp_pair("sys_enter_newfstatat",
-			     obj->progs.handle_newfstatat_entry,
-			     obj->progs.handle_newfstatat_return);
-	disable_stat_tp_pair("sys_enter_newlstat",
-			     obj->progs.handle_newlstat_entry,
-			     obj->progs.handle_newlstat_return);
+	disable_missing_tracepoints_extra();
 }
 
 static void main_extra(void)
