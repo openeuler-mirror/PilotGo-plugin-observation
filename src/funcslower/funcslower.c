@@ -404,91 +404,81 @@ static void print_headers(void)
 	printf("\n");
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct funcslower_bpf *obj;
-	struct bpf_buffer *buf;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = funcslower_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	obj->rodata->need_grab_args = env.need_grab_args;
-	obj->rodata->need_kernel_stack = env.need_kernel_stack;
-	obj->rodata->need_user_stack = env.need_user_stack;
-	obj->rodata->target_pid = env.pid;
-	obj->rodata->duration_ns = env.duration_ns;
-	bpf_map__set_value_size(obj->maps.stack_trace, env.perf_max_stack_depth * sizeof(__u64));
-	bpf_map__set_max_entries(obj->maps.stack_trace, env.stack_storage_size);
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		err = 1;
-		warning("Failed to create ring/perf buffer\n");
-		goto cleanup;
-	}
-
-	autoload_programs(obj);
-	err = funcslower_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF objects: %d\n", err);
-		goto cleanup;
-	}
-
-	attach_programs(obj);
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		err = 1;
-		warning("Failed seting signal handler: %s\n", strerror(errno));
-		goto cleanup;
-	}
-
-	err = load_syms();
-	if (err)
-		goto cleanup;
-
-	err = bpf_buffer__open(buf, handle_event, handle_lost_events, obj);
-	if (err) {
-		warning("Failed to open ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	printf("Tracing function calls slower than %g %s... Ctrl+C to quit.\n",
-	       env.duration_ns / (env.ms ? 1e6 : 1e3), env.ms ? "ms" : "us");
-	print_headers();
-
-	while (!exiting) {
-		err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
-		if (err < 0 && err != -EINTR) {
-			warning("Failed to polling ring/perf buffer: %d\n", err);
+		const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct funcslower_bpf *obj;
+		struct bpf_buffer *buf;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = funcslower_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		obj->rodata->need_grab_args = env.need_grab_args;
+		obj->rodata->need_kernel_stack = env.need_kernel_stack;
+		obj->rodata->need_user_stack = env.need_user_stack;
+		obj->rodata->target_pid = env.pid;
+		obj->rodata->duration_ns = env.duration_ns;
+		bpf_map__set_value_size(obj->maps.stack_trace, env.perf_max_stack_depth * sizeof(__u64));
+		bpf_map__set_max_entries(obj->maps.stack_trace, env.stack_storage_size);
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			err = 1;
+			warning("Failed to create ring/perf buffer\n");
 			goto cleanup;
 		}
+		autoload_programs(obj);
+		err = funcslower_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF objects: %d\n", err);
+			goto cleanup;
+		}
+		attach_programs(obj);
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			err = 1;
+			warning("Failed seting signal handler: %s\n", strerror(errno));
+			goto cleanup;
+		}
+		err = load_syms();
+		if (err)
+			goto cleanup;
+		err = bpf_buffer__open(buf, handle_event, handle_lost_events, obj);
+		if (err) {
+			warning("Failed to open ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		printf("Tracing function calls slower than %g %s... Ctrl+C to quit.\n",
+		       env.duration_ns / (env.ms ? 1e6 : 1e3), env.ms ? "ms" : "us");
+		print_headers();
+		while (!exiting) {
+			err = bpf_buffer__poll(buf, POLL_TIMEOUT_MS);
+			if (err < 0 && err != -EINTR) {
+				warning("Failed to polling ring/perf buffer: %d\n", err);
+				goto cleanup;
+			}
+			/* reset err to 0 when exiting */
+			err = 0;
+		}
+	cleanup:
+		funcslower_bpf__destroy(obj);
+		bpf_buffer__free(buf);
+		ksyms__free(ksyms);
+		syms_cache__free(syms_cache);
+		return err != 0;
+}
 
-		/* reset err to 0 when exiting */
-		err = 0;
-	}
-
-cleanup:
-	funcslower_bpf__destroy(obj);
-	bpf_buffer__free(buf);
-	ksyms__free(ksyms);
-	syms_cache__free(syms_cache);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
