@@ -240,81 +240,70 @@ static int print_events(struct bpf_buffer *buf)
 	print_events_extra();
 }
 
+static void main_extra(void)
+{
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct tcpaccept_bpf *obj;
+		struct bpf_buffer *buf = NULL;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		err = ensure_core_btf(&open_opts);
+		if (err) {
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n",
+				strerror(-err));
+			return -1;
+		}
+		obj = tcpaccept_bpf__open_opts(&open_opts);
+		if (!obj) {
+			warning("Failed to open BPF objects\n");
+			err = 1;
+			goto cleanup;
+		}
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			warning("Failed to create ring/perf buffer\n");
+			err = -errno;
+			goto cleanup;
+		}
+		if (env.pid)
+			obj->rodata->trace_pid = env.trace_pid;
+		obj->rodata->filter_by_port = env.port;
+		err = tcpaccept_bpf__load(obj);
+		if (err) {
+			warning("failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		if (env.port)
+			populate_ports_map(bpf_map__fd(obj->maps.ports));
+		err = tcpaccept_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %s\n", strerror(-err));
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		printf("Tracing accept ... Hit Ctrl-C to end\n");
+		err = print_events(buf);
+	cleanup:
+		tcpaccept_bpf__destroy(obj);
+		cleanup_core_btf(&open_opts);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct tcpaccept_bpf *obj;
-	struct bpf_buffer *buf = NULL;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	err = ensure_core_btf(&open_opts);
-	if (err) {
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n",
-			strerror(-err));
-		return -1;
-	}
-
-	obj = tcpaccept_bpf__open_opts(&open_opts);
-	if (!obj) {
-		warning("Failed to open BPF objects\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		warning("Failed to create ring/perf buffer\n");
-		err = -errno;
-		goto cleanup;
-	}
-
-	if (env.pid)
-		obj->rodata->trace_pid = env.trace_pid;
-
-	obj->rodata->filter_by_port = env.port;
-
-	err = tcpaccept_bpf__load(obj);
-	if (err) {
-		warning("failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	if (env.port)
-		populate_ports_map(bpf_map__fd(obj->maps.ports));
-
-	err = tcpaccept_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %s\n", strerror(-err));
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-
-	printf("Tracing accept ... Hit Ctrl-C to end\n");
-
-	err = print_events(buf);
-	
-cleanup:
-	tcpaccept_bpf__destroy(obj);
-	cleanup_core_btf(&open_opts);
-
-	return err != 0;
+	main_extra();
 }
