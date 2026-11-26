@@ -188,64 +188,67 @@ static void finalize_args(struct prog_env *env, struct argp_state *state)
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		struct prog_env *env = state->input;
+		switch (key) {
+		case 'p':
+			env->pid = argp_parse_pid(key, arg, state);
+			break;
+		case 't':
+			parse_long_opt(&env->tid, "TID", arg, state);
+			break;
+		case 'c':
+			env->caller = arg;
+			break;
+		case 'L':
+			env->lock_name = arg;
+			break;
+		case 'n':
+			parse_uint_opt(&env->nr_locks, "NR_LOCKS", arg, state);
+			break;
+		case 's':
+			parse_uint_opt(&env->nr_stack_entries, "NR_STACKS", arg, state);
+			break;
+		case 'S':
+			if (!parse_sorts(env, arg)) {
+				warning("Bad sort string: %s\n", arg);
+				argp_usage(state);
+			}
+			break;
+		case 'd':
+			parse_uint_opt(&env->duration, "duration", arg, state);
+			break;
+		case 'i':
+			parse_uint_opt(&env->interval, "duration", arg, state);
+			break;
+		case 'R':
+			env->reset = true;
+			break;
+		case 'T':
+			env->timestamp = true;
+			break;
+		case 'P':
+			env->per_thread = true;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		case 'v':
+			env->verbose = true;
+			break;
+		case ARGP_KEY_END:
+			finalize_args(env, state);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	struct prog_env *env = state->input;
-
-	switch (key) {
-	case 'p':
-		env->pid = argp_parse_pid(key, arg, state);
-		break;
-	case 't':
-		parse_long_opt(&env->tid, "TID", arg, state);
-		break;
-	case 'c':
-		env->caller = arg;
-		break;
-	case 'L':
-		env->lock_name = arg;
-		break;
-	case 'n':
-		parse_uint_opt(&env->nr_locks, "NR_LOCKS", arg, state);
-		break;
-	case 's':
-		parse_uint_opt(&env->nr_stack_entries, "NR_STACKS", arg, state);
-		break;
-	case 'S':
-		if (!parse_sorts(env, arg)) {
-			warning("Bad sort string: %s\n", arg);
-			argp_usage(state);
-		}
-		break;
-	case 'd':
-		parse_uint_opt(&env->duration, "duration", arg, state);
-		break;
-	case 'i':
-		parse_uint_opt(&env->interval, "duration", arg, state);
-		break;
-	case 'R':
-		env->reset = true;
-		break;
-	case 'T':
-		env->timestamp = true;
-		break;
-	case 'P':
-		env->per_thread = true;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	case 'v':
-		env->verbose = true;
-		break;
-	case ARGP_KEY_END:
-		finalize_args(env, state);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 struct stack_stat {
