@@ -162,21 +162,24 @@ static int print_entries(int fd)
 	return 0;
 }
 
+static void clear_entries_extra(void)
+{
+		irq_key_t lookup_key = {}, next_key;
+		int err;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_delete_elem(fd, &next_key);
+			if (err < 0) {
+				warning("failed to cleanup infos: %d\n", err);
+				return -1;
+			}
+			lookup_key = next_key;
+		}
+		return 0;
+}
+
 static int clear_entries(int fd)
 {
-	irq_key_t lookup_key = {}, next_key;
-	int err;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err < 0) {
-			warning("failed to cleanup infos: %d\n", err);
-			return -1;
-		}
-		lookup_key = next_key;
-	}
-
-	return 0;
+	clear_entries_extra();
 }
 
 static int print_map(struct bpf_map *map)
