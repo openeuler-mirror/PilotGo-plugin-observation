@@ -164,28 +164,30 @@ static int attach_uprobe_pair(struct gethostlatency_bpf *obj,
 	return 0;
 }
 
+static void attach_uprobes_extra(void)
+{
+		static const char *funcs[] = {
+			"getaddrinfo", "gethostbyname", "gethostbyname2",
+		};
+		char libc_path[PATH_MAX] = {};
+		int err;
+		err = get_libc_path(libc_path);
+		if (err) {
+			warning("Could not find libc.so\n");
+			return -1;
+		}
+		for (int i = 0; i < ARRAY_SIZE(funcs); i++) {
+			err = attach_uprobe_pair(obj, &links[2 * i], &links[2 * i + 1],
+						 libc_path, funcs[i]);
+			if (err)
+				return err;
+		}
+		return 0;
+}
+
 static int attach_uprobes(struct gethostlatency_bpf *obj, struct bpf_link *links[])
 {
-	static const char *funcs[] = {
-		"getaddrinfo", "gethostbyname", "gethostbyname2",
-	};
-	char libc_path[PATH_MAX] = {};
-	int err;
-
-	err = get_libc_path(libc_path);
-	if (err) {
-		warning("Could not find libc.so\n");
-		return -1;
-	}
-
-	for (int i = 0; i < ARRAY_SIZE(funcs); i++) {
-		err = attach_uprobe_pair(obj, &links[2 * i], &links[2 * i + 1],
-					 libc_path, funcs[i]);
-		if (err)
-			return err;
-	}
-
-	return 0;
+	attach_uprobes_extra();
 }
 
 static void main_extra(void)
