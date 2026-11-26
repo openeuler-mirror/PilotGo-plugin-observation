@@ -53,6 +53,7 @@ const char argp_program_doc[] =
     "Trace mount and umount syscalls.\n"
     "\n"
     "USAGE: mountsnoop [-h] [-T] [-p PID] [-v]\n"
+"    mountsnoop --help     # show full help\n"
     "\n"
     "EXAMPLES:\n"
     "    mountsnoop         # trace mount and umount syscalls\n"
