@@ -299,25 +299,28 @@ static int sort_by_acq(const void *x, const void *y)
 	return -1;
 }
 
+static void sort_by_hld_extra(void)
+{
+		struct stack_stat *ss_x = *(struct stack_stat **)x;
+		struct stack_stat *ss_y = *(struct stack_stat **)y;
+		switch (env.sort_hld) {
+		case SORT_HLD_MAX:
+			return larger_first(ss_x->ls.hld_max_time,
+					    ss_y->ls.hld_max_time);
+		case SORT_HLD_COUNT:
+			return larger_first(ss_x->ls.hld_count,
+					    ss_y->ls.hld_count);
+		case SORT_HLD_TOTAL:
+			return larger_first(ss_x->ls.hld_total_time,
+					    ss_y->ls.hld_total_time);
+		}
+		warning("Bad sort_hld %d\n", env.sort_hld);
+		return -1;
+}
+
 static int sort_by_hld(const void *x, const void *y)
 {
-	struct stack_stat *ss_x = *(struct stack_stat **)x;
-	struct stack_stat *ss_y = *(struct stack_stat **)y;
-
-	switch (env.sort_hld) {
-	case SORT_HLD_MAX:
-		return larger_first(ss_x->ls.hld_max_time,
-				    ss_y->ls.hld_max_time);
-	case SORT_HLD_COUNT:
-		return larger_first(ss_x->ls.hld_count,
-				    ss_y->ls.hld_count);
-	case SORT_HLD_TOTAL:
-		return larger_first(ss_x->ls.hld_total_time,
-				    ss_y->ls.hld_total_time);
-	}
-
-	warning("Bad sort_hld %d\n", env.sort_hld);
-	return -1;
+	sort_by_hld_extra();
 }
 
 static char *symname(struct ksyms *ksyms, uint64_t pc, char *buf, size_t n)
