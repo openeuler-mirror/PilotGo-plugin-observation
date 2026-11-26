@@ -168,21 +168,24 @@ static int print_log2_hists(struct bpf_map *hists)
 	print_log2_hists_extra();
 }
 
+static void cleanup_hists_extra(void)
+{
+		__u32 lookup_key = -2, next_key;
+		int err;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_delete_elem(fd, &next_key);
+			if (err < 0) {
+				warning("Failed to cleanup list : %d\n", err);
+				return -1;
+			}
+			lookup_key = next_key;
+		}
+		return 0;
+}
+
 static int cleanup_hists(int fd)
 {
-	__u32 lookup_key = -2, next_key;
-	int err;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err < 0) {
-			warning("Failed to cleanup list : %d\n", err);
-			return -1;
-		}
-		lookup_key = next_key;
-	}
-
-	return 0;
+	cleanup_hists_extra();
 }
 
 static void main_extra(void)
