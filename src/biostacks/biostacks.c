@@ -14,7 +14,7 @@ static struct env {
 	.duration = -1,
 };
 
-const char *argp_program_version = "biostacks 0.1";
+const char *argp_program_version = "biostacks 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
 "Tracing block I/O with init stacks.\n"
