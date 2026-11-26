@@ -83,6 +83,19 @@ static unsigned int pid_namespace(struct task_struct *task)
 	return inum;
 }
 
+static void handle_switch_section3_0(void)
+{
+	
+		if (target_per_process)
+			hkey = BPF_CORE_READ(next, tgid);
+		else if (target_per_thread)
+			hkey = pid;
+		else if (target_per_pidns)
+			hkey = pid_namespace(next);
+		else
+			hkey = -1;
+}
+
 static int handle_switch(bool preempt, struct task_struct *prev, struct task_struct *next)
 {
 	struct hist *histp;
@@ -103,15 +116,7 @@ static int handle_switch(bool preempt, struct task_struct *prev, struct task_str
 	delta = bpf_ktime_get_ns() - *tsp;
 	if (delta < 0)
 		goto cleanup;
-
-	if (target_per_process)
-		hkey = BPF_CORE_READ(next, tgid);
-	else if (target_per_thread)
-		hkey = pid;
-	else if (target_per_pidns)
-		hkey = pid_namespace(next);
-	else
-		hkey = -1;
+	handle_switch_section3_0();
 
 	histp = bpf_map_lookup_or_try_init(&hists, &hkey, &zero);
 	if (!histp)
