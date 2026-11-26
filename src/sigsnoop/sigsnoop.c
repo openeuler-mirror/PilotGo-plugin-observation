@@ -131,23 +131,25 @@ static void disable_prog(struct bpf_program *prog)
 	bpf_program__set_autoload(prog, false);
 }
 
+static void handle_event_extra(void)
+{
+		struct event *e = data;
+		char ts[32];
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		if (signal_name && e->sig < ARRAY_SIZE(sig_name))
+			printf("%-8s %-7u %-16s %-9s %-7u %6s\n",
+			       ts, e->pid, e->comm, sig_name[e->sig], e->tpid,
+			       e->ret == 0 ? "0" : strerrno(e->ret));
+		else
+			printf("%-8s %-7u %-16s %-9d %-7u %6s\n",
+			       ts, e->pid, e->comm, e->sig, e->tpid,
+			       e->ret == 0 ? "0" : strerrno(e->ret));
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	struct event *e = data;
-	char ts[32];
-
-	strftime_now(ts, sizeof(ts), "%H:%M:%S");
-
-	if (signal_name && e->sig < ARRAY_SIZE(sig_name))
-		printf("%-8s %-7u %-16s %-9s %-7u %6s\n",
-		       ts, e->pid, e->comm, sig_name[e->sig], e->tpid,
-		       e->ret == 0 ? "0" : strerrno(e->ret));
-	else
-		printf("%-8s %-7u %-16s %-9d %-7u %6s\n",
-		       ts, e->pid, e->comm, e->sig, e->tpid,
-		       e->ret == 0 ? "0" : strerrno(e->ret));
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
