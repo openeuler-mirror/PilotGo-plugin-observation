@@ -334,29 +334,33 @@ static int fetch_counts(int fd, struct data_t *datas)
 	}
 }
 
+static void clear_counts_extra(void)
+{
+		struct info_t *prev_key = NULL;
+		struct info_t key;
+		int err;
+		while (1) {
+			err = bpf_map_get_next_key(fd, prev_key, &key);
+			if (err) {
+				if (errno == ENOENT)
+					return 0;
+				warning("bpf_map_get_next_key failed: %s\n",
+					strerror(errno));
+				return err;
+			}
+			err = bpf_map_delete_elem(fd, &key);
+			if (err) {
+				warning("bpf_map_delete_elem failed: %s\n",
+					strerror(errno));
+				return err;
+			}
+			prev_key = &key;
+		}
+}
+
 static int clear_counts(int fd)
 {
-	struct info_t *prev_key = NULL;
-	struct info_t key;
-	int err;
-
-	while (1) {
-		err = bpf_map_get_next_key(fd, prev_key, &key);
-		if (err) {
-			if (errno == ENOENT)
-				return 0;
-			warning("bpf_map_get_next_key failed: %s\n",
-				strerror(errno));
-			return err;
-		}
-		err = bpf_map_delete_elem(fd, &key);
-		if (err) {
-			warning("bpf_map_delete_elem failed: %s\n",
-				strerror(errno));
-			return err;
-		}
-		prev_key = &key;
-	}
+	clear_counts_extra();
 }
 
 static int print_stat(struct biotop_bpf *obj)
