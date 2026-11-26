@@ -162,107 +162,94 @@ static void main_section8_2(void)
 		}
 }
 
+static void main_extra(void)
+{
+		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct bpf_link *link[MAX_NR_CPUS] = {};
+		struct loads_bpf *obj;
+		struct ksyms *ksyms = NULL;
+		__u64 avenrun_addr;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		nr_cpus = libbpf_num_possible_cpus();
+		if (nr_cpus < 0)
+		{
+			warning("Failed to get # of possible cpus: '%s'!\n",
+					strerror(-nr_cpus));
+			return 1;
+		}
+		if (nr_cpus > MAX_NR_CPUS)
+		{
+			warning("The number of cpu cores is too big, please increase "
+					"MAX_CPU_NR's value and recompile");
+			return 1;
+		}
+		err = ensure_core_btf(&open_opts);
+		if (err)
+		{
+			warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-errno));
+			return 1;
+		}
+		main_section8_2();
+		ksyms = ksyms__load();
+		if (!ksyms)
+		{
+			warning("Failed to load ksyms\n");
+			err = 1;
+			goto cleanup;
+		}
+		avenrun_addr = resolve_avenrun_addr(ksyms);
+		if (!avenrun_addr)
+		{
+			warning("Failed to get avenrun's kernel address\n");
+			err = 1;
+			goto cleanup;
+		}
+		obj->rodata->avenrun_kaddr = avenrun_addr;
+		err = loads_bpf__load(obj);
+		if (err)
+		{
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		if (!obj->bss)
+		{
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			err = 1;
+			goto cleanup;
+		}
+		err = open_and_attach_perf_event(obj->progs.do_sample, link);
+		if (err)
+			goto cleanup;
+		printf("Reading load averages... Hit Ctrl-C to end.\n");
+		signal(SIGINT, sig_handler);
+		while (!exiting)
+		{
+			sleep(env.interval);
+			print_loads(obj->bss);
+			if (exiting || --env.times == 0)
+				break;
+		}
+	cleanup:
+		for (int i = 0; i < nr_cpus; i++)
+			bpf_link__destroy(link[i]);
+		loads_bpf__destroy(obj);
+		cleanup_core_btf(&open_opts);
+		ksyms__free(ksyms);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct bpf_link *link[MAX_NR_CPUS] = {};
-	struct loads_bpf *obj;
-	struct ksyms *ksyms = NULL;
-	__u64 avenrun_addr;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	nr_cpus = libbpf_num_possible_cpus();
-	if (nr_cpus < 0)
-	{
-		warning("Failed to get # of possible cpus: '%s'!\n",
-				strerror(-nr_cpus));
-		return 1;
-	}
-	if (nr_cpus > MAX_NR_CPUS)
-	{
-		warning("The number of cpu cores is too big, please increase "
-				"MAX_CPU_NR's value and recompile");
-		return 1;
-	}
-
-	err = ensure_core_btf(&open_opts);
-	if (err)
-	{
-		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-errno));
-		return 1;
-	}
-	main_section8_2();
-
-	ksyms = ksyms__load();
-	if (!ksyms)
-	{
-		warning("Failed to load ksyms\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	avenrun_addr = resolve_avenrun_addr(ksyms);
-	if (!avenrun_addr)
-	{
-		warning("Failed to get avenrun's kernel address\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	obj->rodata->avenrun_kaddr = avenrun_addr;
-
-	err = loads_bpf__load(obj);
-	if (err)
-	{
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	if (!obj->bss)
-	{
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	err = open_and_attach_perf_event(obj->progs.do_sample, link);
-	if (err)
-		goto cleanup;
-
-	printf("Reading load averages... Hit Ctrl-C to end.\n");
-
-	signal(SIGINT, sig_handler);
-
-	while (!exiting)
-	{
-		sleep(env.interval);
-		print_loads(obj->bss);
-
-		if (exiting || --env.times == 0)
-			break;
-	}
-
-cleanup:
-	for (int i = 0; i < nr_cpus; i++)
-		bpf_link__destroy(link[i]);
-
-	loads_bpf__destroy(obj);
-	cleanup_core_btf(&open_opts);
-	ksyms__free(ksyms);
-
-	return err != 0;
+	main_extra();
 }
