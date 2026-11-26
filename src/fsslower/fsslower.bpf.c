@@ -32,25 +32,27 @@ struct {
 	__uint(value_size, sizeof(u32));
 } events SEC(".maps");
 
+static void probe_entry_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		__u32 tid = pid_tgid;
+		struct data data;
+		if (!fp)
+			return 0;
+		if (target_pid && target_pid != pid)
+			return 0;
+		data.ts = bpf_ktime_get_ns();
+		data.start = start;
+		data.end = end;
+		data.fp = fp;
+		bpf_map_update_elem(&starts, &tid, &data, BPF_ANY);
+		return 0;
+}
+
 static int probe_entry(struct file *fp, loff_t start, loff_t end)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	__u32 tid = pid_tgid;
-	struct data data;
-
-	if (!fp)
-		return 0;
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	data.ts = bpf_ktime_get_ns();
-	data.start = start;
-	data.end = end;
-	data.fp = fp;
-	bpf_map_update_elem(&starts, &tid, &data, BPF_ANY);
-	return 0;
+	probe_entry_extra();
 }
 
 static __always_inline __s64 event_size(struct data *datap, enum fs_file_op op,
