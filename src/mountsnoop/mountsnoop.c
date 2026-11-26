@@ -151,39 +151,40 @@ static const char *gen_call(const struct event *e)
     return call;
 }
 
+static void handle_event_extra(void)
+{
+	    const struct event *e = data;
+	    char ts[32];
+	    const char *indent;
+	    static const char *op_name[] = {
+	        [MOUNT] = "MOUNT",
+	        [UMOUNT] = "UMOUNT",
+	    };
+	    if (emit_timestamp)
+	    {
+	        strftime_now(ts, sizeof(ts), "%H:%M:%S ");
+	        printf("%s", ts);
+	        indent = "   ";
+	    }
+	    else
+	    {
+	        indent = "";
+	    }
+	    if (!output_vertically)
+	    {
+	        printf("%-16s %-7d %-7d %-11u %s\n",
+	               e->comm, e->pid, e->tid, e->mnt_ns, gen_call(e));
+	        return 0;
+	    }
+	    if (emit_timestamp)
+	        printf("\n");
+	    print_event_detail(e, indent, op_name[e->op]);
+	    return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t len)
 {
-    const struct event *e = data;
-    char ts[32];
-    const char *indent;
-    static const char *op_name[] = {
-        [MOUNT] = "MOUNT",
-        [UMOUNT] = "UMOUNT",
-    };
-
-    if (emit_timestamp)
-    {
-        strftime_now(ts, sizeof(ts), "%H:%M:%S ");
-        printf("%s", ts);
-        indent = "   ";
-    }
-    else
-    {
-        indent = "";
-    }
-
-    if (!output_vertically)
-    {
-        printf("%-16s %-7d %-7d %-11u %s\n",
-               e->comm, e->pid, e->tid, e->mnt_ns, gen_call(e));
-        return 0;
-    }
-
-    if (emit_timestamp)
-        printf("\n");
-    print_event_detail(e, indent, op_name[e->op]);
-
-    return 0;
+	handle_event_extra();
 }
 
 static void print_event_detail(const struct event *e, const char *indent,
