@@ -21,24 +21,27 @@ struct {
 	__type(value, struct event);
 } values SEC(".maps");
 
+static void fill_event_extra(void)
+{
+		__u16 family, type;
+		struct sock *sk;
+		struct inet_sock *inet;
+		sk = BPF_CORE_READ(sock, sk);
+		inet = (struct inet_sock *)sk;
+		family = BPF_CORE_READ(sk, __sk_common.skc_family);
+		type = BPF_CORE_READ(sock, type);
+		event->proto = ((__u32)family << 16) | type;
+		event->port = bpf_ntohs(BPF_CORE_READ(inet, inet_sport));
+		if (family == AF_INET)
+			event->addr[0] = BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
+		else if (family == AF_INET6)
+			BPF_CORE_READ_INTO(event->addr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		bpf_get_current_comm(event->task, sizeof(event->task));
+}
+
 static void fill_event(struct event *event, struct socket *sock)
 {
-	__u16 family, type;
-	struct sock *sk;
-	struct inet_sock *inet;
-
-	sk = BPF_CORE_READ(sock, sk);
-	inet = (struct inet_sock *)sk;
-	family = BPF_CORE_READ(sk, __sk_common.skc_family);
-	type = BPF_CORE_READ(sock, type);
-
-	event->proto = ((__u32)family << 16) | type;
-	event->port = bpf_ntohs(BPF_CORE_READ(inet, inet_sport));
-	if (family == AF_INET)
-		event->addr[0] = BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
-	else if (family == AF_INET6)
-		BPF_CORE_READ_INTO(event->addr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-	bpf_get_current_comm(event->task, sizeof(event->task));
+	fill_event_extra();
 }
 
 SEC("kprobe/inet_listen")
