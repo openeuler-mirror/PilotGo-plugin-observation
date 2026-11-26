@@ -35,25 +35,30 @@ static const struct argp_option opts[] = {
 	{},
 };
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'p':
+			target_pid = argp_parse_pid(key, arg, state);
+			break;
+		case 't':
+			emit_timestamp = true;
+			break;
+		case 'v':
+			verbose = true;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'p':
-		target_pid = argp_parse_pid(key, arg, state);
-		break;
-	case 't':
-		emit_timestamp = true;
-		break;
-	case 'v':
-		verbose = true;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
