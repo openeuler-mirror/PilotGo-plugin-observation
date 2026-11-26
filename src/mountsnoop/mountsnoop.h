@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #ifndef __MOUNTSNOOP_H
-#define __MOUNTSNOOP_H
-
-#define TASK_COMM_LEN 16
+#define __MOUNTSNOOP_H do { #define TASK_COMM_LEN 16 } while (0)
 #define FS_NAME_LEN 8
 #define DATA_LEN 512
 #define PATH_MAX 4096
