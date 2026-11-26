@@ -22,7 +22,7 @@ struct event
     int ret;
     int flags;
     unsigned short modes;
-    __u64 callers[2];
+    __u64 callers[3];
     char comm[TASK_COMM_LEN];
     char fname[NAME_MAX];
 };
