@@ -79,30 +79,31 @@ static __always_inline void fill_event(struct event *event, struct data *datap,
 	bpf_get_current_comm(&event->task, sizeof(event->task));
 }
 
+static void probe_exit_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		__u32 tid = pid_tgid;
+		__u64 end_ns, delta_ns;
+		struct data *datap;
+		struct event event = {};
+		if (target_pid && target_pid != pid)
+			return 0;
+		datap = bpf_map_lookup_and_delete_elem(&starts, &tid);
+		if (!datap)
+			return 0;
+		end_ns = bpf_ktime_get_ns();
+		delta_ns = end_ns - datap->ts;
+		if (delta_ns <= min_lat_ns)
+			return 0;
+		fill_event(&event, datap, op, size, pid, end_ns, delta_ns);
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
+		return 0;
+}
+
 static int probe_exit(void *ctx, enum fs_file_op op, ssize_t size)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	__u32 tid = pid_tgid;
-	__u64 end_ns, delta_ns;
-	struct data *datap;
-	struct event event = {};
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	datap = bpf_map_lookup_and_delete_elem(&starts, &tid);
-	if (!datap)
-		return 0;
-
-	end_ns = bpf_ktime_get_ns();
-	delta_ns = end_ns - datap->ts;
-	if (delta_ns <= min_lat_ns)
-		return 0;
-
-	fill_event(&event, datap, op, size, pid, end_ns, delta_ns);
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
-	return 0;
+	probe_exit_extra();
 }
 
 SEC("kprobe/dummy_file_read")
