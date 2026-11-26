@@ -21,7 +21,7 @@ static struct env {
 	bool cg;
 	bool is_kernel_func;
 } env = {
-	.interval = 99999999,
+	.interval = 100000000,
 	.iterations = 99999999,
 };
 
