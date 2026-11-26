@@ -97,26 +97,26 @@ static __always_inline void record_slot(u64 delta)
 	__sync_fetch_and_add(&hists[slot], 1);
 }
 
+static void exit_extra(void)
+{
+		u64 *start;
+		u64 nsec = bpf_ktime_get_ns();
+		u64 id = bpf_get_current_pid_tgid();
+		u32 pid = (pid_t)id;
+		u64 delta;
+		if (exit_filtered())
+			return 0;
+		start = bpf_map_lookup_elem(&starts, &pid);
+		if (!start)
+			return 0;
+		delta = nsec - *start;
+		record_slot(normalize_delta(delta));
+		return 0;
+}
+
 static int exit(void)
 {
-	u64 *start;
-	u64 nsec = bpf_ktime_get_ns();
-	u64 id = bpf_get_current_pid_tgid();
-	u32 pid = (pid_t)id;
-	u64 delta;
-
-	if (exit_filtered())
-		return 0;
-
-	start = bpf_map_lookup_elem(&starts, &pid);
-	if (!start)
-		return 0;
-
-	delta = nsec - *start;
-
-	record_slot(normalize_delta(delta));
-
-	return 0;
+	exit_extra();
 }
 
 SEC("fexit/dummy_fexit")
