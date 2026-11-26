@@ -114,28 +114,28 @@ static void sig_handler(int sig)
         exiting = 1;
 }
 
+static void handle_event_extra(void)
+{
+	        const struct event *e = data;
+	        char saddr[INET6_ADDRSTRLEN], daddr[INET6_ADDRSTRLEN];
+	        if (env.emit_timestamp) {
+	                char ts[32];
+	                strftime_now(ts, sizeof(ts), "%H:%M:%S");
+	                printf("%8s ", ts);
+	        }
+	        inet_ntop(e->family, &e->saddr, saddr, sizeof(saddr));
+	        inet_ntop(e->family, &e->daddr, daddr, sizeof(daddr));
+	        printf("%-7d %-16s %-*s %-5d %-*s %-5d %-6.2f %-6.2f %-.2f\n",
+	               e->pid, e->comm, env.column_width, saddr, e->sport,
+	               env.column_width, daddr, e->dport,
+	               (double)e->tx_b / 1024, (double)e->rx_b / 1024,
+	               (double)e->span_us / 1000);
+	        return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-        const struct event *e = data;
-        char saddr[INET6_ADDRSTRLEN], daddr[INET6_ADDRSTRLEN];
-
-        if (env.emit_timestamp) {
-                char ts[32];
-
-                strftime_now(ts, sizeof(ts), "%H:%M:%S");
-                printf("%8s ", ts);
-        }
-
-        inet_ntop(e->family, &e->saddr, saddr, sizeof(saddr));
-        inet_ntop(e->family, &e->daddr, daddr, sizeof(daddr));
-
-        printf("%-7d %-16s %-*s %-5d %-*s %-5d %-6.2f %-6.2f %-.2f\n",
-               e->pid, e->comm, env.column_width, saddr, e->sport,
-               env.column_width, daddr, e->dport,
-               (double)e->tx_b / 1024, (double)e->rx_b / 1024,
-               (double)e->span_us / 1000);
-
-        return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
