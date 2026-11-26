@@ -8,7 +8,7 @@
 
 static volatile sig_atomic_t exiting;
 
-const char *argp_program_version = "bashreadline 0.1";
+const char *argp_program_version = "bashreadline 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
 "Print entered bash commands from all running shells.\n"
