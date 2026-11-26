@@ -415,92 +415,80 @@ static int attach_io_probe(struct biotop_bpf *obj, struct bpf_program *prog,
 	return 0;
 }
 
-int main(int argc, char *argv[])
+static void main_extra(void)
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	struct biotop_bpf *obj;
-	struct ksyms *ksyms;
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	obj = biotop_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	parse_disk_stat();
-
-	ksyms = ksyms__load();
-	if (!ksyms) {
-		err = -ENOMEM;
-		warning("Failed to load kallsyms\n");
-		goto cleanup;
-	}
-
-	err = biotop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = attach_io_probe(obj, obj->progs.blk_account_io_start,
-			      &obj->links.blk_account_io_start,
-			      "blk_account_io_start", ksyms);
-	if (err)
-		goto cleanup;
-
-	err = attach_io_probe(obj, obj->progs.blk_account_io_done,
-			      &obj->links.blk_account_io_done,
-			      "blk_account_io_done", ksyms);
-	if (err)
-		goto cleanup;
-
-	err = biotop_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err =  1;
-		goto cleanup;
-	}
-
-	while (1) {
-		sleep(env.interval);
-
-		if (env.clear_screen) {
-			err = system("clear");
-			if (err)
-				goto cleanup;
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct biotop_bpf *obj;
+		struct ksyms *ksyms;
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		obj = biotop_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
 		}
-
-		err = print_stat(obj);
+		parse_disk_stat();
+		ksyms = ksyms__load();
+		if (!ksyms) {
+			err = -ENOMEM;
+			warning("Failed to load kallsyms\n");
+			goto cleanup;
+		}
+		err = biotop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = attach_io_probe(obj, obj->progs.blk_account_io_start,
+				      &obj->links.blk_account_io_start,
+				      "blk_account_io_start", ksyms);
 		if (err)
 			goto cleanup;
-
-		if (exiting || !env.count--)
+		err = attach_io_probe(obj, obj->progs.blk_account_io_done,
+				      &obj->links.blk_account_io_done,
+				      "blk_account_io_done", ksyms);
+		if (err)
 			goto cleanup;
-	}
+		err = biotop_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err =  1;
+			goto cleanup;
+		}
+		while (1) {
+			sleep(env.interval);
+			if (env.clear_screen) {
+				err = system("clear");
+				if (err)
+					goto cleanup;
+			}
+			err = print_stat(obj);
+			if (err)
+				goto cleanup;
+			if (exiting || !env.count--)
+				goto cleanup;
+		}
+	cleanup:
+		ksyms__free(ksyms);
+		free_vector(disks);
+		biotop_bpf__destroy(obj);
+		return err != 0;
+}
 
-cleanup:
-	ksyms__free(ksyms);
-	free_vector(disks);
-	biotop_bpf__destroy(obj);
-
-	return err != 0;
+int main(int argc, char *argv[])
+{
+	main_extra();
 }
