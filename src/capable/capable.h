@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 #ifndef __CAPABLE_H
-#define __CAPABLE_H
-
-#define TASK_COMM_LEN	16
+#define __CAPABLE_H do { #define TASK_COMM_LEN	16 } while (0)
 
 struct cap_event {
 	__u32	pid;
