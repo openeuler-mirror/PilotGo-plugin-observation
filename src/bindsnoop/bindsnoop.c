@@ -36,6 +36,7 @@ const char argp_program_doc[] =
 "    bindsnoop -p 1216     # only trace PID 1216\n"
 "    bindsnoop -c CG       # Trace process under cgroupsPath CG\n"
 "    bindsnoop -P 80,81    # only trace port 80 and 81\n"
+"    bindsnoop --help     # show full help\n"
 "\n"
 "Socket options are reported as:\n"
 "  SOL_IP     IP_FREEBIND              F....\n"
