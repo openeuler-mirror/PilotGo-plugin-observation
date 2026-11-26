@@ -66,25 +66,26 @@ int BPF_KPROBE(inet_listen_entry, struct socket *sock, int backlog)
 }
 
 SEC("kretprobe/inet_listen")
+static void BPF_KRETPROBE_extra(void)
+{
+		__u32 tid = bpf_get_current_pid_tgid();
+		struct event *eventp;
+		struct event *buf;
+		eventp = bpf_map_lookup_and_delete_elem(&values, &tid);
+		if (!eventp)
+			return 0;
+		buf = reserve_buf(sizeof(*buf));
+		if (!buf)
+			return 0;
+		__builtin_memcpy(buf, eventp, sizeof(*buf));
+		buf->ret = ret;
+		submit_buf(ctx, buf, sizeof(*buf));
+		return 0;
+}
+
 int BPF_KRETPROBE(inet_listen_exit, int ret)
 {
-	__u32 tid = bpf_get_current_pid_tgid();
-	struct event *eventp;
-	struct event *buf;
-
-	eventp = bpf_map_lookup_and_delete_elem(&values, &tid);
-	if (!eventp)
-		return 0;
-
-	buf = reserve_buf(sizeof(*buf));
-	if (!buf)
-		return 0;
-
-	__builtin_memcpy(buf, eventp, sizeof(*buf));
-	buf->ret = ret;
-	submit_buf(ctx, buf, sizeof(*buf));
-
-	return 0;
+	BPF_KRETPROBE_extra();
 }
 
 SEC("fexit/inet_listen")
