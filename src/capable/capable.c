@@ -77,7 +77,7 @@ struct ksyms *ksyms = NULL;
 int ifd, sfd;
 
 const char *argp_program_version = "capable 0.1";
-const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char *argp_program_bug_address = "<maintainer@kylinos.cn>";
 const char argp_program_doc[] =
 "Trace security capability checks (cap_capable()).\n"
 "\n"
