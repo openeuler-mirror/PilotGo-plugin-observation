@@ -133,33 +133,35 @@ static void print_counter(__u32 dev, const struct counter *counter,
 	       counter->bytes / 1024);
 }
 
+static void print_map_extra(void)
+{
+		__u32 lookup_key = -1, next_key;
+		int err, fd = bpf_map__fd(counters);
+		struct counter counter;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_lookup_elem(fd, &next_key, &counter);
+			if (err < 0) {
+				warning("Failed to lookup counters: %d\n", err);
+				return -1;
+			}
+			print_counter(next_key, &counter, partitions);
+			lookup_key = next_key;
+		}
+		lookup_key = -1;
+		while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
+			err = bpf_map_delete_elem(fd, &next_key);
+			if (err < 0) {
+				warning("Failed to cleanup counters: %d\n", err);
+				return -1;
+			}
+			lookup_key = next_key;
+		}
+		return 0;
+}
+
 static int print_map(struct bpf_map *counters, struct partitions *partitions)
 {
-	__u32 lookup_key = -1, next_key;
-	int err, fd = bpf_map__fd(counters);
-	struct counter counter;
-
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_lookup_elem(fd, &next_key, &counter);
-		if (err < 0) {
-			warning("Failed to lookup counters: %d\n", err);
-			return -1;
-		}
-		print_counter(next_key, &counter, partitions);
-		lookup_key = next_key;
-	}
-
-	lookup_key = -1;
-	while (!bpf_map_get_next_key(fd, &lookup_key, &next_key)) {
-		err = bpf_map_delete_elem(fd, &next_key);
-		if (err < 0) {
-			warning("Failed to cleanup counters: %d\n", err);
-			return -1;
-		}
-		lookup_key = next_key;
-	}
-
-	return 0;
+	print_map_extra();
 }
 
 static bool setup_disk_filter(struct biopattern_bpf *obj,
