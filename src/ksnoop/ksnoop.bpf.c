@@ -397,65 +397,60 @@ static int save_arg_data(struct trace *trace, struct value *currtrace,
 	return 0;
 }
 
+static void ksnoop_extra(void)
+{
+		struct trace *trace;
+		__u64 data;
+		__u32 currpid;
+		int ret;
+		trace = get_trace(ctx, entry);
+		if (!trace)
+			return 0;
+		/* make sure we want events from this pid */
+		currpid = bpf_get_current_pid_tgid();
+		if (trace->filter_pid && trace->filter_pid != currpid)
+			return 0;
+		trace->pid = currpid;
+		trace->cpu = bpf_get_smp_processor_id();
+		trace->time = bpf_ktime_get_ns();
+		trace->data_flags &= ~(KSNOOP_F_ENTRY | KSNOOP_F_RETURN);
+		if (entry)
+			trace->data_flags |= KSNOOP_F_ENTRY;
+		else
+			trace->data_flags |= KSNOOP_F_RETURN;
+		for (int i = 0; i < MAX_TRACES; i++) {
+			struct trace_data *currdata;
+			struct value *currtrace;
+			currdata = &trace->trace_data[i];
+			currtrace = &trace->traces[i];
+			if (!trace_arg_applies(currtrace, entry))
+				continue;
+			ret = read_arg_data(ctx, trace, currtrace, currdata, &data);
+			if (ret)
+				continue;
+			/* simple predicate evaluation: if any predicate fails,
+			 * skip all tracing for this function.
+			 */
+			if (!predicate_matches(currtrace, currdata)) {
+				clear_trace(trace);
+				return 0;
+			}
+			ret = save_arg_data(trace, currtrace, currdata, data);
+			if (ret > 0)
+				break;
+		}
+		/* show accumulated stashed traces (if any) */
+		if ((entry && trace->prev_ip && !trace->next_ip) ||
+		    (!entry && trace->next_ip && !trace->prev_ip))
+			output_stashed_traces(ctx, trace, entry);
+		else
+			output_trace(ctx, trace);
+		return 0;
+}
+
 static int ksnoop(struct pt_regs *ctx, bool entry)
 {
-	struct trace *trace;
-	__u64 data;
-	__u32 currpid;
-	int ret;
-
-	trace = get_trace(ctx, entry);
-	if (!trace)
-		return 0;
-
-	/* make sure we want events from this pid */
-	currpid = bpf_get_current_pid_tgid();
-	if (trace->filter_pid && trace->filter_pid != currpid)
-		return 0;
-	trace->pid = currpid;
-	trace->cpu = bpf_get_smp_processor_id();
-	trace->time = bpf_ktime_get_ns();
-	trace->data_flags &= ~(KSNOOP_F_ENTRY | KSNOOP_F_RETURN);
-	if (entry)
-		trace->data_flags |= KSNOOP_F_ENTRY;
-	else
-		trace->data_flags |= KSNOOP_F_RETURN;
-
-	for (int i = 0; i < MAX_TRACES; i++) {
-		struct trace_data *currdata;
-		struct value *currtrace;
-
-		currdata = &trace->trace_data[i];
-		currtrace = &trace->traces[i];
-
-		if (!trace_arg_applies(currtrace, entry))
-			continue;
-
-		ret = read_arg_data(ctx, trace, currtrace, currdata, &data);
-		if (ret)
-			continue;
-
-		/* simple predicate evaluation: if any predicate fails,
-		 * skip all tracing for this function.
-		 */
-		if (!predicate_matches(currtrace, currdata)) {
-			clear_trace(trace);
-			return 0;
-		}
-
-		ret = save_arg_data(trace, currtrace, currdata, data);
-		if (ret > 0)
-			break;
-	}
-
-	/* show accumulated stashed traces (if any) */
-	if ((entry && trace->prev_ip && !trace->next_ip) ||
-	    (!entry && trace->next_ip && !trace->prev_ip))
-		output_stashed_traces(ctx, trace, entry);
-	else
-		output_trace(ctx, trace);
-
-	return 0;
+	ksnoop_extra();
 }
 
 SEC("kprobe/foo")
