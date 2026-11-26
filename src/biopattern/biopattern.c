@@ -18,7 +18,7 @@ static struct env {
 
 static volatile sig_atomic_t exiting;
 
-const char *argp_program_version = "biopattern 0.1";
+const char *argp_program_version = "biopattern 0.2";
 const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
 const char argp_program_doc[] =
 "Show block device I/O pattern.\n"
