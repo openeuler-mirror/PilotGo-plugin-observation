@@ -9,7 +9,8 @@ static volatile sig_atomic_t exiting;
 static __u64 time_end;
 
 static struct env {
-	bool trace_all;
+	/* trace_all field */
+	bool	trace_all;
 	bool verbose;
 	bool timestamp;
 	bool duration;
