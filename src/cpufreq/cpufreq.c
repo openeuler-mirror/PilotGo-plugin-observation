@@ -230,89 +230,75 @@ static int setup_cgroup_map(struct cpufreq_bpf *obj, int *cgfd)
 	return 0;
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.parser = parse_arg,
+			.options = opts,
+			.doc = argp_program_doc,
+		};
+		struct bpf_link *links[MAX_CPU_NR] = {};
+		struct cpufreq_bpf *obj;
+		int err, cgfd = -1;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		nr_cpus = get_nr_cpus();
+		if (nr_cpus < 0)
+			return 1;
+		obj = cpufreq_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+		set_probe_autoload(obj);
+		err = cpufreq_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object\n");
+			goto cleanup;
+		}
+		if (!obj->bss) {
+			warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
+			goto cleanup;
+		}
+		err = init_freqs_mhz(obj->bss->freqs_mhz, nr_cpus);
+		if (err) {
+			warning("Failed to init freqs\n");
+			goto cleanup;
+		}
+		obj->bss->filter_memcg = env.cg;
+		if (setup_cgroup_map(obj, &cgfd))
+			goto cleanup;
+		err = open_and_attach_perf_event(env.freq, obj->progs.do_sample, links);
+		if (err)
+			goto cleanup;
+		err = cpufreq_bpf__attach(obj);
+		if (err) {
+			warning("Failed to attach BPF programs\n");
+			goto cleanup;
+		}
+		printf("Sampling CPU freq system-wide & by process. Ctrl-C to end.\n");
+		signal(SIGINT, sig_handler);
+		/*
+		 * we'll get sleep interrupted when someone process Ctrl-C (which will
+		 * be "handled" with noop by sig_handler).
+		 */
+		sleep(env.duration);
+		printf("\n");
+		print_linear_hists(obj->maps.hists, obj->bss);
+	cleanup:
+		for (int i = 0; i < nr_cpus; i++)
+			bpf_link__destroy(links[i]);
+		cpufreq_bpf__destroy(obj);
+		if (cgfd > 0)
+			close(cgfd);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.parser = parse_arg,
-		.options = opts,
-		.doc = argp_program_doc,
-	};
-	struct bpf_link *links[MAX_CPU_NR] = {};
-	struct cpufreq_bpf *obj;
-	int err, cgfd = -1;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-
-	nr_cpus = get_nr_cpus();
-	if (nr_cpus < 0)
-		return 1;
-
-	obj = cpufreq_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
-
-	set_probe_autoload(obj);
-
-	err = cpufreq_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object\n");
-		goto cleanup;
-	}
-
-	if (!obj->bss) {
-		warning("Memory-mapping BPF maps is supported starting from Linux 5.7, please upgrade.\n");
-		goto cleanup;
-	}
-
-	err = init_freqs_mhz(obj->bss->freqs_mhz, nr_cpus);
-	if (err) {
-		warning("Failed to init freqs\n");
-		goto cleanup;
-	}
-
-	obj->bss->filter_memcg = env.cg;
-
-	if (setup_cgroup_map(obj, &cgfd))
-		goto cleanup;
-
-	err = open_and_attach_perf_event(env.freq, obj->progs.do_sample, links);
-	if (err)
-		goto cleanup;
-
-	err = cpufreq_bpf__attach(obj);
-	if (err) {
-		warning("Failed to attach BPF programs\n");
-		goto cleanup;
-	}
-
-	printf("Sampling CPU freq system-wide & by process. Ctrl-C to end.\n");
-
-	signal(SIGINT, sig_handler);
-
-	/*
-	 * we'll get sleep interrupted when someone process Ctrl-C (which will
-	 * be "handled" with noop by sig_handler).
-	 */
-	sleep(env.duration);
-	printf("\n");
-
-	print_linear_hists(obj->maps.hists, obj->bss);
-
-cleanup:
-	for (int i = 0; i < nr_cpus; i++)
-		bpf_link__destroy(links[i]);
-	cpufreq_bpf__destroy(obj);
-	if (cgfd > 0)
-		close(cgfd);
-
-	return err != 0;
+	main_extra();
 }
