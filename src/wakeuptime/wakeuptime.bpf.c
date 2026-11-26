@@ -32,23 +32,24 @@ struct {
 	__uint(key_size, sizeof(u32));
 } stackmap SEC(".maps");
 
+static void offcpu_sched_switch_extra(void)
+{
+		u64 pid_tgid = bpf_get_current_pid_tgid();
+		pid_t pid = pid_tgid >> 32;
+		pid_t tid = (pid_t)pid_tgid;
+		u64 ts;
+		if (target_pid && target_pid != pid)
+			return 0;
+		if (user_threads_only && BPF_CORE_READ(prev, flags) & PF_KTHREAD)
+			return 0;
+		ts = bpf_ktime_get_ns();
+		bpf_map_update_elem(&start, &tid, &ts, BPF_ANY);
+		return 0;
+}
+
 static int offcpu_sched_switch(struct task_struct *prev)
 {
-	u64 pid_tgid = bpf_get_current_pid_tgid();
-	pid_t pid = pid_tgid >> 32;
-	pid_t tid = (pid_t)pid_tgid;
-	u64 ts;
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	if (user_threads_only && BPF_CORE_READ(prev, flags) & PF_KTHREAD)
-		return 0;
-
-	ts = bpf_ktime_get_ns();
-	bpf_map_update_elem(&start, &tid, &ts, BPF_ANY);
-
-	return 0;
+	offcpu_sched_switch_extra();
 }
 
 static int wakeup(void *ctx, struct task_struct *p)
