@@ -61,44 +61,48 @@ static void parse_ports(int key, char *arg, struct argp_state *state)
         }
 }
 
+static void parse_arg_extra(void)
+{
+	        switch (key) {
+	        case 'p':
+	                env.target_pid = argp_parse_pid(key, arg, state);
+	                break;
+	        case '4':
+	                env.target_family = AF_INET;
+	                break;
+	        case '6':
+	                env.target_family = AF_INET6;
+	                break;
+	        case 'w':
+	                env.column_width = 26;
+	                break;
+	        case 'L':
+	        case 'R':
+	                parse_ports(key, arg, state);
+	                break;
+	        case 'T':
+	                env.emit_timestamp = true;
+	                break;
+	        case 'v':
+	                env.verbose = true;
+	                break;
+	        case 'h':
+	                argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+	                break;
+	        case ARGP_KEY_END:
+	                if (env.target_sports[0] != 0)
+	                        env.filter_sport = true;
+	                if (env.target_dports[0] != 0)
+	                        env.filter_dport = true;
+	        default:
+	                return ARGP_ERR_UNKNOWN;
+	        }
+	        return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-        switch (key) {
-        case 'p':
-                env.target_pid = argp_parse_pid(key, arg, state);
-                break;
-        case '4':
-                env.target_family = AF_INET;
-                break;
-        case '6':
-                env.target_family = AF_INET6;
-                break;
-        case 'w':
-                env.column_width = 26;
-                break;
-        case 'L':
-        case 'R':
-                parse_ports(key, arg, state);
-                break;
-        case 'T':
-                env.emit_timestamp = true;
-                break;
-        case 'v':
-                env.verbose = true;
-                break;
-        case 'h':
-                argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-                break;
-        case ARGP_KEY_END:
-                if (env.target_sports[0] != 0)
-                        env.filter_sport = true;
-                if (env.target_dports[0] != 0)
-                        env.filter_dport = true;
-        default:
-                return ARGP_ERR_UNKNOWN;
-        }
-
-        return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
