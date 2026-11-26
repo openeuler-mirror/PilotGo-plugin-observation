@@ -21,25 +21,25 @@ static int fill_event(struct event *event, __kernel_time64_t tv_sec,
 }
 
 SEC("tracepoint/syscalls/sys_enter_nanosleep")
+static void tracepoint__sys_enter_nanosleep_extra(void)
+{
+	    struct __kernel_timespec *rqtp = (struct __kernel_timespec *)(ctx->args[0]);
+	    struct event *event;
+	    __kernel_time64_t tv_sec = BPF_CORE_READ_USER(rqtp, tv_sec);
+	    long long tv_nsec = BPF_CORE_READ_USER(rqtp, tv_nsec);
+	    if ((tv_sec + tv_nsec) == 0)
+	        return 0;
+	    event = reserve_buf(sizeof(*event));
+	    if (!event)
+	        return 0;
+	    fill_event(event, tv_sec, tv_nsec);
+	    submit_buf(ctx, event, sizeof(*event));
+	    return 0;
+}
+
 int tracepoint__sys_enter_nanosleep(struct trace_event_raw_sys_enter *ctx)
 {
-    struct __kernel_timespec *rqtp = (struct __kernel_timespec *)(ctx->args[0]);
-    struct event *event;
-
-    __kernel_time64_t tv_sec = BPF_CORE_READ_USER(rqtp, tv_sec);
-    long long tv_nsec = BPF_CORE_READ_USER(rqtp, tv_nsec);
-
-    if ((tv_sec + tv_nsec) == 0)
-        return 0;
-
-    event = reserve_buf(sizeof(*event));
-    if (!event)
-        return 0;
-
-    fill_event(event, tv_sec, tv_nsec);
-
-    submit_buf(ctx, event, sizeof(*event));
-    return 0;
+	tracepoint__sys_enter_nanosleep_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
