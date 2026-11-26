@@ -143,21 +143,25 @@ static bool try_fentry(struct readahead_bpf *obj)
 }
 
 
+static void set_autoload_kprobes_extra(void)
+{
+		if (kprobe_exists("folio_mark_accessed") &&
+		    kprobe_exists("filemap_alloc_folio")) {
+			disable_prog(obj->progs.page_cache_alloc_kretprobe);
+			disable_prog(obj->progs.mark_page_accessed_kprobe);
+		} else if (kprobe_exists("mark_page_accessed") &&
+			   kprobe_exists("__page_cache_alloc")) {
+			disable_prog(obj->progs.filemap_alloc_folio_kretprobe);
+			disable_prog(obj->progs.folio_mark_accessed_kprobe);
+		} else {
+			return 1;
+		}
+		return 0;
+}
+
 static int set_autoload_kprobes(struct readahead_bpf *obj)
 {
-	if (kprobe_exists("folio_mark_accessed") &&
-	    kprobe_exists("filemap_alloc_folio")) {
-		disable_prog(obj->progs.page_cache_alloc_kretprobe);
-		disable_prog(obj->progs.mark_page_accessed_kprobe);
-	} else if (kprobe_exists("mark_page_accessed") &&
-		   kprobe_exists("__page_cache_alloc")) {
-		disable_prog(obj->progs.filemap_alloc_folio_kretprobe);
-		disable_prog(obj->progs.folio_mark_accessed_kprobe);
-	} else {
-		return 1;
-	}
-
-	return 0;
+	set_autoload_kprobes_extra();
 }
 
 static int attach_ra_kprobe(struct readahead_bpf *obj,
