@@ -183,84 +183,75 @@ static int attach_uprobes(struct threadsnoop_bpf *obj, struct bpf_link **link)
 	attach_uprobes_extra();
 }
 
+static void main_extra(void)
+{
+		struct syms_cache *syms_cache = NULL;
+		struct threadsnoop_bpf *obj;
+		struct bpf_buffer *buf = NULL;
+		struct bpf_link *link = NULL;
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		int err;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		libbpf_set_print(libbpf_print_fn);
+		syms_cache = syms_cache__new(0);
+		if (!syms_cache) {
+			warning("Failed to to create syms cache\n");
+			err = -ENOMEM;
+			goto cleanup;
+		}
+		obj = threadsnoop_bpf__open();
+		if (!obj) {
+			warning("Failed to open BPF object\n");
+			err = 1;
+			goto cleanup;
+		}
+		buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
+		if (!buf) {
+			warning("Failed to create ring/perf buffer\n");
+			err = 1;
+			goto cleanup;
+		}
+		err = threadsnoop_bpf__load(obj);
+		if (err) {
+			warning("Failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = attach_uprobes(obj, &link);
+		if (err) {
+			warning("Failed to attach BPF object: %d\n", err);
+			goto cleanup;
+		}
+		err = bpf_buffer__open(buf, handle_event, handle_lost_events, &syms_cache);
+		if (err) {
+			warning("Failed to open ring/perf buffer: %d\n", err);
+			goto cleanup;
+		}
+		if (signal(SIGINT, sig_handler) == SIG_ERR) {
+			warning("Can't set signal handler: %s\n", strerror(errno));
+			err = 1;
+			goto cleanup;
+		}
+		print_header();
+		err = poll_events(buf);
+	cleanup:
+		bpf_buffer__free(buf);
+		threadsnoop_bpf__destroy(obj);
+		if (syms_cache)
+			syms_cache__free(syms_cache);
+		if (link)
+			bpf_link__destroy(link);
+	return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	struct syms_cache *syms_cache = NULL;
-	struct threadsnoop_bpf *obj;
-	struct bpf_buffer *buf = NULL;
-	struct bpf_link *link = NULL;
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-	int err;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	libbpf_set_print(libbpf_print_fn);
-	
-	syms_cache = syms_cache__new(0);
-	if (!syms_cache) {
-		warning("Failed to to create syms cache\n");
-		err = -ENOMEM;
-		goto cleanup;
-	}
-	
-	obj = threadsnoop_bpf__open();
-	if (!obj) {
-		warning("Failed to open BPF object\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	buf = bpf_buffer__new(obj->maps.events, obj->maps.heap);
-	if (!buf) {
-		warning("Failed to create ring/perf buffer\n");
-		err = 1;
-		goto cleanup;
-	}
-
-	err = threadsnoop_bpf__load(obj);
-	if (err) {
-		warning("Failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-	
-	err = attach_uprobes(obj, &link);
-	if (err) {
-		warning("Failed to attach BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	err = bpf_buffer__open(buf, handle_event, handle_lost_events, &syms_cache);
-	if (err) {
-		warning("Failed to open ring/perf buffer: %d\n", err);
-		goto cleanup;
-	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
-		warning("Can't set signal handler: %s\n", strerror(errno));
-		err = 1;
-		goto cleanup;
-	}
-	
-	print_header();
-
-	err = poll_events(buf);
-
-cleanup:
-	bpf_buffer__free(buf);
-	threadsnoop_bpf__destroy(obj);
-	if (syms_cache)
-		syms_cache__free(syms_cache);
-	if (link)
-		bpf_link__destroy(link);
-
-return err != 0;
+	main_extra();
 }
