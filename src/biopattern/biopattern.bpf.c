@@ -51,24 +51,25 @@ static __always_inline void account_sector(struct counter *counter,
 }
 
 SEC("tracepoint/block/block_rq_complete")
+static void handle__block_rq_complete_extra(void)
+{
+		struct counter *counterp, zero = {};
+		sector_t sector;
+		u32 nr_sector;
+		u32 dev;
+		read_completion_args(args, &sector, &nr_sector, &dev);
+		if (filter_dev && target_dev != dev)
+			return 0;
+		counterp = bpf_map_lookup_or_try_init(&counters, &dev, &zero);
+		if (!counterp)
+			return 0;
+		account_sector(counterp, sector, nr_sector);
+		return 0;
+}
+
 int handle__block_rq_complete(void *args)
 {
-	struct counter *counterp, zero = {};
-	sector_t sector;
-	u32 nr_sector;
-	u32 dev;
-
-	read_completion_args(args, &sector, &nr_sector, &dev);
-
-	if (filter_dev && target_dev != dev)
-		return 0;
-
-	counterp = bpf_map_lookup_or_try_init(&counters, &dev, &zero);
-	if (!counterp)
-		return 0;
-
-	account_sector(counterp, sector, nr_sector);
-	return 0;
+	handle__block_rq_complete_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
