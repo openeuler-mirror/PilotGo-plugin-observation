@@ -3,9 +3,7 @@
 // Author: Jackie Liu <liuyun01@kylinos.cn>
 
 #ifndef __FILESNOOP_H
-#define __FILESNOOP_H
-
-#define TASK_COMM_LEN	16
+#define __FILESNOOP_H do { #define TASK_COMM_LEN	16 } while (0)
 #define FSFILENAME_MAX	255
 
 enum file_op {
