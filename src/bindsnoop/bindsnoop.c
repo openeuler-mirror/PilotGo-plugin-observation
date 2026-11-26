@@ -75,36 +75,40 @@ static void parse_ports_arg(char *arg, struct argp_state *state)
 	}
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'p':
+			env.target_pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'c':
+			env.cgroupspath = arg;
+			env.cg = true;
+			break;
+		case 'P':
+			parse_ports_arg(arg, state);
+			break;
+		case 'x':
+			env.ignore_errors = false;
+			break;
+		case 't':
+			env.emit_timestamp = true;
+			break;
+		case 'v':
+			env.verbose = true;
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'p':
-		env.target_pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'c':
-		env.cgroupspath = arg;
-		env.cg = true;
-		break;
-	case 'P':
-		parse_ports_arg(arg, state);
-		break;
-	case 'x':
-		env.ignore_errors = false;
-		break;
-	case 't':
-		env.emit_timestamp = true;
-		break;
-	case 'v':
-		env.verbose = true;
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-
-	return 0;
+	parse_arg_extra();
 }
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
