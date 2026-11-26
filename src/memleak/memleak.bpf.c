@@ -74,23 +74,25 @@ static __always_inline void update_statistics_add(u64 stack_id, u64 sz)
 	update_statistics_add_extra();
 }
 
+static void update_statistics_del_extra(void)
+{
+	    union combined_alloc_info *existing_cinfo;
+	    existing_cinfo = bpf_map_lookup_elem(&combined_allocs, &stack_id);
+	    if (!existing_cinfo)
+	    {
+	        bpf_printk("Failed to lookup combined allocs\n");
+	        return;
+	    }
+	    const union combined_alloc_info decremental_cinfo = {
+	        .total_size = sz,
+	        .number_of_allocs = 1,
+	    };
+	    __sync_fetch_and_add(&existing_cinfo->bits, -decremental_cinfo.bits);
+}
+
 static __always_inline void update_statistics_del(u64 stack_id, u64 sz)
 {
-    union combined_alloc_info *existing_cinfo;
-
-    existing_cinfo = bpf_map_lookup_elem(&combined_allocs, &stack_id);
-    if (!existing_cinfo)
-    {
-        bpf_printk("Failed to lookup combined allocs\n");
-        return;
-    }
-
-    const union combined_alloc_info decremental_cinfo = {
-        .total_size = sz,
-        .number_of_allocs = 1,
-    };
-
-    __sync_fetch_and_add(&existing_cinfo->bits, -decremental_cinfo.bits);
+	update_statistics_del_extra();
 }
 
 static void gen_alloc_enter_extra(void)
