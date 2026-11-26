@@ -151,6 +151,17 @@ static __u64 resolve_avenrun_addr(struct ksyms *ksyms)
 	return ksym ? ksym->addr : 0;
 }
 
+static void main_section8_2(void)
+{
+	
+		obj = loads_bpf__open_opts(&open_opts);
+		if (!obj)
+		{
+			warning("Failed to open BPF object\n");
+			return 1;
+		}
+}
+
 int main(int argc, char *argv[])
 {
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -194,13 +205,7 @@ int main(int argc, char *argv[])
 		warning("Failed to fetch necessary BTF for CO-RE: %s\n", strerror(-errno));
 		return 1;
 	}
-
-	obj = loads_bpf__open_opts(&open_opts);
-	if (!obj)
-	{
-		warning("Failed to open BPF object\n");
-		return 1;
-	}
+	main_section8_2();
 
 	ksyms = ksyms__load();
 	if (!ksyms)
