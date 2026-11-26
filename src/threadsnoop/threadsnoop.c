@@ -94,20 +94,22 @@ static const struct sym *resolve_sym(struct syms_cache *syms_cache, pid_t pid,
 	return syms__map_addr(syms, function_addr);
 }
 
+static void print_event_extra(void)
+{
+		const struct sym *sym;
+		char ts[16];
+		sym = resolve_sym(syms_cache, e->pid, e->function_addr);
+		strftime_now(ts, sizeof(ts), "%H:%M:%S");
+		printf("%-10s %-6d %-16s ", ts, e->pid, e->comm);
+		if (sym)
+			printf("%s\n", demangling_cplusplus_function(sym->name));
+		else
+			printf("0x%llx [unknown]\n", e->function_addr);
+}
+
 static void print_event(const struct event *e, struct syms_cache *syms_cache)
 {
-	const struct sym *sym;
-	char ts[16];
-
-	sym = resolve_sym(syms_cache, e->pid, e->function_addr);
-
-	strftime_now(ts, sizeof(ts), "%H:%M:%S");
-	printf("%-10s %-6d %-16s ", ts, e->pid, e->comm);
-
-	if (sym)
-		printf("%s\n", demangling_cplusplus_function(sym->name));
-	else
-		printf("0x%llx [unknown]\n", e->function_addr);
+	print_event_extra();
 }
 
 static int handle_event(void *ctx, void *data, size_t data_sz)
