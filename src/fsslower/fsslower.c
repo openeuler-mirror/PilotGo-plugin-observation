@@ -125,34 +125,39 @@ static void parse_fs_arg(const char *arg, struct argp_state *state)
 	parse_fs_arg_extra();
 }
 
+static void parse_arg_extra(void)
+{
+		switch (key) {
+		case 'v':
+			verbose = true;
+			break;
+		case 'c':
+			csv = true;
+			break;
+		case 'd':
+			parse_duration_arg(arg, state);
+			break;
+		case 'm':
+			parse_min_lat_arg(arg, state);
+			break;
+		case 't':
+			parse_fs_arg(arg, state);
+			break;
+		case 'p':
+			target_pid = argp_parse_pid(key, arg, state);
+			break;
+		case 'h':
+			argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
+			break;
+		default:
+			return ARGP_ERR_UNKNOWN;
+		}
+		return 0;
+}
+
 static error_t parse_arg(int key, char *arg, struct argp_state *state)
 {
-	switch (key) {
-	case 'v':
-		verbose = true;
-		break;
-	case 'c':
-		csv = true;
-		break;
-	case 'd':
-		parse_duration_arg(arg, state);
-		break;
-	case 'm':
-		parse_min_lat_arg(arg, state);
-		break;
-	case 't':
-		parse_fs_arg(arg, state);
-		break;
-	case 'p':
-		target_pid = argp_parse_pid(key, arg, state);
-		break;
-	case 'h':
-		argp_state_help(state, stderr, ARGP_HELP_STD_HELP);
-		break;
-	default:
-		return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
+	parse_arg_extra();
 }
 
 static void alias_parse(char *prog)
