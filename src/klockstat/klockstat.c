@@ -612,69 +612,68 @@ static void set_attach_target(struct bpf_program *prog, const char *target)
 	bpf_program__set_attach_target(prog, 0, target);
 }
 
+static void enable_fentry_extra(void)
+{
+		bool debug_lock;
+		disable_prog(obj->progs.kprobe_mutex_lock);
+		disable_prog(obj->progs.kprobe_mutex_lock_exit);
+		disable_prog(obj->progs.kprobe_mutex_trylock);
+		disable_prog(obj->progs.kprobe_mutex_trylock_exit);
+		disable_prog(obj->progs.kprobe_mutex_lock_interruptible);
+		disable_prog(obj->progs.kprobe_mutex_lock_interruptible_exit);
+		disable_prog(obj->progs.kprobe_mutex_lock_killable);
+		disable_prog(obj->progs.kprobe_mutex_lock_killable_exit);
+		disable_prog(obj->progs.kprobe_mutex_unlock);
+		disable_prog(obj->progs.kprobe_down_read);
+		disable_prog(obj->progs.kprobe_down_read_exit);
+		disable_prog(obj->progs.kprobe_down_read_trylock);
+		disable_prog(obj->progs.kprobe_down_read_trylock_exit);
+		disable_prog(obj->progs.kprobe_down_read_interruptible);
+		disable_prog(obj->progs.kprobe_down_read_interruptible_exit);
+		disable_prog(obj->progs.kprobe_down_read_killable);
+		disable_prog(obj->progs.kprobe_down_read_killable_exit);
+		disable_prog(obj->progs.kprobe_up_read);
+		disable_prog(obj->progs.kprobe_down_write);
+		disable_prog(obj->progs.kprobe_down_write_exit);
+		disable_prog(obj->progs.kprobe_down_write_trylock);
+		disable_prog(obj->progs.kprobe_down_write_trylock_exit);
+		disable_prog(obj->progs.kprobe_down_write_killable);
+		disable_prog(obj->progs.kprobe_down_write_killable_exit);
+		disable_prog(obj->progs.kprobe_up_write);
+		/**
+		 * commit 31784cff7ee0 ("rwsem: Implement down_read_interruptible")
+		 */
+		if (!fentry_can_attach("down_read_interruptible", NULL)) {
+			disable_prog(obj->progs.down_read_interruptible);
+			disable_prog(obj->progs.down_read_interruptible_exit);
+		}
+		/* CONFIG_DEBUG_LOCK_ALLOC is on */
+		debug_lock = fentry_can_attach("mutex_lock_nested", NULL);
+		if (!debug_lock)
+			return;
+		set_attach_target(obj->progs.mutex_lock, "mutex_lock_nested");
+		set_attach_target(obj->progs.mutex_lock_exit, "mutex_lock_nested");
+		set_attach_target(obj->progs.mutex_lock_interruptible,
+				  "mutex_lock_interruptible_nested");
+		set_attach_target(obj->progs.mutex_lock_interruptible_exit,
+				  "mutex_lock_interruptible_nested");
+		set_attach_target(obj->progs.mutex_lock_killable,
+				  "mutex_lock_killable_nested");
+		set_attach_target(obj->progs.mutex_lock_killable_exit,
+				  "mutex_lock_killable_nested");
+		set_attach_target(obj->progs.down_read, "down_read_nested");
+		set_attach_target(obj->progs.down_read_exit, "down_read_nested");
+		set_attach_target(obj->progs.down_read_killable, "down_read_killable_nested");
+		set_attach_target(obj->progs.down_read_killable_exit, "down_read_killable_nested");
+		set_attach_target(obj->progs.down_write, "down_write_nested");
+		set_attach_target(obj->progs.down_write_exit, "down_write_nested");
+		set_attach_target(obj->progs.down_write_killable, "down_write_killable_nested");
+		set_attach_target(obj->progs.down_write_killable_exit, "down_write_killable_nested");
+}
+
 static void enable_fentry(struct klockstat_bpf *obj)
 {
-	bool debug_lock;
-
-	disable_prog(obj->progs.kprobe_mutex_lock);
-	disable_prog(obj->progs.kprobe_mutex_lock_exit);
-	disable_prog(obj->progs.kprobe_mutex_trylock);
-	disable_prog(obj->progs.kprobe_mutex_trylock_exit);
-	disable_prog(obj->progs.kprobe_mutex_lock_interruptible);
-	disable_prog(obj->progs.kprobe_mutex_lock_interruptible_exit);
-	disable_prog(obj->progs.kprobe_mutex_lock_killable);
-	disable_prog(obj->progs.kprobe_mutex_lock_killable_exit);
-	disable_prog(obj->progs.kprobe_mutex_unlock);
-
-	disable_prog(obj->progs.kprobe_down_read);
-	disable_prog(obj->progs.kprobe_down_read_exit);
-	disable_prog(obj->progs.kprobe_down_read_trylock);
-	disable_prog(obj->progs.kprobe_down_read_trylock_exit);
-	disable_prog(obj->progs.kprobe_down_read_interruptible);
-	disable_prog(obj->progs.kprobe_down_read_interruptible_exit);
-	disable_prog(obj->progs.kprobe_down_read_killable);
-	disable_prog(obj->progs.kprobe_down_read_killable_exit);
-	disable_prog(obj->progs.kprobe_up_read);
-	disable_prog(obj->progs.kprobe_down_write);
-	disable_prog(obj->progs.kprobe_down_write_exit);
-	disable_prog(obj->progs.kprobe_down_write_trylock);
-	disable_prog(obj->progs.kprobe_down_write_trylock_exit);
-	disable_prog(obj->progs.kprobe_down_write_killable);
-	disable_prog(obj->progs.kprobe_down_write_killable_exit);
-	disable_prog(obj->progs.kprobe_up_write);
-
-	/**
-	 * commit 31784cff7ee0 ("rwsem: Implement down_read_interruptible")
-	 */
-	if (!fentry_can_attach("down_read_interruptible", NULL)) {
-		disable_prog(obj->progs.down_read_interruptible);
-		disable_prog(obj->progs.down_read_interruptible_exit);
-	}
-
-	/* CONFIG_DEBUG_LOCK_ALLOC is on */
-	debug_lock = fentry_can_attach("mutex_lock_nested", NULL);
-	if (!debug_lock)
-		return;
-
-	set_attach_target(obj->progs.mutex_lock, "mutex_lock_nested");
-	set_attach_target(obj->progs.mutex_lock_exit, "mutex_lock_nested");
-	set_attach_target(obj->progs.mutex_lock_interruptible,
-			  "mutex_lock_interruptible_nested");
-	set_attach_target(obj->progs.mutex_lock_interruptible_exit,
-			  "mutex_lock_interruptible_nested");
-	set_attach_target(obj->progs.mutex_lock_killable,
-			  "mutex_lock_killable_nested");
-	set_attach_target(obj->progs.mutex_lock_killable_exit,
-			  "mutex_lock_killable_nested");
-
-	set_attach_target(obj->progs.down_read, "down_read_nested");
-	set_attach_target(obj->progs.down_read_exit, "down_read_nested");
-	set_attach_target(obj->progs.down_read_killable, "down_read_killable_nested");
-	set_attach_target(obj->progs.down_read_killable_exit, "down_read_killable_nested");
-	set_attach_target(obj->progs.down_write, "down_write_nested");
-	set_attach_target(obj->progs.down_write_exit, "down_write_nested");
-	set_attach_target(obj->progs.down_write_killable, "down_write_killable_nested");
-	set_attach_target(obj->progs.down_write_killable_exit, "down_write_killable_nested");
+	enable_fentry_extra();
 }
 
 static void enable_kprobes(struct klockstat_bpf *obj)
