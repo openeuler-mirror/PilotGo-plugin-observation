@@ -18,24 +18,25 @@ struct {
 
 const volatile pid_t target_pid = 0;
 
+static void trace_function_stack_extra(void)
+{
+		u32 pid = bpf_get_current_pid_tgid() >> 32;
+		if (target_pid && target_pid != pid)
+			return 0;
+		struct event *event = reserve_buf(sizeof(*event));
+		if (!event)
+			return 0;
+		event->pid = pid;
+		event->cpu = bpf_get_smp_processor_id();
+		bpf_get_current_comm(&event->comm, sizeof(event->comm));
+		event->stack_id = bpf_get_stackid(ctx, &stack_traces, 0);
+		submit_buf(ctx, event, sizeof(*event));
+		return 0;
+}
+
 static __always_inline int trace_function_stack(void *ctx)
 {
-	u32 pid = bpf_get_current_pid_tgid() >> 32;
-
-	if (target_pid && target_pid != pid)
-		return 0;
-
-	struct event *event = reserve_buf(sizeof(*event));
-	if (!event)
-		return 0;
-
-	event->pid = pid;
-	event->cpu = bpf_get_smp_processor_id();
-	bpf_get_current_comm(&event->comm, sizeof(event->comm));
-	event->stack_id = bpf_get_stackid(ctx, &stack_traces, 0);
-
-	submit_buf(ctx, event, sizeof(*event));
-	return 0;
+	trace_function_stack_extra();
 }
 
 SEC("kprobe")
