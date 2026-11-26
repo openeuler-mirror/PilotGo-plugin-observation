@@ -174,20 +174,22 @@ static void handle_event_extra0(void)
 		return 0;
 }
 
+static void handle_event_extra(void)
+{
+		char time_now[16];
+		const struct data_t *event = data;
+		char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
+		union ip_addr s, d;
+		if (env.ipv4_only && event->af == AF_INET6)
+			return 0;
+		if (env.ipv6_only && event->af == AF_INET)
+			return 0;
+		handle_event_extra0();
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	char time_now[16];
-	const struct data_t *event = data;
-	char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
-	union ip_addr s, d;
-
-	if (env.ipv4_only && event->af == AF_INET6)
-		return 0;
-
-	if (env.ipv6_only && event->af == AF_INET)
-		return 0;
-
-	handle_event_extra0();
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
