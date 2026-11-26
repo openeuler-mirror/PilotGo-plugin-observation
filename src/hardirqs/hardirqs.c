@@ -249,89 +249,75 @@ static void main_section7_3(void)
 		}
 }
 
+static void main_extra(void)
+{
+		static const struct argp argp = {
+			.options = opts,
+			.parser = parse_arg,
+			.doc = argp_program_doc,
+		};
+		struct hardirqs_bpf *bpf_obj;
+		int err;
+		int memcg_fd = -1;
+		err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+		if (err)
+			return err;
+		if (!bpf_is_root())
+			return 1;
+		if (env.count && env.distributed) {
+			warning("count, distributed cann't be used together.\n");
+			return 1;
+		}
+		libbpf_set_print(libbpf_print_fn);
+		bpf_obj = hardirqs_bpf__open();
+		if (!bpf_obj) {
+			warning("failed to open BPF object\n");
+			return 1;
+		}
+		set_prog_autoload(bpf_obj);
+		/* initialize global data (filtering options) */
+		bpf_obj->rodata->filter_memcg = env.cg;
+		bpf_obj->rodata->do_count = env.count;
+		if (!env.count) {
+			bpf_obj->rodata->target_dist = env.distributed;
+			bpf_obj->rodata->target_ns = env.nanoseconds;
+		}
+		err = hardirqs_bpf__load(bpf_obj);
+		if (err) {
+			warning("failed to load BPF object: %d\n", err);
+			goto cleanup;
+		}
+		main_section7_3();
+		err = hardirqs_bpf__attach(bpf_obj);
+		if (err) {
+			warning("Failed to attach BPF object: %d\n", err);
+			goto cleanup;
+		}
+		signal(SIGINT, sig_handler);
+		if (env.count)
+			printf("Tracing hard irq events... Hit Ctrl-C to end.\n");
+		else
+			printf("Tracing hard irq event time... Hit Ctrl-C to end.\n");
+		/* Main loop */
+		for (;;) {
+			sleep(env.interval);
+			printf("\n");
+			if (env.timestamp)
+				print_timestamp();
+			err = print_map(bpf_obj->maps.infos);
+			if (err)
+				break;
+			if (exiting || --env.times == 0)
+				break;
+		}
+	cleanup:
+		hardirqs_bpf__destroy(bpf_obj);
+		if (memcg_fd > 0)
+			close(memcg_fd);
+		return err != 0;
+}
+
 int main(int argc, char *argv[])
 {
-	static const struct argp argp = {
-		.options = opts,
-		.parser = parse_arg,
-		.doc = argp_program_doc,
-	};
-
-	struct hardirqs_bpf *bpf_obj;
-	int err;
-	int memcg_fd = -1;
-
-	err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
-	if (err)
-		return err;
-
-	if (!bpf_is_root())
-		return 1;
-
-	if (env.count && env.distributed) {
-		warning("count, distributed cann't be used together.\n");
-		return 1;
-	}
-
-	libbpf_set_print(libbpf_print_fn);
-
-	bpf_obj = hardirqs_bpf__open();
-	if (!bpf_obj) {
-		warning("failed to open BPF object\n");
-		return 1;
-	}
-
-	set_prog_autoload(bpf_obj);
-
-	/* initialize global data (filtering options) */
-	bpf_obj->rodata->filter_memcg = env.cg;
-	bpf_obj->rodata->do_count = env.count;
-
-	if (!env.count) {
-		bpf_obj->rodata->target_dist = env.distributed;
-		bpf_obj->rodata->target_ns = env.nanoseconds;
-	}
-
-	err = hardirqs_bpf__load(bpf_obj);
-	if (err) {
-		warning("failed to load BPF object: %d\n", err);
-		goto cleanup;
-	}
-	main_section7_3();
-
-	err = hardirqs_bpf__attach(bpf_obj);
-	if (err) {
-		warning("Failed to attach BPF object: %d\n", err);
-		goto cleanup;
-	}
-
-	signal(SIGINT, sig_handler);
-
-	if (env.count)
-		printf("Tracing hard irq events... Hit Ctrl-C to end.\n");
-	else
-		printf("Tracing hard irq event time... Hit Ctrl-C to end.\n");
-
-	/* Main loop */
-	for (;;) {
-		sleep(env.interval);
-		printf("\n");
-
-		if (env.timestamp)
-			print_timestamp();
-
-		err = print_map(bpf_obj->maps.infos);
-		if (err)
-			break;
-
-		if (exiting || --env.times == 0)
-			break;
-	}
-
-cleanup:
-	hardirqs_bpf__destroy(bpf_obj);
-	if (memcg_fd > 0)
-		close(memcg_fd);
-
-	return err != 0;
+	main_extra();
 }
