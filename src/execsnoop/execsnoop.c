@@ -199,20 +199,23 @@ static void print_quoted_args(const struct event *e)
 	}
 }
 
+static void print_plain_args_extra(void)
+{
+		int args_done = 0;
+		for (int i = 0; i < e->args_size && args_done < e->args_count; i++) {
+			char c = e->args[i];
+			if (c == '\0') {
+				args_done++;
+				putchar(' ');
+			} else {
+				putchar(c);
+			}
+		}
+}
+
 static void print_plain_args(const struct event *e)
 {
-	int args_done = 0;
-
-	for (int i = 0; i < e->args_size && args_done < e->args_count; i++) {
-		char c = e->args[i];
-
-		if (c == '\0') {
-			args_done++;
-			putchar(' ');
-		} else {
-			putchar(c);
-		}
-	}
+	print_plain_args_extra();
 }
 
 static void print_args(const struct event *e, bool quote)
