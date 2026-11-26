@@ -184,20 +184,22 @@ static int clear_values(int fd)
 	return err;
 }
 
+static void print_maps_extra(void)
+{
+		struct value values[MAX_ROWS+1];
+		int fd = bpf_map__fd(obj->maps.counts);
+		int rows;
+		rows = collect_values(fd, values);
+		if (rows < 0)
+			return rows;
+		qsort(values, rows, sizeof(struct value), sort_column);
+		print_values(values, rows);
+		return clear_values(fd);
+}
+
 static int print_maps(struct funccount_bpf *obj)
 {
-	struct value values[MAX_ROWS+1];
-	int fd = bpf_map__fd(obj->maps.counts);
-	int rows;
-
-	rows = collect_values(fd, values);
-	if (rows < 0)
-		return rows;
-
-	qsort(values, rows, sizeof(struct value), sort_column);
-	print_values(values, rows);
-
-	return clear_values(fd);
+	print_maps_extra();
 }
 
 static void print_tracepoint(struct funccount_bpf *obj, const char *tp_category,
