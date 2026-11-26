@@ -54,24 +54,26 @@ static __always_inline void fill_event(struct event *event, struct task_struct *
 }
 
 SEC("tracepoint/sched/sched_process_exit")
+static void sched_process_exit_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		__u32 tid = pid_tgid;
+		int exit_code;
+		struct task_struct *task;
+		struct event event = {};
+		task = (struct task_struct *)bpf_get_current_task();
+		exit_code = BPF_CORE_READ(task, exit_code);
+		if (task_filtered(pid, tid, exit_code))
+			return 0;
+		fill_event(&event, task, pid, tid, exit_code);
+		bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
+		return 0;
+}
+
 int sched_process_exit(void *ctx)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	__u32 tid = pid_tgid;
-	int exit_code;
-	struct task_struct *task;
-	struct event event = {};
-
-	task = (struct task_struct *)bpf_get_current_task();
-	exit_code = BPF_CORE_READ(task, exit_code);
-
-	if (task_filtered(pid, tid, exit_code))
-		return 0;
-
-	fill_event(&event, task, pid, tid, exit_code);
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
-	return 0;
+	sched_process_exit_extra();
 }
 
 char LICENSE[] SEC("license") = "GPL";
