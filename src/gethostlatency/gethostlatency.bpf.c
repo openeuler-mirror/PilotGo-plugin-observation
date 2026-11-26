@@ -33,23 +33,25 @@ static __always_inline bool probe_filtered(struct pt_regs *ctx, u32 pid)
 	return false;
 }
 
+static void probe_entry_extra(void)
+{
+		__u64 pid_tgid = bpf_get_current_pid_tgid();
+		__u32 pid = pid_tgid >> 32;
+		__u32 tid = (__u32)pid_tgid;
+		struct event event = {};
+		if (probe_filtered(ctx, pid))
+			return 0;
+		event.time = bpf_ktime_get_ns();
+		event.pid = pid;
+		bpf_get_current_comm(&event.comm, sizeof(event.comm));
+		bpf_core_read_user(&event.host, sizeof(event.host), (void *)PT_REGS_PARM1(ctx));
+		bpf_map_update_elem(&starts, &tid, &event, BPF_ANY);
+		return 0;
+}
+
 static int probe_entry(struct pt_regs *ctx)
 {
-	__u64 pid_tgid = bpf_get_current_pid_tgid();
-	__u32 pid = pid_tgid >> 32;
-	__u32 tid = (__u32)pid_tgid;
-	struct event event = {};
-
-	if (probe_filtered(ctx, pid))
-		return 0;
-
-	event.time = bpf_ktime_get_ns();
-	event.pid = pid;
-	bpf_get_current_comm(&event.comm, sizeof(event.comm));
-	bpf_core_read_user(&event.host, sizeof(event.host), (void *)PT_REGS_PARM1(ctx));
-	bpf_map_update_elem(&starts, &tid, &event, BPF_ANY);
-
-	return 0;
+	probe_entry_extra();
 }
 
 static void probe_return_extra1(void)
