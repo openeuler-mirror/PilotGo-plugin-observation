@@ -145,21 +145,22 @@ static __always_inline int gen_alloc_exit(struct pt_regs *ctx)
     return gen_alloc_exit2(ctx, PT_REGS_RC(ctx));
 }
 
+static void gen_free_enter_extra(void)
+{
+	    const u64 addr = (u64)address;
+	    const struct alloc_info *info = bpf_map_lookup_and_delete_elem(&allocs, &addr);
+	    if (!info)
+	        return 0;
+	    update_statistics_del(info->stack_id, info->size);
+	    if (trace_all)
+	        bpf_printk("Free entered, address = %lx, size = %lu\n",
+	                   address, info->size);
+	    return 0;
+}
+
 static __always_inline int gen_free_enter(const void *address)
 {
-    const u64 addr = (u64)address;
-
-    const struct alloc_info *info = bpf_map_lookup_and_delete_elem(&allocs, &addr);
-    if (!info)
-        return 0;
-
-    update_statistics_del(info->stack_id, info->size);
-
-    if (trace_all)
-        bpf_printk("Free entered, address = %lx, size = %lu\n",
-                   address, info->size);
-
-    return 0;
+	gen_free_enter_extra();
 }
 
 SEC("uprobe")
