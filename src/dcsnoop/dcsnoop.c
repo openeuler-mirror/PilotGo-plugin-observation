@@ -103,20 +103,22 @@ static void print_event_time(void)
 	}
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		char mode_s[] = {
+			[LOOKUP_MISS] = 'M',
+			[LOOKUP_REFERENCE] = 'R',
+		};
+		print_event_time();
+		printf("%-7d %-7d %-16s %c %s\n",
+		       e->pid, e->tid, e->comm, mode_s[e->type], e->filename);
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-	char mode_s[] = {
-		[LOOKUP_MISS] = 'M',
-		[LOOKUP_REFERENCE] = 'R',
-	};
-
-	print_event_time();
-
-	printf("%-7d %-7d %-16s %c %s\n",
-	       e->pid, e->tid, e->comm, mode_s[e->type], e->filename);
-
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
