@@ -19,23 +19,25 @@ struct {
 
 static struct hist zero;
 
+static void do_entry_extra(void)
+{
+		u64 max_backlog, backlog, slot;
+		struct hist *histp;
+		max_backlog = BPF_CORE_READ(sk, sk_max_ack_backlog);
+		backlog = BPF_CORE_READ(sk, sk_ack_backlog);
+		histp = bpf_map_lookup_or_try_init(&hists, &max_backlog, &zero);
+		if (!histp)
+			return 0;
+		slot = log2l(backlog);
+		if (slot >= MAX_SLOTS)
+			slot = MAX_SLOTS - 1;
+		__sync_fetch_and_add(&histp->slots[slot], 1);
+		return 0;
+}
+
 static int do_entry(struct sock *sk)
 {
-	u64 max_backlog, backlog, slot;
-	struct hist *histp;
-
-	max_backlog = BPF_CORE_READ(sk, sk_max_ack_backlog);
-	backlog = BPF_CORE_READ(sk, sk_ack_backlog);
-	histp = bpf_map_lookup_or_try_init(&hists, &max_backlog, &zero);
-	if (!histp)
-		return 0;
-
-	slot = log2l(backlog);
-	if (slot >= MAX_SLOTS)
-		slot = MAX_SLOTS - 1;
-
-	__sync_fetch_and_add(&histp->slots[slot], 1);
-	return 0;
+	do_entry_extra();
 }
 
 SEC("kprobe/tcp_v4_syn_recv_sock")
