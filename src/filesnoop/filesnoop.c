@@ -109,20 +109,22 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 	return vfprintf(stderr, format, args);
 }
 
+static void handle_event_extra(void)
+{
+		const struct event *e = data;
+		if (env.timestamp) {
+			char ts[16];
+			strftime_now(ts, sizeof(ts), "%H:%M:%S");
+			printf("%-9s ", ts);
+		}
+		printf("%-8d %-16s %-10s %5d %5d %s\n", e->pid, e->comm, op2string[e->op],
+		       e->fd, e->ret, e->filename);
+		return 0;
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
-	const struct event *e = data;
-
-	if (env.timestamp) {
-		char ts[16];
-
-		strftime_now(ts, sizeof(ts), "%H:%M:%S");
-		printf("%-9s ", ts);
-	}
-
-	printf("%-8d %-16s %-10s %5d %5d %s\n", e->pid, e->comm, op2string[e->op],
-	       e->fd, e->ret, e->filename);
-	return 0;
+	handle_event_extra();
 }
 
 static void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
