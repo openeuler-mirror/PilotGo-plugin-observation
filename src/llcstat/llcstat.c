@@ -21,7 +21,7 @@ struct env {
 static volatile sig_atomic_t exiting;
 
 const char *argp_program_version = "llcstat 0.1";
-const char *argp_program_bug_address = "Jackie Liu <liuyun01@kylinos.cn>";
+const char *argp_program_bug_address = "<maintainer@kylinos.cn>";
 const char argp_program_doc[] =
 "Summarize cache references and misses by PID.\n"
 "\n"
